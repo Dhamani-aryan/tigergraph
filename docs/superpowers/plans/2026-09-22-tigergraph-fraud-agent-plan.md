@@ -1342,44 +1342,72 @@ async def load_cards_and_made_edges(
     # Phase 1: Card vertices + OWNS edges, straight from the small in-memory map --
     # no need to touch the 708MB transactions file for this part. Card's schema
     # (Task 4) declares 4 attributes (card_id PK, customer_id, ring_cluster_id,
-    # cluster_prior_fraud_rate) but this INSERT only supplies the first two --
-    # ring_cluster_id/cluster_prior_fraud_rate are meant to stay unset until Task
-    # 8.5's connected-components pass writes them. If TigerGraph's GSQL rejects an
-    # INSERT with fewer values than declared attributes (behavior can vary by
-    # version), fall back to explicit defaults: VALUES("{card_id}", "{customer_id}",
-    # "{card_id}", 0.0) -- Task 8.5's label-propagation query overwrites
-    # ring_cluster_id unconditionally on its first pass regardless of this default,
-    # so either form is safe once Task 8.5 runs.
-    statements: list[str] = []
-    for customer_id, card_id in full_map.items():
-        statements.append(f'INSERT INTO VERTEX Card VALUES ("{card_id}", "{customer_id}")')
-        statements.append(
-            f'INSERT INTO EDGE OWNS VALUES ("{customer_id}" Customer, "{card_id}" Card)'
+    # cluster_prior_fraud_rate); ring_cluster_id/cluster_prior_fraud_rate are meant
+    # to stay unset until Task 8.5's connected-components pass writes them.
+    #
+    # DEVIATION CONFIRMED LIVE (Task 7's actual execution): a bare
+    # tg.gsql("INSERT INTO VERTEX/EDGE ... VALUES(...)") is rejected outright by
+    # this server's /gsql/v1/statements endpoint -- the parser's "expecting one
+    # of" list never includes "insert". The real, live-verified mechanism is the
+    # tigergraph__add_nodes/add_edges MCP tools (REST++ batch upsert) shown below;
+    # this is what actually shipped in src/schema/loading_jobs.py, not the raw
+    # INSERT text a first draft of this plan section once showed. See
+    # task-7-report.md for the full live-diagnosis detail (also covers why files
+    # can't be loaded via a local DEFINE FILENAME path, and a quote-parsing issue
+    # in closed_cases_history.csv) if you need the complete picture beyond this
+    # summary.
+    card_items = list(full_map.items())
+    for i in range(0, len(card_items), 1000):
+        batch = card_items[i : i + 1000]
+        await tg.call(
+            "tigergraph__add_nodes",
+            {
+                "vertex_type": "Card",
+                "vertex_id": "card_id",
+                "vertices": [
+                    {"card_id": card_id, "customer_id": customer_id} for customer_id, card_id in batch
+                ],
+            },
         )
-        if len(statements) >= 1000:
-            await tg.gsql(f"USE GRAPH {GRAPH_NAME}\n" + "\n".join(s + ";" for s in statements))
-            statements = []
-    if statements:
-        await tg.gsql(f"USE GRAPH {GRAPH_NAME}\n" + "\n".join(s + ";" for s in statements))
+        await tg.call(
+            "tigergraph__add_edges",
+            {
+                "edge_type": "OWNS",
+                "edges": [
+                    {
+                        "source_type": "Customer",
+                        "source_id": customer_id,
+                        "target_type": "Card",
+                        "target_id": card_id,
+                    }
+                    for customer_id, card_id in batch
+                ],
+            },
+        )
     print(f"Created {len(full_map)} Card vertices with resolved card_id (OWNS edges included)")
 
     # Phase 2: MADE edges. This is the one part that has to stream the full file,
     # since transactions.csv only has customer_id per row, never the resolved card_id.
-    made_statements: list[str] = []
+    made_batch: list[dict] = []
     edge_count = 0
     for chunk in pd.read_csv(transactions_csv_path, usecols=["TransactionID", "customer_id"], chunksize=50_000):
         for txn_id, customer_id in zip(chunk["TransactionID"], chunk["customer_id"]):
             card_id = full_map[customer_id]
-            made_statements.append(
-                f'INSERT INTO EDGE MADE VALUES ("{card_id}" Card, "{txn_id}" Transaction)'
+            made_batch.append(
+                {
+                    "source_type": "Card",
+                    "source_id": card_id,
+                    "target_type": "Transaction",
+                    "target_id": str(txn_id),  # TransactionID is STRING in the schema; pandas infers int64
+                }
             )
-            if len(made_statements) >= 1000:
-                await tg.gsql(f"USE GRAPH {GRAPH_NAME}\n" + "\n".join(s + ";" for s in made_statements))
-                edge_count += len(made_statements)
-                made_statements = []
-    if made_statements:
-        await tg.gsql(f"USE GRAPH {GRAPH_NAME}\n" + "\n".join(s + ";" for s in made_statements))
-        edge_count += len(made_statements)
+            if len(made_batch) >= 1000:
+                await tg.call("tigergraph__add_edges", {"edge_type": "MADE", "edges": made_batch})
+                edge_count += len(made_batch)
+                made_batch = []
+    if made_batch:
+        await tg.call("tigergraph__add_edges", {"edge_type": "MADE", "edges": made_batch})
+        edge_count += len(made_batch)
     print(f"Created {edge_count} MADE edges")
 
     return full_map
@@ -1391,12 +1419,19 @@ async def run_all_loading_jobs(
     # Order matters: Transaction vertices must exist before Phase 2's MADE edges
     # reference them, and Card vertices must exist before closed_cases_loading_job_gsql's
     # ON_CARD edge references them.
+    #
+    # Simplified here to the shape of the call sequence -- the actual shipped
+    # version (src/schema/loading_jobs.py, task-7-report.md) uses GSQL's
+    # "runtime data" mode (positional $N column refs, no local file path) plus
+    # the tigergraph__run_loading_job_with_data MCP tool to actually upload
+    # local file bytes, since CREATE LOADING JOB's DEFINE FILENAME resolves
+    # against the GSQL server's own filesystem, not this machine.
     print(await tg.gsql(transactions_loading_job_gsql(transactions_csv)))
     await load_cards_and_made_edges(tg, transactions_csv, case_pack_csv, closed_cases_csv)
     print(await tg.gsql(closed_cases_loading_job_gsql(closed_cases_csv)))
 ```
 
-**Note:** `INVOLVES` (ClosedCase→Transaction, from the pipe-separated `txn_ids` field) and `CONNECTED_TO` (from `connected_card_ids`) aren't expressible as a single-row `LOAD ... TO EDGE` mapping since they're one-to-many from a pipe-separated string. Handle those in Task 8's post-load step with a small Python script that reads `closed_cases_history.csv` directly, splits `txn_ids`/`connected_card_ids` on `|`, and issues individual `INSERT INTO EDGE` GSQL statements (or a batch `UPSERT` via `tg.gsql`) per pair — do this as part of Task 8, not here, since it needs row-level Python logic rather than a declarative loading job.
+**Note:** `INVOLVES` (ClosedCase→Transaction, from the pipe-separated `txn_ids` field) and `CONNECTED_TO` (from `connected_card_ids`) aren't expressible as a single-row `LOAD ... TO EDGE` mapping since they're one-to-many from a pipe-separated string. Handle those in Task 8's post-load step (which, per the same live finding above, uses `tigergraph__add_edges` in batches, not raw `INSERT INTO EDGE` GSQL) — do this as part of Task 8, not here, since it needs row-level Python logic rather than a declarative loading job.
 
 - [ ] **Step 2: Write `scripts/load_data.py`**
 
@@ -1507,44 +1542,89 @@ async def load_device_profiles(tg: TigerGraphMCP, identity_csv_path: str) -> int
 async def _flush_device_batch(
     tg: TigerGraphMCP, batch: list[tuple[str, str, str, str, str, str]]
 ) -> None:
-    statements = []
-    for device_id, device_info, os_, browser, screen, txn_id in batch:
-        esc = lambda s: s.replace('"', '\\"')
-        statements.append(
-            f'INSERT INTO VERTEX DeviceProfile VALUES ('
-            f'"{device_id}", "{esc(device_info)}", "{esc(os_)}", "{esc(browser)}", "{esc(screen)}")'
-        )
-        statements.append(
-            f'INSERT INTO EDGE FROM_DEVICE VALUES ("{txn_id}" Transaction, "{device_id}" DeviceProfile)'
-        )
-    gsql = f"USE GRAPH {GRAPH_NAME}\n" + "\n".join(s + ";" for s in statements)
-    await tg.gsql(gsql)
+    # Task 7 confirmed live against this server: raw tg.gsql("INSERT INTO
+    # VERTEX/EDGE ...") is rejected outright by the /gsql/v1/statements
+    # endpoint (the parser's "expecting one of" list never includes "insert").
+    # Use the same tigergraph__add_nodes/add_edges MCP tools Task 7 established
+    # instead -- REST++ batch upsert, not raw GSQL INSERT.
+    await tg.call(
+        "tigergraph__add_nodes",
+        {
+            "vertex_type": "DeviceProfile",
+            "vertex_id": "device_id",
+            "vertices": [
+                {
+                    "device_id": device_id,
+                    "device_info": device_info,
+                    "os": os_,
+                    "browser": browser,
+                    "screen": screen,
+                }
+                for device_id, device_info, os_, browser, screen, _ in batch
+            ],
+        },
+    )
+    await tg.call(
+        "tigergraph__add_edges",
+        {
+            "edge_type": "FROM_DEVICE",
+            "edges": [
+                {
+                    "source_type": "Transaction",
+                    "source_id": str(txn_id),
+                    "target_type": "DeviceProfile",
+                    "target_id": device_id,
+                }
+                for device_id, _, _, _, _, txn_id in batch
+            ],
+        },
+    )
 
 
 async def load_closed_case_multi_edges(tg: TigerGraphMCP, closed_cases_csv_path: str) -> None:
     with open(closed_cases_csv_path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
-        statements: list[str] = []
+        involves_batch: list[dict] = []
+        connected_batch: list[dict] = []
         for row in reader:
             case_id = row["case_id"]
             for txn_id in (row.get("txn_ids") or "").split("|"):
                 if txn_id:
-                    statements.append(
-                        f'INSERT INTO EDGE INVOLVES VALUES ("{case_id}" ClosedCase, "{txn_id}" Transaction)'
+                    involves_batch.append(
+                        {
+                            "source_type": "ClosedCase",
+                            "source_id": case_id,
+                            "target_type": "Transaction",
+                            "target_id": txn_id,
+                        }
                     )
             for card_id in (row.get("connected_card_ids") or "").split("|"):
                 if card_id:
-                    statements.append(
-                        f'INSERT INTO EDGE CONNECTED_TO VALUES ("{case_id}" ClosedCase, "{card_id}" Card)'
+                    connected_batch.append(
+                        {
+                            "source_type": "ClosedCase",
+                            "source_id": case_id,
+                            "target_type": "Card",
+                            "target_id": card_id,
+                        }
                     )
-            if len(statements) >= 500:
-                await tg.gsql(f"USE GRAPH {GRAPH_NAME}\n" + "\n".join(s + ";" for s in statements))
-                statements = []
-        if statements:
-            await tg.gsql(f"USE GRAPH {GRAPH_NAME}\n" + "\n".join(s + ";" for s in statements))
+            # add_edges requires every edge in one batch to share the same edge
+            # type -- flush INVOLVES and CONNECTED_TO separately, never mixed.
+            if len(involves_batch) >= 500:
+                await tg.call("tigergraph__add_edges", {"edge_type": "INVOLVES", "edges": involves_batch})
+                involves_batch = []
+            if len(connected_batch) >= 500:
+                await tg.call("tigergraph__add_edges", {"edge_type": "CONNECTED_TO", "edges": connected_batch})
+                connected_batch = []
+        if involves_batch:
+            await tg.call("tigergraph__add_edges", {"edge_type": "INVOLVES", "edges": involves_batch})
+        if connected_batch:
+            await tg.call("tigergraph__add_edges", {"edge_type": "CONNECTED_TO", "edges": connected_batch})
 ```
 
 **Note on `CONNECTED_TO` target cards:** these reference `Card` vertices for *other customers* (per Task 3's finding). Task 7's `load_cards_and_made_edges` already resolved every customer's correct `card_id` (default or override) before this task runs, so every `-K2`/`-K3` card referenced here already exists with the right ID — no separate patching step is needed at this point (an earlier draft of this plan had a `fix_card_ids` correction step here; it's now redundant and has been removed, since fixing it at the source in Task 7 is what actually keeps `MADE` edges pointed at the right card, which a post-hoc patch here could not do).
+
+**Note on `add_nodes`/`add_edges` batch semantics:** confirmed live during Task 7 — `add_edges` requires every edge in one call to share the same source/target vertex types (an API limitation of the underlying REST++ batch upsert), which is why `INVOLVES` and `CONNECTED_TO` are flushed as two separate lists above rather than one combined batch, even though the source loop is interleaved per CSV row.
 
 - [ ] **Step 2: Write `scripts/derive_entities.py`**
 
@@ -1738,6 +1818,16 @@ Applications/Algorithm-library panel) a packaged connected-components query can 
 `CONNECTED_COMPONENTS_GSQL` above — prefer it if it exists and produces the same
 `ring_cluster_id`-on-`Card` result, since a maintained library implementation beats a
 hand-rolled one; keep the hand-written version as the fallback either way.
+
+**Also worth knowing before debugging this live:** Task 7 found that this specific
+Savanna server rejects a bare top-level `tg.gsql("INSERT INTO VERTEX/EDGE ...")`
+outright (use `tigergraph__add_nodes`/`add_edges` instead for that case). The
+`ACCUM INSERT INTO EDGE SHARES_ORIGIN VALUES(...)` used inside `build_shares_origin`
+below is a different GSQL construct — an insert *inside a query body*, submitted via
+`CREATE QUERY`/`INSTALL QUERY`/`RUN QUERY` rather than as a bare DML statement — so
+it isn't necessarily subject to the same rejection. But given this server has already
+proven pickier than documented GSQL behavior once, if this specific line errors,
+that prior finding is the first thing to suspect, not just a syntax typo.
 
 - [ ] **Step 2: Write `scripts/run_connected_components.py`**
 
@@ -2043,13 +2133,29 @@ async def ingest_closed_case_narratives(tg: TigerGraphMCP, closed_cases_csv: str
 
 
 async def _upsert_knowledge_docs(tg: TigerGraphMCP, entries: list[dict]) -> None:
-    for entry in entries:
-        statement = (
-            f'INSERT INTO VERTEX KnowledgeDoc VALUES '
-            f'("{entry["doc_id"]}", "{entry["source"]}", "{entry["section"]}", '
-            f'"{entry["text"].replace(chr(34), chr(92)+chr(34)).replace(chr(10), " ")}")'
+    # Task 7 confirmed live against this server: raw tg.gsql("INSERT INTO
+    # VERTEX/EDGE ...") is rejected outright (the /gsql/v1/statements endpoint's
+    # parser never accepts "insert" as a top-level statement). Use the
+    # tigergraph__add_nodes MCP tool (REST++ batch upsert) instead, batched at
+    # 500 like the rest of this ingestion script's batches.
+    for i in range(0, len(entries), 500):
+        batch = entries[i : i + 500]
+        await tg.call(
+            "tigergraph__add_nodes",
+            {
+                "vertex_type": "KnowledgeDoc",
+                "vertex_id": "doc_id",
+                "vertices": [
+                    {
+                        "doc_id": e["doc_id"],
+                        "source": e["source"],
+                        "section": e["section"],
+                        "text": e["text"],
+                    }
+                    for e in batch
+                ],
+            },
         )
-        await tg.gsql(f"USE GRAPH {GRAPH_NAME}\n{statement};")
     await tg.upsert_vectors(
         "KnowledgeDoc",
         "embedding",
@@ -3066,25 +3172,39 @@ async def _write_case_to_graph(
     tg: TigerGraphMCP, graph_case_id: str, case_row: dict, assessment: dict,
     final_actions: list[ActionEntry], sar_info: dict, verdict: str, status: str,
 ) -> bool:
-    esc = lambda s: str(s).replace('"', '\\"')
     summary_text = (
         f"Case {graph_case_id} on card {case_row['card_id']}: pattern "
         f"{assessment['pattern']}, probability {assessment['fraud_probability']:.2f}. "
         f"{' '.join(assessment['evidence_claims'])}"
     )
-    # Field order must match Task 4's CREATE VERTEX FraudCase exactly: case_id(PK),
-    # customer_id, card_id, status, verdict, fraud_probability, pattern, exposure_usd,
-    # summary, written_at -- verdict and status come from the caller's already-computed
-    # values (run_single_case), not re-derived here, since assessment only carries
-    # pattern/probability/evidence, not a verdict.
-    statement = (
-        f'INSERT INTO VERTEX FraudCase VALUES ('
-        f'"{graph_case_id}", "{case_row["customer_id"]}", "{case_row["card_id"]}", '
-        f'"{esc(status)}", "{esc(verdict)}", {assessment["fraud_probability"]}, '
-        f'"{esc(assessment["pattern"])}", 0.0, "{esc(summary_text)}", "now")'
-    )
     try:
-        await tg.gsql(f"USE GRAPH {GRAPH_NAME}\n{statement};")
+        # Task 7 confirmed live against this server: raw tg.gsql("INSERT INTO
+        # VERTEX ...") is rejected outright. Use tigergraph__add_nodes (REST++
+        # batch upsert) instead -- named fields also removes the positional
+        # field-order risk the original INSERT statement had (verdict/status
+        # were once swapped there by mistake; a dict keyed by attribute name
+        # can't have that specific bug).
+        await tg.call(
+            "tigergraph__add_nodes",
+            {
+                "vertex_type": "FraudCase",
+                "vertex_id": "case_id",
+                "vertices": [
+                    {
+                        "case_id": graph_case_id,
+                        "customer_id": case_row["customer_id"],
+                        "card_id": case_row["card_id"],
+                        "status": status,
+                        "verdict": verdict,
+                        "fraud_probability": assessment["fraud_probability"],
+                        "pattern": assessment["pattern"],
+                        "exposure_usd": 0.0,
+                        "summary": summary_text,
+                        "written_at": "now",
+                    }
+                ],
+            },
+        )
         # Embed and upsert immediately -- this is what makes case memory real within
         # the same 20-case batch run: a later case's retrieve_knowledge call (Task 10)
         # searches the `FraudCase` vertex type and will find this one, not just
