@@ -1722,21 +1722,43 @@ USE GRAPH {GRAPH_NAME}
 CREATE OR REPLACE QUERY build_shares_origin() FOR GRAPH {GRAPH_NAME} {{
     // Two cards share origin if they made transactions from the same device,
     // billed to the same region, or with the same purchaser email domain.
+    //
+    // Uses GSQL's native backward-traversal syntax (<-(EdgeName)-) rather than
+    // a "reverse_X" named reverse edge -- Task 8 confirmed live that no edge
+    // in this schema has a declared REVERSE_EDGE (Task 4 never added one), so
+    // a pattern referencing "reverse_FROM_DEVICE" etc. as if it were a
+    // declared edge type name fails with a semantic error. <-(FROM_DEVICE)-
+    // needs no schema change and no REVERSE_EDGE declaration -- it just means
+    // "traverse this directed edge backwards," which is native GSQL.
+    //
+    // Device-derived SHARES_ORIGIN carries a real risk worth checking for
+    // before trusting it: Task 8's manual checkpoint found one common device
+    // fingerprint (generic Windows/Chrome/1920x1080) shared by 621
+    // transactions across 299 unrelated customers -- a fingerprint collision
+    // from a coarse DeviceProfile derivation, not a real fraud ring. If a
+    // first run of this query produces implausibly large clusters, add a
+    // degree cap: skip ACCUM-ing SHARES_ORIGIN edges through any DeviceProfile
+    // whose connected-card count exceeds some threshold (e.g. 15-20) before
+    // trusting it as a meaningful shared-origin signal, rather than treating
+    // every shared device fingerprint as ring evidence. Confirm the actual
+    // collision rate live before deciding whether this cap is needed or what
+    // threshold is right -- 621/299 was one observed fingerprint, not
+    // necessarily representative of all of them.
     Devices = {{DeviceProfile.*}};
-    ViaDevice = SELECT c2 FROM Devices:d -(reverse_FROM_DEVICE)- Transaction -(reverse_MADE)- Card:c1,
-                       Devices:d -(reverse_FROM_DEVICE)- Transaction -(reverse_MADE)- Card:c2
+    ViaDevice = SELECT c2 FROM Devices:d <-(FROM_DEVICE)- Transaction <-(MADE)- Card:c1,
+                       Devices:d <-(FROM_DEVICE)- Transaction <-(MADE)- Card:c2
                 WHERE c1.card_id != c2.card_id
                 ACCUM INSERT INTO EDGE SHARES_ORIGIN VALUES (c1, c2, "device");
 
     Regions = {{BillingRegion.*}};
-    ViaRegion = SELECT c2 FROM Regions:r -(reverse_BILLED_IN)- Transaction -(reverse_MADE)- Card:c1,
-                       Regions:r -(reverse_BILLED_IN)- Transaction -(reverse_MADE)- Card:c2
+    ViaRegion = SELECT c2 FROM Regions:r <-(BILLED_IN)- Transaction <-(MADE)- Card:c1,
+                       Regions:r <-(BILLED_IN)- Transaction <-(MADE)- Card:c2
                 WHERE c1.card_id != c2.card_id
                 ACCUM INSERT INTO EDGE SHARES_ORIGIN VALUES (c1, c2, "region");
 
     Emails = {{EmailDomain.*}};
-    ViaEmail = SELECT c2 FROM Emails:e -(reverse_PURCHASER_EMAIL)- Transaction -(reverse_MADE)- Card:c1,
-                      Emails:e -(reverse_PURCHASER_EMAIL)- Transaction -(reverse_MADE)- Card:c2
+    ViaEmail = SELECT c2 FROM Emails:e <-(PURCHASER_EMAIL)- Transaction <-(MADE)- Card:c1,
+                      Emails:e <-(PURCHASER_EMAIL)- Transaction <-(MADE)- Card:c2
                WHERE c1.card_id != c2.card_id
                ACCUM INSERT INTO EDGE SHARES_ORIGIN VALUES (c1, c2, "email");
 }}
@@ -1828,6 +1850,21 @@ below is a different GSQL construct — an insert *inside a query body*, submitt
 it isn't necessarily subject to the same rejection. But given this server has already
 proven pickier than documented GSQL behavior once, if this specific line errors,
 that prior finding is the first thing to suspect, not just a syntax typo.
+
+**Second live-confirmed risk (Task 8's manual checkpoint):** `Card` doesn't have
+`primary_id_as_attribute` set. `label_propagation_cc` below reads and writes
+`c.card_id`/`c.ring_cluster_id` as dot-accessed attributes (`c.ring_cluster_id =
+c.card_id`, `c.@min_label += nbr.ring_cluster_id`), and `build_shares_origin`
+above filters `WHERE c1.card_id != c2.card_id` — both are exactly the pattern
+Task 8 found broken. If either query fails on this, see Task 10's note (same
+section header pattern) for the fix: a typed `VERTEX<Card>` query parameter
+instead of attribute access, or — specific to this query, which needs the
+primary id as a *string value* to assign into `ring_cluster_id`, not just to
+filter — GSQL's built-in vertex-to-string conversion in an ACCUM context (check
+current GSQL docs for the exact function name/syntax; this weakens the "prefer
+official docs over guessing" pattern this plan has followed elsewhere, but no
+verified syntax was available to write here without a live instance to test
+against).
 
 - [ ] **Step 2: Write `scripts/run_connected_components.py`**
 
@@ -2217,6 +2254,8 @@ git commit -m "feat: knowledge ingestion (policy, patterns, regulatory PDFs, clo
 **Interfaces:**
 - Produces: `async card_window(tg, card_id, hours) -> list[dict]`, `async customer_cards(tg, customer_id) -> list[dict]`, `async device_neighbors(tg, transaction_id) -> list[dict]`, `async region_neighbors(tg, addr1, txn_ts, window_days) -> list[dict]`, `async closed_case_lookup(tg, card_id=None, device_id=None, addr1=None) -> list[dict]`, `async ring_membership(tg, card_id) -> dict` (reads Task 8.5's graph-algorithm output), `async retrieve_knowledge(tg, query_text, top_k=5) -> list[dict]`, plus `FOLLOWUP_TOOL_SCHEMAS` and `async dispatch_followup_tool(tg, name, arguments)` for the bounded agentic round. Task 12's `graph_flow.py` calls the deterministic functions directly every time, and calls `dispatch_followup_tool` at most once per case, only when the LLM's function-calling round (step 2a) requests it — see plan Architecture note on why evidence-gathering is deterministic-by-default with one bounded exception.
 
+**Known live-confirmed risk to check before trusting any query below (found during Task 8's manual checkpoint):** `Card` and `DeviceProfile` don't have `primary_id_as_attribute` set (only `Transaction` got that flag in Task 4's schema) — a live probe confirmed this breaks `WHERE c.card_id == "..."`-style filtering. `Customer`/`BillingRegion`/`EmailDomain`/`ClosedCase`/`FraudCase` were never explicitly tested for the same gap but were declared with the identical plain `PRIMARY_ID` syntax, so assume they have it too until proven otherwise. Every query below filters by exactly this kind of primary-key attribute comparison, so **before trusting any of them, run one as a live probe first.** If it fails the way Task 8 predicts, the idiomatic GSQL fix is a typed query **parameter** instead of a WHERE-clause filter — e.g. `CREATE QUERY card_window(VERTEX<Card> input_card, FLOAT hours) FOR GRAPH {GRAPH_NAME} {{ Start = {{input_card}}; ... }}`, then pass the primary-id string as the parameter value when running the query (GSQL resolves a `VERTEX<Type>` parameter from its primary-id string automatically — no attribute access needed). Rewrite each function's GSQL using this pattern if the WHERE-clause version fails; this is a schema-shape limitation already loaded live, not something to fix by altering Task 4's already-populated schema.
+
 - [ ] **Step 1: Write `src/graph/queries.py`** — implemented as parameterized GSQL run through `tg.gsql` (interpreted queries), since installing formal GSQL query objects is extra ceremony this timeline doesn't need; interpreted GSQL is fine for read-only evidence gathering at this data scale.
 
 ```python
@@ -2254,7 +2293,7 @@ async def device_neighbors(tg: TigerGraphMCP, transaction_id: str) -> list[dict]
     gsql = f'''
     USE GRAPH {GRAPH_NAME}
     SELECT c FROM Transaction:t -(FROM_DEVICE)-> DeviceProfile:d
-             <-(FROM_DEVICE)- Transaction -(reverse_MADE)- Card:c
+             <-(FROM_DEVICE)- Transaction <-(MADE)- Card:c
     WHERE t.transaction_id == "{transaction_id}"
     '''
     return await tg.gsql(gsql)
