@@ -314,14 +314,115 @@ async def load_cards_and_made_edges(
     return full_map
 
 
+def customer_id_from_card_id(card_id: str) -> str:
+    """The customer_id embedded in a card_id string, via this dataset's
+    established `<customer_id>-K<n>` naming convention -- the exact same
+    split `card_ids.py`'s `build_card_id_map`/`card_id_for` already use
+    (`card_id.split("-K")[0]`). Kept here rather than in `card_ids.py`
+    since it's used only to backfill a loading-time gap (see
+    `backfill_stub_card_customer_ids` below), not part of Task 3's card_id
+    *resolution* logic, which this file does not alter. Deriving a known
+    card_id's customer_id from its own prefix is unambiguous -- not a
+    guess -- since every card_id in this dataset is constructed from its
+    owning customer_id in the first place."""
+    return card_id.split("-K")[0]
+
+
+async def backfill_stub_card_customer_ids(tg: TigerGraphMCP) -> list[str]:
+    """Finds and fixes `Card` vertices GSQL auto-created as edge-target
+    "stubs" while loading `closed_cases_loading_job_gsql`'s `ON_CARD` edge.
+
+    Why these exist: Task 3's `build_card_id_map` (`src/schema/card_ids.py`,
+    intentionally untouched here) is a plain dict keyed by `customer_id`,
+    so it can hold only one `card_id` per customer. When a customer has
+    two distinct closed cases on two different cards (confirmed live: 21
+    such customers in this dataset, e.g. `C02575` has case `CC-0113` on
+    card `C02575-K2` and case `CC-4153` on card `C02575-K1`), the later
+    CSV row silently overwrites the earlier one in that dict, so
+    `load_cards_and_made_edges`'s Phase 1 only ever creates ONE of the two
+    `Card` vertices with real attributes. The "losing" `card_id` is still
+    referenced by `ON_CARD`'s `TO Card` edge target in
+    `closed_cases_loading_job_gsql`, and GSQL auto-creates a bare stub
+    vertex for any edge-target id that doesn't already exist -- primary
+    key only, every other attribute (including `customer_id`) left blank.
+
+    This is a Task 7 loading-completeness fix, not a Task 3 card_id-
+    resolution change: it backfills `customer_id` on those stubs from the
+    card_id's own `<customer>-K<n>` prefix (`customer_id_from_card_id`,
+    unambiguous and not fabricated) and adds the `OWNS` edge so the
+    customer legitimately owns both cards, instead of leaving one
+    orphaned. It does NOT add `MADE` edges for the stub card -- per the
+    established design (`card_ids.py`'s own docstring), `card1` is 1:1
+    with `customer_id` in the raw transaction data, so there is no way to
+    re-attribute specific transactions to a customer's second card from
+    that data; doing so would be a Task 3-level redesign.
+
+    Must run after BOTH `load_cards_and_made_edges` (creates the "real"
+    Card vertices) AND the `load_closed_cases` job (creates the `ON_CARD`
+    edges that produce these stubs in the first place) -- see
+    `run_all_loading_jobs`.
+
+    Idempotent: vertices/edges are found by scanning for a blank
+    `customer_id` attribute, so a Card this function already fixed no
+    longer matches on a later run (nothing to redo), and even if it did,
+    re-`add_nodes`/`add_edges`-ing the same correct values is a harmless
+    upsert. Safe to call on a fresh empty-to-loaded run or repeatedly
+    against an already-correct graph.
+    """
+    result = await tg.call("tigergraph__get_nodes", {"vertex_type": "Card", "limit": 50_000})
+    vertices = result["data"]["vertices"]
+    stub_card_ids = [
+        v["v_id"] for v in vertices if not v.get("attributes", {}).get("customer_id")
+    ]
+    if not stub_card_ids:
+        print("backfill_stub_card_customer_ids: no blank-customer_id Card stubs found")
+        return []
+
+    await tg.call(
+        "tigergraph__add_nodes",
+        {
+            "vertex_type": "Card",
+            "vertex_id": "card_id",
+            "vertices": [
+                {"card_id": card_id, "customer_id": customer_id_from_card_id(card_id)}
+                for card_id in stub_card_ids
+            ],
+        },
+    )
+    await tg.call(
+        "tigergraph__add_edges",
+        {
+            "edge_type": "OWNS",
+            "edges": [
+                {
+                    "source_type": "Customer",
+                    "source_id": customer_id_from_card_id(card_id),
+                    "target_type": "Card",
+                    "target_id": card_id,
+                }
+                for card_id in stub_card_ids
+            ],
+        },
+    )
+    print(
+        f"backfill_stub_card_customer_ids: patched {len(stub_card_ids)} stub Card "
+        f"vertices (blank customer_id -> derived from card_id, OWNS edge added): "
+        f"{stub_card_ids}"
+    )
+    return stub_card_ids
+
+
 async def run_all_loading_jobs(
     tg: TigerGraphMCP, transactions_csv: str, closed_cases_csv: str, case_pack_csv: str
 ) -> None:
     # Order matters: Transaction vertices must exist before Phase 2's MADE edges
-    # reference them, and Card vertices must exist before closed_cases_loading_job_gsql's
-    # ON_CARD edge references them.
+    # reference them, Card vertices must exist before closed_cases_loading_job_gsql's
+    # ON_CARD edge references them, and the ON_CARD load itself must finish before
+    # backfill_stub_card_customer_ids runs (it's what creates the stub vertices the
+    # backfill looks for).
     print(await tg.gsql(transactions_loading_job_gsql(transactions_csv)))
     await _run_job_from_csv(tg, transactions_csv, "load_transactions", "f1", chunk_rows=20_000)
     await load_cards_and_made_edges(tg, transactions_csv, case_pack_csv, closed_cases_csv)
     print(await tg.gsql(closed_cases_loading_job_gsql(closed_cases_csv)))
     await _run_job_from_csv(tg, closed_cases_csv, "load_closed_cases", "f2", chunk_rows=10_000)
+    await backfill_stub_card_customer_ids(tg)
