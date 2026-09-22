@@ -2194,7 +2194,17 @@ async def ring_membership(tg: TigerGraphMCP, card_id: str) -> dict:
     WHERE card_id == "{card_id}"
     '''
     result = await tg.gsql(gsql)
-    return result[0] if isinstance(result, list) and result else {}
+    # Task 2's tg_client.py wraps successful tigergraph__gsql responses in an
+    # envelope ({"success": ..., "operation": ..., "data": ...}), not a bare list --
+    # confirmed live during Task 2. `data` is presumed to hold the actual query rows,
+    # but its exact nested shape for a SELECT statement hasn't been observed live yet.
+    # Before trusting this function's output, run this query by hand once
+    # (`python -c "..."` against a real card_id) and print the raw result to confirm
+    # whether `rows` below is right, or needs another level of unwrapping (e.g.
+    # `data["results"]` or similar) -- adjust the two lines below to match what's
+    # actually observed rather than assuming this guess is correct.
+    rows = result.get("data") if isinstance(result, dict) else result
+    return rows[0] if isinstance(rows, list) and rows else {}
 
 
 # --- Bounded agentic follow-up round (Task 12 step 2a) -------------------------
