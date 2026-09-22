@@ -22,17 +22,27 @@ format; this design covers **how we build the system that produces it**.
 
 - **~48 hours, one person doing the technical build.** Every design choice below
   favors "fast to build and debug" over "architecturally ideal."
-- **No paid LLM API.** Reasoning runs on a local Ollama model (`qwen3:4b-instruct`,
-  already pulled) on a laptop with 16GB RAM / 4GB VRAM (RTX 3050 Ti). This is a small,
-  imperfect model — the architecture compensates by giving it narrow, structured
-  tasks (classify, extract, write prose from given facts) instead of open-ended
-  multi-step decision-making, and validates/retries its JSON output.
-- **Embeddings are local** (`nomic-embed-text`, already pulled) — no API key needed.
+- **No paid LLM API — but free hosted APIs are fine.** Reasoning runs on **Groq's
+  free tier** (`llama-3.3-70b-versatile`, OpenAI-compatible endpoint, no cost, rate-limited
+  not metered) rather than a local model — materially stronger reasoning at zero cost,
+  which matters because investigation accuracy + next-best-action are 50% of the score.
+  A local Ollama model (`qwen3:4b-instruct`, already pulled) remains as a config-toggle
+  fallback (`LLM_BACKEND=ollama`) if Groq's free-tier rate limits prove too tight for a
+  full 20-case run. Either way, the architecture still gives the LLM narrow, structured
+  tasks (classify, extract, write prose from given facts) rather than open-ended
+  multi-step decision-making, and validates/retries its JSON output — this discipline
+  pays off regardless of which backend is faster.
+- **Embeddings are local** (`nomic-embed-text`, already pulled) — no API key needed,
+  and embedding 5,565+ closed-case narratives locally avoids burning any hosted API's
+  rate limit on a bulk one-time job.
 - **TigerGraph Savanna**, empty workspace (not the pre-loaded fraud demo — different
   schema, unrelated to this dataset).
 - Investigation accuracy + next-best-action quality are 50% of the score, so
   correctness of policy application matters more than architectural elegance anywhere
   else in the system.
+- **Git workflow:** local commits only, one per completed task, as the plan proceeds.
+  No push to a remote until the full 20-case run is validated and the submission
+  checklist (§11) is otherwise ready.
 
 ## 3. Graph schema
 
@@ -57,7 +67,29 @@ GraphRAG.
 (online only), `Transaction-PURCHASER_EMAIL->EmailDomain`, `Transaction-BILLED_IN->BillingRegion`,
 `Transaction-NEXT->Transaction` (per-card chronological chain), `ClosedCase-INVOLVES->Transaction`,
 `ClosedCase-ON_CARD->Card`, `ClosedCase-CONNECTED_TO->Card`, and the same
-`INVOLVES`/`ON_CARD`/`CONNECTED_TO` edges from `Case`.
+`INVOLVES`/`ON_CARD`/`CONNECTED_TO` edges from `Case`. Plus **`Card-SHARES_ORIGIN-Card`**
+(undirected, both directions inserted): a projected edge between two `Card`s that share
+a `DeviceProfile`, `BillingRegion`, or `EmailDomain`, built in a post-load pass —
+this is what the graph algorithm in §3a runs over. `Card` also gets two extra
+attributes: `ring_cluster_id` and `cluster_prior_fraud_rate` (both written by that pass).
+
+### 3a. Graph algorithms (required component, not optional)
+
+The README's required-components list names *"GSQL and TigerGraph graph algorithms"*
+explicitly — point queries alone don't satisfy that. We run **Connected Components**
+once, in batch, over the `SHARES_ORIGIN` projection: every `Card` gets a `ring_cluster_id`
+identifying which cluster of cards it belongs to (cards linked by any chain of shared
+device/region/email), and every cluster gets a `cluster_prior_fraud_rate` — the fraction
+of `ClosedCase` rows on cards in that cluster that were `confirmed_fraud`. This turns
+"does this card connect to fraud elsewhere" from a live multi-hop traversal repeated per
+case into an O(1) lookup, and gives a genuinely new signal (a cluster-level prior) that
+point queries alone don't produce — directly useful for R6 (shared origin) and R9
+(undocumented, coordinated abuse), and a real differentiator versus an agent that only
+does point lookups. Implemented as a GSQL query using standard label-propagation
+(iteratively take the minimum `ring_cluster_id` across `SHARES_ORIGIN` neighbors until
+no card's label changes); TigerGraph's packaged GDS algorithm library is tried first if
+available on this Savanna instance, with the hand-written query as the fallback either
+way — see the plan's graph-algorithms task for the concrete GSQL.
 
 ## 4. Data loading
 
@@ -92,10 +124,21 @@ GraphRAG requirement is satisfied by *combining* both, not vector search alone.
 LangGraph state machine, one run per case pack row, following the README's 8-step flow:
 
 1. **Trigger** — load the case-pack row.
-2. **Gather evidence** — bounded tool-calling loop (hard cap ~6-8 iterations, since a
-   small model can loop). Tools: `card_window`, `customer_cards`, `device_neighbors`,
-   `region_neighbors`, `closed_case_lookup` (structural graph queries), and
-   `retrieve_knowledge(query)` (vector search over `KnowledgeDoc` + `ClosedCase`).
+2. **Gather evidence (deterministic core)** — Python always runs a fixed set of graph
+   queries for every case: `card_window`, `customer_cards`, `device_neighbors`,
+   `region_neighbors`, `closed_case_lookup`, `ring_membership` (the §3a cluster
+   lookup), and `retrieve_knowledge(query)` (vector search over `KnowledgeDoc` +
+   `ClosedCase` + `Case`, i.e. including cases this run has already written — see §6
+   step 8). This is not LLM-driven tool selection; it's the same evidence pass every
+   time, which is what makes a small/rate-limited model's job tractable.
+2a. **Gather evidence (bounded agentic round)** — after the deterministic pass, the
+   LLM is given one real function-calling turn (native tool-calling against the
+   hosted model, not prose-parsing) with a small menu of the same query functions,
+   parameterized differently (e.g. a wider `region_neighbors` window, or
+   `closed_case_lookup` keyed on a device instead of a card). It may call **at most
+   one** additional tool, only when it judges the deterministic evidence ambiguous —
+   this is the genuinely agentic piece of the flow: the LLM decides *whether* and
+   *what* to look up next, bounded so it can't loop indefinitely.
 3. **Assess** — LLM call constrained to a Pydantic schema (pattern, probability,
    evidence claims, `similar_prior_cases`); validated and retried on schema failure.
 4. **Stopping check** — deterministic code applying README §6 (probability ≥0.85 or
@@ -113,8 +156,11 @@ LangGraph state machine, one run per case pack row, following the README's 8-ste
 7. **Explain** — LLM writes `summary` and, when required, the SAR `narrative`, from
    the already-decided structured facts (a safer task for a small model than deciding
    the facts themselves).
-8. **Write to graph + memory** — create the `Case` vertex + edges, upsert its
-   embedding, so later case-pack cases can retrieve it exactly like a `ClosedCase`.
+8. **Write to graph + memory** — create the `Case` vertex + edges, **and embed and
+   upsert its summary as a vector immediately** (not deferred to a later batch job),
+   so a later case-pack case in the *same run* can retrieve it via `retrieve_knowledge`
+   exactly like a pre-loaded `ClosedCase` — this is what makes "case memory" real
+   within the 20-case run itself, not just against pre-existing history.
 
 ## 7. Output generation
 
@@ -139,33 +185,45 @@ a production app.
 
 1. Graph schema + bulk load (transactions, identity, closed cases) — get counts
    verified.
-2. Investigate **one case by hand** via direct GSQL/MCP queries before writing agent
+2. Derived entities (`DeviceProfile`, pipe-separated edges) + **graph algorithm pass**
+   (§3a Connected Components → `ring_cluster_id`/`cluster_prior_fraud_rate`).
+3. Investigate **one case by hand** via direct GSQL/MCP queries before writing agent
    code (README's own advice) — this validates the schema is actually queryable the
-   way the agent will need.
-3. Knowledge ingestion pass (policy, patterns, regulatory PDFs, closed-case
+   way the agent will need, including the new ring-cluster lookup.
+4. Knowledge ingestion pass (policy, patterns, regulatory PDFs, closed-case
    embeddings).
-4. Policy engine (pure Python, unit-testable against the README's worked example and
+5. Policy engine (pure Python, unit-testable against the README's worked example and
    rules R1–R10 independent of the LLM/graph).
-5. LangGraph agent + tools, tested end-to-end on the one hand-investigated case first.
-6. Run all 20 cases, validate output schema, spot-check a few against the policy by
+6. LangGraph agent + tools (deterministic evidence pass, bounded agentic tool-choice
+   round, Groq-backed assessment/explanation), tested end-to-end on the one
+   hand-investigated case first.
+7. Run all 20 cases, validate output schema, spot-check a few against the policy by
    hand.
-7. Streamlit dashboard.
-8. Demo video, blog post, social post (can run in parallel with later build steps).
+8. Streamlit dashboard.
+9. Demo video, blog post, social post (can run in parallel with later build steps).
 
 ## 10. Explicit scope cuts / risks (for the blog post's "what we'd improve")
 
-- LLM is a small local model chosen for zero cost, not the best available reasoning
-  model — mitigated architecturally (narrow LLM tasks, deterministic policy layer,
-  schema validation+retry) but real accuracy risk remains on nuanced pattern
-  judgment calls. Escalation path if this proves insufficient during testing:
-  pull a larger local model (e.g. `qwen2.5:7b-instruct`) or move inference to a
-  free-tier Colab GPU.
+- LLM reasoning runs on Groq's free tier rather than a paid frontier model —
+  materially better than a local small model at zero cost, but still not the
+  strongest available model, and subject to free-tier rate limits during a full
+  20-case run. Mitigated architecturally (narrow LLM tasks, deterministic policy
+  layer, schema validation+retry, rate-limit backoff) and with a local Ollama
+  fallback (`qwen3:4b-instruct`) if Groq's limits prove too tight.
+- The bounded agentic tool-choice round caps at one additional tool call per case
+  by design — a deliberate reliability/ambition tradeoff, not an oversight; an
+  unbounded ReAct loop was judged too risky against a free-tier rate limit and a
+  48-hour clock.
 - Customer/analyst evidence-request responses are simulated by a rule-based module
   against real graph data, not a second LLM persona or real humans — reasonable per
   README §5, but the simulator's assumptions are a modeling choice worth stating
   plainly in the blog post.
 - Regulatory PDF ingestion is automated text extraction, not manually curated
   summaries — chunk quality depends on how cleanly each PDF's text extracts.
+- Connected Components runs once after initial load, not incrementally as new
+  `Case` vertices are written during the run — a new case's own card is added to
+  the graph but doesn't retroactively update `ring_cluster_id` for the rest of its
+  cluster mid-run. Worth noting as a known limitation, not silently glossing over it.
 
 ## 11. Deliverables checklist (mapped to submission requirements)
 
