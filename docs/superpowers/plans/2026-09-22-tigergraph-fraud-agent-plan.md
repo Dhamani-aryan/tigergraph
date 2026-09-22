@@ -299,7 +299,7 @@ This is its own task because it's a genuine, non-obvious data-modeling decision 
 - Test: `tests/test_card_ids.py`
 
 **Interfaces:**
-- Produces: `build_card_id_map(case_pack_df, closed_cases_df) -> dict[str, str]` mapping `customer_id -> card_id` (e.g. `"C08623" -> "C08623-K2"`), and `card_id_for(customer_id, card_map) -> str` (falls back to `f"{customer_id}-K1"` for unmapped customers). Task 4's loading job and Task 10's graph tools both import `card_id_for`.
+- Produces: `build_card_id_map(case_pack_df, closed_cases_df) -> dict[str, str]` mapping `customer_id -> card_id` (e.g. `"C08623" -> "C08623-K2"`), and `card_id_for(customer_id, card_map) -> str` (falls back to `f"{customer_id}-K1"` for unmapped customers). Task 7's `load_cards_and_made_edges` imports both — this is what resolves the correct `card_id` before any `Card`/`OWNS`/`MADE` data is created, not a post-hoc patch (see Task 7's note on why order matters here).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1218,11 +1218,16 @@ git commit -m "feat: Pydantic schemas for the answer JSON format"
 - Consumes: `TigerGraphMCP` (Task 2), `card_id_for`/`build_card_id_map` (Task 3), the vertex/edge type names from Task 4.
 - Produces: populated graph. Task 8 (manual checkpoint) and everything after depends on this having run successfully.
 
-- [ ] **Step 1: Write `src/schema/loading_jobs.py`** — GSQL `LOADING JOB` definitions for the three CSVs that go into the graph as-is (`case_pack.csv` is read directly by the run scripts later, not loaded as a vertex type).
+- [ ] **Step 1: Write `src/schema/loading_jobs.py`** — a declarative GSQL `LOADING JOB` for the columns that need no cross-file resolution, plus a Python pass for `Card`/`OWNS`/`MADE`, which do.
+
+**Why `Card`/`OWNS`/`MADE` can't be a simple declarative load:** `transactions.csv` only has `customer_id` per row, not `card_id`. Per Task 3's finding, the correct `card_id` for a customer is not a fixed formula (`customer_id + "-K1"` is only the *default*, used when that customer isn't referenced in `case_pack.csv`/`closed_cases_history.csv` — plenty of customers' real `card_id` has a `-K2`/`-K3` suffix instead) — it can only be resolved by looking the customer up in those reference files. A declarative `LOAD ... TO VERTEX Card VALUES ($"customer_id", $"customer_id")` would key every card by the bare `customer_id`, and a blanket `-K1`-for-everyone default would be equally wrong for every non-default customer — and simply adding a second, correctly-suffixed `Card` vertex afterward doesn't fix anything, since the `MADE` edges (all of that customer's transactions) would still point at the wrong, first-created card, leaving the correct one empty. The only correct order is: resolve every customer's real `card_id` first, then create `Card`/`OWNS`/`MADE` using that resolved value from the start.
 
 ```python
 from __future__ import annotations
 
+import pandas as pd
+
+from src.schema.card_ids import build_card_id_map, card_id_for
 from src.schema.columns import generate_attrs
 from src.tg_client import TigerGraphMCP
 
@@ -1231,8 +1236,8 @@ GRAPH_NAME = "FraudInvestigation"
 
 def transactions_loading_job_gsql(transactions_csv_path: str) -> str:
     txn_attrs = generate_attrs(transactions_csv_path, primary_key="TransactionID")
-    # $"ColumnName" -> attribute mapping; TransactionID is both the vertex PRIMARY_ID
-    # and used to build Card/Customer vertices and the MADE/OWNS edges in the same pass.
+    # $"ColumnName" -> attribute mapping. Card/OWNS/MADE are deliberately NOT loaded
+    # here -- see load_cards_and_made_edges below and the note above this function.
     attr_mappings = ",\n        ".join(f'{name} = $"{name}"' for name, _ in txn_attrs)
     return f'''
 USE GRAPH {GRAPH_NAME}
@@ -1240,15 +1245,12 @@ BEGIN
 CREATE LOADING JOB load_transactions FOR GRAPH {GRAPH_NAME} {{
     DEFINE FILENAME f1 = "{transactions_csv_path}";
     LOAD f1 TO VERTEX Customer VALUES ($"customer_id") USING header="true", separator=",";
-    LOAD f1 TO VERTEX Card VALUES ($"customer_id", $"customer_id") USING header="true", separator=",";
     LOAD f1 TO VERTEX Transaction VALUES (
         $"TransactionID",
         {attr_mappings}
     ) USING header="true", separator=",";
     LOAD f1 TO VERTEX EmailDomain VALUES ($"P_emaildomain") USING header="true", separator=",";
     LOAD f1 TO VERTEX BillingRegion VALUES ($"addr1") USING header="true", separator=",";
-    LOAD f1 TO EDGE OWNS VALUES ($"customer_id" Customer, $"customer_id" Card) USING header="true", separator=",";
-    LOAD f1 TO EDGE MADE VALUES ($"customer_id" Card, $"TransactionID" Transaction) USING header="true", separator=",";
     LOAD f1 TO EDGE PURCHASER_EMAIL VALUES ($"TransactionID" Transaction, $"P_emaildomain" EmailDomain) USING header="true", separator=",";
     LOAD f1 TO EDGE BILLED_IN VALUES ($"TransactionID" Transaction, $"addr1" BillingRegion) USING header="true", separator=",";
 }}
@@ -1275,15 +1277,76 @@ END
 '''.strip()
 
 
+async def load_cards_and_made_edges(
+    tg: TigerGraphMCP, transactions_csv_path: str, case_pack_csv: str, closed_cases_csv: str
+) -> dict[str, str]:
+    """Creates every Card vertex and its OWNS edge with the CORRECT resolved card_id
+    (via Task 3's build_card_id_map/card_id_for), then streams transactions.csv once
+    to wire MADE edges using that same resolved card_id per row -- so no card is ever
+    created under the wrong ID in the first place. Returns the full customer_id ->
+    card_id map (13,500ish entries) for logging/verification."""
+    case_pack_df = pd.read_csv(case_pack_csv)
+    closed_cases_df = pd.read_csv(closed_cases_csv)
+    override_map = build_card_id_map(case_pack_df, closed_cases_df)
+
+    unique_customers = pd.read_csv(transactions_csv_path, usecols=["customer_id"])["customer_id"].unique()
+    full_map = {cid: card_id_for(cid, override_map) for cid in unique_customers}
+
+    # Phase 1: Card vertices + OWNS edges, straight from the small in-memory map --
+    # no need to touch the 708MB transactions file for this part. Card's schema
+    # (Task 4) declares 4 attributes (card_id PK, customer_id, ring_cluster_id,
+    # cluster_prior_fraud_rate) but this INSERT only supplies the first two --
+    # ring_cluster_id/cluster_prior_fraud_rate are meant to stay unset until Task
+    # 8.5's connected-components pass writes them. If TigerGraph's GSQL rejects an
+    # INSERT with fewer values than declared attributes (behavior can vary by
+    # version), fall back to explicit defaults: VALUES("{card_id}", "{customer_id}",
+    # "{card_id}", 0.0) -- Task 8.5's label-propagation query overwrites
+    # ring_cluster_id unconditionally on its first pass regardless of this default,
+    # so either form is safe once Task 8.5 runs.
+    statements: list[str] = []
+    for customer_id, card_id in full_map.items():
+        statements.append(f'INSERT INTO VERTEX Card VALUES ("{card_id}", "{customer_id}")')
+        statements.append(
+            f'INSERT INTO EDGE OWNS VALUES ("{customer_id}" Customer, "{card_id}" Card)'
+        )
+        if len(statements) >= 1000:
+            await tg.gsql(f"USE GRAPH {GRAPH_NAME}\n" + "\n".join(s + ";" for s in statements))
+            statements = []
+    if statements:
+        await tg.gsql(f"USE GRAPH {GRAPH_NAME}\n" + "\n".join(s + ";" for s in statements))
+    print(f"Created {len(full_map)} Card vertices with resolved card_id (OWNS edges included)")
+
+    # Phase 2: MADE edges. This is the one part that has to stream the full file,
+    # since transactions.csv only has customer_id per row, never the resolved card_id.
+    made_statements: list[str] = []
+    edge_count = 0
+    for chunk in pd.read_csv(transactions_csv_path, usecols=["TransactionID", "customer_id"], chunksize=50_000):
+        for txn_id, customer_id in zip(chunk["TransactionID"], chunk["customer_id"]):
+            card_id = full_map[customer_id]
+            made_statements.append(
+                f'INSERT INTO EDGE MADE VALUES ("{card_id}" Card, "{txn_id}" Transaction)'
+            )
+            if len(made_statements) >= 1000:
+                await tg.gsql(f"USE GRAPH {GRAPH_NAME}\n" + "\n".join(s + ";" for s in made_statements))
+                edge_count += len(made_statements)
+                made_statements = []
+    if made_statements:
+        await tg.gsql(f"USE GRAPH {GRAPH_NAME}\n" + "\n".join(s + ";" for s in made_statements))
+        edge_count += len(made_statements)
+    print(f"Created {edge_count} MADE edges")
+
+    return full_map
+
+
 async def run_all_loading_jobs(
-    tg: TigerGraphMCP, transactions_csv: str, closed_cases_csv: str
+    tg: TigerGraphMCP, transactions_csv: str, closed_cases_csv: str, case_pack_csv: str
 ) -> None:
-    for gsql in (
-        transactions_loading_job_gsql(transactions_csv),
-        closed_cases_loading_job_gsql(closed_cases_csv),
-    ):
-        result = await tg.gsql(gsql)
-        print(result)
+    # Order matters: Transaction vertices must exist before Phase 2's MADE edges
+    # reference them, and Card vertices must exist before closed_cases_loading_job_gsql's
+    # ON_CARD edge references them.
+    print(await tg.gsql(transactions_loading_job_gsql(transactions_csv)))
+    await load_cards_and_made_edges(tg, transactions_csv, case_pack_csv, closed_cases_csv)
+    print(await tg.gsql(closed_cases_loading_job_gsql(closed_cases_csv)))
 ```
 
 **Note:** `INVOLVES` (ClosedCase→Transaction, from the pipe-separated `txn_ids` field) and `CONNECTED_TO` (from `connected_card_ids`) aren't expressible as a single-row `LOAD ... TO EDGE` mapping since they're one-to-many from a pipe-separated string. Handle those in Task 8's post-load step with a small Python script that reads `closed_cases_history.csv` directly, splits `txn_ids`/`connected_card_ids` on `|`, and issues individual `INSERT INTO EDGE` GSQL statements (or a batch `UPSERT` via `tg.gsql`) per pair — do this as part of Task 8, not here, since it needs row-level Python logic rather than a declarative loading job.
@@ -1299,7 +1362,7 @@ from src.tg_client import TigerGraphMCP
 
 async def main() -> None:
     async with TigerGraphMCP() as tg:
-        await run_all_loading_jobs(tg, "transactions.csv", "closed_cases_history.csv")
+        await run_all_loading_jobs(tg, "transactions.csv", "closed_cases_history.csv", "case_pack.csv")
 
 
 if __name__ == "__main__":
@@ -1312,7 +1375,7 @@ if __name__ == "__main__":
 .venv\Scripts\python scripts\load_data.py
 ```
 
-Expected: this takes real time (590K transaction rows, 708MB file) — let it run, watch for GSQL errors in the output rather than assuming success. A common failure mode is a type mismatch on one of the 393 generated `Transaction` attributes (e.g. a column that's actually string-typed but was inferred as DOUBLE in Task 4) — if you see a load error for a specific column, add it to `_STRING_COLUMNS` in `src/schema/columns.py`, re-run `scripts/create_schema.py` (after `DROP VERTEX Transaction` first, since the type already exists), then re-run this script.
+Expected: this takes real time — 590K transaction rows / 708MB file for the declarative load, plus Phase 2's ~591 batched GSQL calls (590,742 rows / 1000 per batch) for `MADE` edges. Let it run, watch for GSQL errors rather than assuming success. A common failure mode is a type mismatch on one of the 393 generated `Transaction` attributes (e.g. a column that's actually string-typed but was inferred as DOUBLE in Task 4) — if you see a load error for a specific column, add it to `_STRING_COLUMNS` in `src/schema/columns.py`, re-run `scripts/create_schema.py` (after `DROP VERTEX Transaction` first, since the type already exists), then re-run this script.
 
 - [ ] **Step 4: Verify counts**
 
@@ -1328,13 +1391,13 @@ asyncio.run(main())
 "
 ```
 
-Expected roughly: Customer ~13,500, Transaction 590,742, ClosedCase 5,565 (exact counts per the README's stated dataset sizes — large deviations mean the loading job silently dropped rows, worth investigating before continuing).
+Expected roughly: Customer ~13,500, **Card ~13,500** (every customer gets exactly one card by construction — card1 is 1:1 with customer_id in this dataset, confirmed during design), Transaction 590,742, ClosedCase 5,565 (exact counts per the README's stated dataset sizes — large deviations mean the loading job silently dropped rows, worth investigating before continuing). Also spot-check one known non-default card, e.g. `SELECT * FROM Card WHERE card_id == "C08623-K2"` should return a row (this is the customer from case `HHG-003` whose real card_id has a `-K2` suffix, not the `-K1` default) — if it comes back empty, Phase 1 of `load_cards_and_made_edges` didn't resolve the override correctly.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/schema/loading_jobs.py scripts/load_data.py
-git commit -m "feat: bulk loading jobs for transactions and closed cases"
+git commit -m "feat: bulk loading jobs for transactions and closed cases, with resolved card_id from the start"
 ```
 
 ---
@@ -1434,44 +1497,19 @@ async def load_closed_case_multi_edges(tg: TigerGraphMCP, closed_cases_csv_path:
             await tg.gsql(f"USE GRAPH {GRAPH_NAME}\n" + "\n".join(s + ";" for s in statements))
 ```
 
-**Note on `CONNECTED_TO` target cards:** these reference `Card` vertices for *other customers* (per Task 3's finding), which only exist in the graph if that customer's own card_id was loaded with the matching suffix. Since Task 7's loading job creates every `Card` vertex as `f"{customer_id}-K1"` (the transactions.csv loading job doesn't know about K2/K3 labels), any `-K2`/`-K3` card referenced here won't exist yet. Fix: before running this step, also upsert every `card_id` value that appears anywhere in `case_pack.csv`'s `card_id` column or `closed_cases_history.csv`'s `card_id`/`connected_card_ids` columns (using `build_card_id_map` from Task 3) as a `Card` vertex with the correct customer-suffixed ID, replacing the default `-K1` one where they differ. Add this as an explicit first step in `scripts/derive_entities.py` below.
+**Note on `CONNECTED_TO` target cards:** these reference `Card` vertices for *other customers* (per Task 3's finding). Task 7's `load_cards_and_made_edges` already resolved every customer's correct `card_id` (default or override) before this task runs, so every `-K2`/`-K3` card referenced here already exists with the right ID — no separate patching step is needed at this point (an earlier draft of this plan had a `fix_card_ids` correction step here; it's now redundant and has been removed, since fixing it at the source in Task 7 is what actually keeps `MADE` edges pointed at the right card, which a post-hoc patch here could not do).
 
 - [ ] **Step 2: Write `scripts/derive_entities.py`**
 
 ```python
 import asyncio
 
-import pandas as pd
-
-from src.schema.card_ids import build_card_id_map
 from src.schema.derive_entities import load_closed_case_multi_edges, load_device_profiles
 from src.tg_client import TigerGraphMCP
-
-GRAPH_NAME = "FraudInvestigation"
-
-
-async def fix_card_ids(tg: TigerGraphMCP) -> None:
-    case_pack_df = pd.read_csv("case_pack.csv")
-    closed_cases_df = pd.read_csv("closed_cases_history.csv")
-    card_map = build_card_id_map(case_pack_df, closed_cases_df)
-    statements = []
-    for customer_id, card_id in card_map.items():
-        default_id = f"{customer_id}-K1"
-        if card_id != default_id:
-            statements.append(
-                f'INSERT INTO VERTEX Card VALUES ("{card_id}", "{customer_id}")'
-            )
-            statements.append(
-                f'INSERT INTO EDGE OWNS VALUES ("{customer_id}" Customer, "{card_id}" Card)'
-            )
-    if statements:
-        await tg.gsql(f"USE GRAPH {GRAPH_NAME}\n" + "\n".join(s + ";" for s in statements))
-        print(f"Added {len(statements)//2} non-default card_id vertices/edges")
 
 
 async def main() -> None:
     async with TigerGraphMCP() as tg:
-        await fix_card_ids(tg)
         n = await load_device_profiles(tg, "identity.csv")
         print(f"Loaded {n} device profile references")
         await load_closed_case_multi_edges(tg, "closed_cases_history.csv")
@@ -1513,7 +1551,7 @@ Write `docs/manual-case-checkpoint.md` with: the raw transaction found, what oth
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/schema/derive_entities.py scripts/derive_entities.py scripts/fix_card_ids.py docs/manual-case-checkpoint.md
+git add src/schema/derive_entities.py scripts/derive_entities.py docs/manual-case-checkpoint.md
 git commit -m "feat: derived entities (DeviceProfile, multi-edges) and manual case checkpoint"
 ```
 
@@ -2906,7 +2944,7 @@ async def run_single_case(tg: TigerGraphMCP, case_row: dict) -> AnswerFile:
 
     graph_case_id = f"CASE-{case_row['case_id']}"
     written = await _write_case_to_graph(
-        tg, graph_case_id, case_row, assessment, final_actions, sar_info
+        tg, graph_case_id, case_row, assessment, final_actions, sar_info, verdict, status
     )
 
     case_record = CaseRecord(
@@ -2967,7 +3005,7 @@ async def run_single_case(tg: TigerGraphMCP, case_row: dict) -> AnswerFile:
 
 async def _write_case_to_graph(
     tg: TigerGraphMCP, graph_case_id: str, case_row: dict, assessment: dict,
-    final_actions: list[ActionEntry], sar_info: dict,
+    final_actions: list[ActionEntry], sar_info: dict, verdict: str, status: str,
 ) -> bool:
     esc = lambda s: str(s).replace('"', '\\"')
     summary_text = (
@@ -2975,10 +3013,15 @@ async def _write_case_to_graph(
         f"{assessment['pattern']}, probability {assessment['fraud_probability']:.2f}. "
         f"{' '.join(assessment['evidence_claims'])}"
     )
+    # Field order must match Task 4's CREATE VERTEX Case exactly: case_id(PK),
+    # customer_id, card_id, status, verdict, fraud_probability, pattern, exposure_usd,
+    # summary, written_at -- verdict and status come from the caller's already-computed
+    # values (run_single_case), not re-derived here, since assessment only carries
+    # pattern/probability/evidence, not a verdict.
     statement = (
         f'INSERT INTO VERTEX Case VALUES ('
         f'"{graph_case_id}", "{case_row["customer_id"]}", "{case_row["card_id"]}", '
-        f'"open", "{esc(assessment["pattern"])}", {assessment["fraud_probability"]}, '
+        f'"{esc(status)}", "{esc(verdict)}", {assessment["fraud_probability"]}, '
         f'"{esc(assessment["pattern"])}", 0.0, "{esc(summary_text)}", "now")'
     )
     try:
@@ -3529,6 +3572,7 @@ git commit -m "docs: add run instructions for submission"
 
 - **Spec coverage:** graph schema (Task 4), data loading (Task 7-8), **graph algorithms (Task 8.5 — added after re-audit found the README's named required component wasn't used anywhere)**, GraphRAG/vector store (Task 9-11), agent architecture including the bounded agentic round (Task 12), output generation (Task 6, 14), UI (Task 15), build order (task sequence matches spec section 9), deliverables checklist (Task 16). All spec sections, including the amendments, have a corresponding task.
 - **Card ID derivation** (Task 3) was elevated from a schema-generation detail to its own task after live data investigation showed it's a genuine correctness risk, not a mechanical step — this is a deviation from a purely mechanical read of the spec, made from evidence, not guesswork.
+- **Task 7/8 cross-task conflict, found during subagent-driven-development's pre-flight scan:** the original Task 7 draft created `Card` vertices keyed by bare `customer_id`, contradicting Task 3's `-K1`/`-K2` suffix convention that Global Constraints, Task 8, and Task 10 all assumed. Worse, the obvious-looking fix (default every card to `-K1`, then add a second correctly-suffixed vertex for the exceptions in Task 8) doesn't actually work, because a customer only has one real transaction set — the `MADE` edges would still point at the wrongly-defaulted card, leaving the correctly-suffixed one empty. Fixed by resolving every customer's correct `card_id` via Task 3's functions *before* creating any `Card`/`OWNS`/`MADE` data (Task 7's `load_cards_and_made_edges`), which also made Task 8's separate `fix_card_ids` step entirely unnecessary — removed.
 - **Case memory within the run** (spec §6 step 8) had a real bug in the first draft — new `Case` vertices were written but never embedded, so `retrieve_knowledge` could never find them. Fixed by embedding on write in `_write_case_to_graph` (Task 12) and having `retrieve_knowledge` (Task 10) search `Case` alongside `ClosedCase`.
 - **LLM backend** switched from local-only (`qwen3:4b-instruct`) to Groq's free tier as primary (Task 11), with the local model kept as an explicit `LLM_BACKEND=ollama` fallback — both code paths exist, so a rate-limit problem mid-build doesn't block progress, it's a one-line `.env` change.
 - **MCP tool parameter names** are the one place this plan can't be 100% concrete ahead of time (external API not yet introspected) — Task 1 makes discovering them a first-class, verifiable step, and later tasks explicitly flag where to adjust against that discovery rather than silently assuming. The same honesty applies to Task 8.5's GSQL (multi-vertex-set joins, `WHILE`-loop change detection) — flagged as first-draft-expect-iteration, same as Task 10's queries.
