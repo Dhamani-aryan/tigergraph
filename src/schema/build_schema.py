@@ -13,8 +13,6 @@ def build_schema_gsql(transactions_csv: str, identity_csv: str) -> str:
     txn_attr_gsql = to_gsql_attr_list(txn_attrs)
 
     return f"""
-USE GRAPH {GRAPH_NAME}
-
 CREATE VERTEX Customer (PRIMARY_ID customer_id STRING)
 CREATE VERTEX Card (
     PRIMARY_ID card_id STRING, customer_id STRING,
