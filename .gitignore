@@ -25,3 +25,6 @@ Thumbs.db
 data/processed/
 data/vectors/
 *.log
+
+# Isolated worktrees (subagent-driven-development)
+.worktrees/
