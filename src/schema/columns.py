@@ -16,6 +16,7 @@ _STRING_COLUMNS = {
     "R_emaildomain",
     "customer_id",
     "channel",
+    "ts",
     *(f"M{i}" for i in range(1, 10)),
     *(f"id_{i:02d}" for i in (12, 15, 16, 23, 27, 28, 29, 30, 31, 33, 34, 35, 36, 37, 38)),
     "DeviceType",
