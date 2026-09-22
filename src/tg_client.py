@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import sys
 from contextlib import AsyncExitStack
@@ -10,6 +11,28 @@ from typing import Any
 from dotenv import dotenv_values
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import get_default_environment, stdio_client
+
+_JSON_FENCE_RE = re.compile(r"```json\s*(.*?)\s*```", re.DOTALL)
+
+
+def _extract_json_envelope(text: str) -> dict[str, Any] | None:
+    """Best-effort extraction of the tigergraph-mcp JSON result envelope.
+
+    Every observed tigergraph-mcp tool response (success or failure) wraps
+    its structured result in a ```json ... ``` fenced block containing keys
+    like "success", "operation", "data"/"error"/"error_code" -- usually
+    followed by a human-readable markdown rendering of the same data. Try
+    the fenced block first, then fall back to parsing the whole text as
+    JSON, so callers can inspect `success`/`error` regardless of whether the
+    tool call failed.
+    """
+    match = _JSON_FENCE_RE.search(text)
+    candidate = match.group(1) if match else text
+    try:
+        parsed = json.loads(candidate)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
 
 
 def _resolve_tigergraph_mcp_command() -> str:
@@ -70,9 +93,27 @@ class TigerGraphMCP:
         assert self.session is not None, "use 'async with TigerGraphMCP() as tg:'"
         result = await self.session.call_tool(tool_name, arguments=arguments)
         texts = [c.text for c in result.content if hasattr(c, "text")]
+        joined = "\n".join(texts)
+        envelope = _extract_json_envelope(joined) if joined else None
+
+        # The tigergraph-mcp server does NOT reliably set the MCP protocol's
+        # `is_error` flag on failures (observed False even for a rejected
+        # GSQL command and a 404 on a missing installed query) -- it instead
+        # reports failure inside the JSON envelope via `"success": false`.
+        # Check both so a real server failure is never silently swallowed as
+        # a successful result, which matters most for tasks that batch many
+        # sequential calls without inspecting each one individually.
+        tool_failed = result.is_error or (envelope is not None and envelope.get("success") is False)
+        if tool_failed:
+            error_detail = envelope.get("error") or envelope.get("summary") if envelope else None
+            raise RuntimeError(
+                f"TigerGraph MCP tool '{tool_name}' failed: {error_detail or joined or '<no error text returned>'}"
+            )
+
         if not texts:
             return None
-        joined = "\n".join(texts)
+        if envelope is not None:
+            return envelope
         try:
             return json.loads(joined)
         except json.JSONDecodeError:
