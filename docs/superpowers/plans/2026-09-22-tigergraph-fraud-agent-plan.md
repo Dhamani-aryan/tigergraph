@@ -442,7 +442,7 @@ git commit -m "feat: card_id derivation from case reference data"
 
 **Interfaces:**
 - Consumes: `TigerGraphMCP` (Task 2), the real `transactions.csv`/`identity.csv` headers, local Ollama (`nomic-embed-text`) for the vector-dimension probe.
-- Produces: `generate_transaction_attrs(csv_path) -> list[tuple[str, str]]` (attribute name, GSQL type pairs); `SCHEMA_GSQL: str` — the full `CREATE VERTEX`/`CREATE EDGE`/`CREATE GRAPH` statement block; `add_vector_attributes(tg)` — adds a `"embedding"`-named vector attribute to `KnowledgeDoc`/`ClosedCase`/`Case`. Task 7 (loading jobs), Task 9 (knowledge ingestion), Task 10 (query tools), and Task 12/13 (case write-back) all assume these vertex/edge type names — and, for the three GraphRAG vertex types, the `"embedding"` vector attribute name specifically — exist.
+- Produces: `generate_transaction_attrs(csv_path) -> list[tuple[str, str]]` (attribute name, GSQL type pairs); `SCHEMA_GSQL: str` — the full `CREATE VERTEX`/`CREATE EDGE`/`CREATE GRAPH` statement block; `add_vector_attributes(tg)` — adds a `"embedding"`-named vector attribute to `KnowledgeDoc`/`ClosedCase`/`FraudCase`. Task 7 (loading jobs), Task 9 (knowledge ingestion), Task 10 (query tools), and Task 12/13 (case write-back) all assume these vertex/edge type names — including `FraudCase` (renamed from `Case`, which collides with a GSQL reserved word, confirmed live) — and, for the three GraphRAG vertex types, the `"embedding"` vector attribute name specifically — exist.
 
 - [ ] **Step 1: Write `src/schema/columns.py`** — generates the `Transaction` attribute list programmatically instead of hand-typing 397 columns.
 
@@ -532,7 +532,7 @@ CREATE VERTEX ClosedCase (
     n_txns INT, exposure_usd DOUBLE, actions_taken STRING,
     report_filed STRING, analyst_notes STRING
 )
-CREATE VERTEX Case (
+CREATE VERTEX FraudCase (
     PRIMARY_ID case_id STRING,
     customer_id STRING, card_id STRING, status STRING, verdict STRING,
     fraud_probability DOUBLE, pattern STRING, exposure_usd DOUBLE,
@@ -552,14 +552,14 @@ CREATE DIRECTED EDGE NEXT (FROM Transaction, TO Transaction)
 CREATE DIRECTED EDGE INVOLVES (FROM ClosedCase, TO Transaction)
 CREATE DIRECTED EDGE ON_CARD (FROM ClosedCase, TO Card)
 CREATE DIRECTED EDGE CONNECTED_TO (FROM ClosedCase, TO Card)
-CREATE DIRECTED EDGE CASE_INVOLVES (FROM Case, TO Transaction)
-CREATE DIRECTED EDGE CASE_ON_CARD (FROM Case, TO Card)
-CREATE DIRECTED EDGE CASE_CONNECTED_TO (FROM Case, TO Card)
+CREATE DIRECTED EDGE CASE_INVOLVES (FROM FraudCase, TO Transaction)
+CREATE DIRECTED EDGE CASE_ON_CARD (FROM FraudCase, TO Card)
+CREATE DIRECTED EDGE CASE_CONNECTED_TO (FROM FraudCase, TO Card)
 CREATE UNDIRECTED EDGE SHARES_ORIGIN (FROM Card, TO Card, origin_type STRING)
 
 CREATE GRAPH {GRAPH_NAME} (
     Customer, Card, Transaction, DeviceProfile, EmailDomain, BillingRegion,
-    ClosedCase, Case, KnowledgeDoc,
+    ClosedCase, FraudCase, KnowledgeDoc,
     OWNS, MADE, FROM_DEVICE, PURCHASER_EMAIL, BILLED_IN, NEXT,
     INVOLVES, ON_CARD, CONNECTED_TO, CASE_INVOLVES, CASE_ON_CARD, CASE_CONNECTED_TO,
     SHARES_ORIGIN
@@ -573,7 +573,7 @@ async def apply_schema(tg: TigerGraphMCP, transactions_csv: str, identity_csv: s
     print(result)
 ```
 
-**Note on `Case` vertex type name:** GSQL's own reserved words don't include "Case" but double-check the Task 1 dump / a dry run doesn't collide with anything; if `CREATE VERTEX Case` errors, rename to `FraudCase` consistently across this file, Task 12's `graph_flow.py`, and the spec's terminology (cosmetic rename only, no design change).
+**Note on `Case` vertex type name:** confirmed live — `CREATE VERTEX Case` does collide with a GSQL reserved word, so this plan uses `FraudCase` throughout (cosmetic rename only, no design change). Every later reference to the "Case" vertex in this document — Task 10's `retrieve_knowledge`, Task 12/13's write-back — uses `FraudCase`.
 
 - [ ] **Step 3: Add vector attributes to the three GraphRAG vertex types** — `tigergraph__upsert_vectors`/`tigergraph__search_top_k_similarity` (confirmed against the real tool schema in `docs/tigergraph-mcp-tools.json` during Task 2) both require a named vector-typed attribute to already exist on the vertex (`ALTER VERTEX ... ADD VECTOR ATTRIBUTE`) — a plain `STRING`/`DOUBLE` column will not work for embeddings. This has to happen after the vertex types exist (Step 1's schema) but doesn't need any data loaded yet.
 
@@ -592,7 +592,7 @@ async def add_vector_attributes(tg: TigerGraphMCP) -> None:
     dimension = len(probe["embedding"])
     print(f"nomic-embed-text dimension: {dimension}")
 
-    for vertex_type in ("KnowledgeDoc", "ClosedCase", "Case"):
+    for vertex_type in ("KnowledgeDoc", "ClosedCase", "FraudCase"):
         result = await tg.call(
             "tigergraph__add_vector_attribute",
             {
@@ -2278,13 +2278,13 @@ async def retrieve_knowledge(tg: TigerGraphMCP, query_text: str, top_k: int = 5)
     query_vector = embed([query_text])[0]
     knowledge_hits = await tg.search_top_k_similarity("KnowledgeDoc", "embedding", query_vector, top_k)
     closed_case_hits = await tg.search_top_k_similarity("ClosedCase", "embedding", query_vector, top_k)
-    # Search `Case` (this run's own cases) too -- without this, a later case-pack case
-    # in the same batch can never retrieve an earlier one this agent already wrote,
+    # Search `FraudCase` (this run's own cases) too -- without this, a later case-pack
+    # case in the same batch can never retrieve an earlier one this agent already wrote,
     # which defeats the point of "case memory" within the run itself (see spec §6 step 8
     # and the README's "add your own cases to the graph as you close them"). This only
-    # returns results once Task 12/13 actually upserts an embedding when writing a Case --
-    # empty results here are expected until that write path exists, not a bug in this file.
-    own_case_hits = await tg.search_top_k_similarity("Case", "embedding", query_vector, top_k)
+    # returns results once Task 12/13 actually upserts an embedding when writing a
+    # FraudCase -- empty results here are expected until that write path exists.
+    own_case_hits = await tg.search_top_k_similarity("FraudCase", "embedding", query_vector, top_k)
     return {
         "knowledge": knowledge_hits,
         "similar_cases": closed_case_hits + own_case_hits,
@@ -3072,13 +3072,13 @@ async def _write_case_to_graph(
         f"{assessment['pattern']}, probability {assessment['fraud_probability']:.2f}. "
         f"{' '.join(assessment['evidence_claims'])}"
     )
-    # Field order must match Task 4's CREATE VERTEX Case exactly: case_id(PK),
+    # Field order must match Task 4's CREATE VERTEX FraudCase exactly: case_id(PK),
     # customer_id, card_id, status, verdict, fraud_probability, pattern, exposure_usd,
     # summary, written_at -- verdict and status come from the caller's already-computed
     # values (run_single_case), not re-derived here, since assessment only carries
     # pattern/probability/evidence, not a verdict.
     statement = (
-        f'INSERT INTO VERTEX Case VALUES ('
+        f'INSERT INTO VERTEX FraudCase VALUES ('
         f'"{graph_case_id}", "{case_row["customer_id"]}", "{case_row["card_id"]}", '
         f'"{esc(status)}", "{esc(verdict)}", {assessment["fraud_probability"]}, '
         f'"{esc(assessment["pattern"])}", 0.0, "{esc(summary_text)}", "now")'
@@ -3087,13 +3087,13 @@ async def _write_case_to_graph(
         await tg.gsql(f"USE GRAPH {GRAPH_NAME}\n{statement};")
         # Embed and upsert immediately -- this is what makes case memory real within
         # the same 20-case batch run: a later case's retrieve_knowledge call (Task 10)
-        # searches the `Case` vertex type and will find this one, not just pre-loaded
-        # ClosedCase history. See spec §6 step 8.
+        # searches the `FraudCase` vertex type and will find this one, not just
+        # pre-loaded ClosedCase history. See spec §6 step 8.
         from src.ingestion.embeddings import embed  # local import: keeps run_case.py
                                                        # decoupled from ingestion until
                                                        # the write path actually needs it
         vector = embed([summary_text])[0]
-        await tg.upsert_vectors("Case", "embedding", [{"vertex_id": graph_case_id, "vector": vector}])
+        await tg.upsert_vectors("FraudCase", "embedding", [{"vertex_id": graph_case_id, "vector": vector}])
         return True
     except Exception:  # noqa: BLE001
         return False
