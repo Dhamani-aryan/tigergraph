@@ -1,0 +1,27 @@
+# Raw dataset (large; GitHub file-size limits, and README says extend/download separately)
+transactions.csv
+identity.csv
+closed_cases_history.csv
+case_pack.csv
+*.pdf
+data/raw/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Env / secrets
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated / scratch
+data/processed/
+data/vectors/
+*.log
