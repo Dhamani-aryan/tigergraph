@@ -6,13 +6,13 @@
 
 **Architecture:** Python system talking to TigerGraph exclusively through the `tigergraph-mcp` server (via the official `mcp` SDK, stdio transport). Evidence gathering is **deterministic by default** (Python always runs a fixed set of graph queries + vector retrieval per case), plus **one bounded, real function-calling round** where the LLM may request exactly one additional targeted query if the deterministic evidence looks ambiguous — this is the genuinely agentic piece, kept bounded so a rate-limited or small model can't loop. A LangGraph state machine orchestrates the per-case flow; a separate pure-Python policy engine (no LLM, no graph) applies rules R1–R10 and is independently unit-tested against the README's worked example. A **Connected Components** graph algorithm runs once in batch to cluster cards sharing a device/region/email into fraud rings, satisfying the README's named "graph algorithms" required component and giving every case an O(1) cluster-risk lookup instead of relying on live traversal alone.
 
-**Tech Stack:** Python 3.10, `tigergraph-mcp` + `mcp` SDK, LangGraph, Groq's free-tier API (`llama-3.3-70b-versatile`, OpenAI-compatible client) for LLM reasoning with local Ollama (`qwen3:4b-instruct`) as a `LLM_BACKEND=ollama` fallback, Ollama `nomic-embed-text` for embeddings (always local, regardless of LLM backend), Pydantic v2, pandas, pypdf, Streamlit, pytest.
+**Tech Stack:** Python 3.10, `tigergraph-mcp` + `mcp` SDK, LangGraph, Groq's free-tier API (`openai/gpt-oss-120b`, OpenAI-compatible client) for LLM reasoning with local Ollama (`qwen3:4b-instruct`) as a `LLM_BACKEND=ollama` fallback, Ollama `nomic-embed-text` for embeddings (always local, regardless of LLM backend), Pydantic v2, pandas, pypdf, Streamlit, pytest.
 
 **Spec:** [docs/superpowers/specs/2026-09-22-tigergraph-fraud-agent-design.md](../specs/2026-09-22-tigergraph-fraud-agent-design.md) — that doc explains *why*; this plan is *how*, task by task. [README.md](../../../README.md) is the ground truth for the answer JSON schema, fraud policy (rules R1–R10), and the 20 cases.
 
 ## Global Constraints
 
-- No paid LLM API — reasoning runs on Groq's free tier (`llama-3.3-70b-versatile`, rate-limited not metered, no credit card required) with local Ollama (`qwen3:4b-instruct`) as an explicit fallback via `LLM_BACKEND`. Embeddings are always local (`nomic-embed-text`, already pulled) regardless of which LLM backend is active.
+- No paid LLM API — reasoning runs on Groq's free tier (`openai/gpt-oss-120b`, rate-limited not metered, no credit card required) with local Ollama (`qwen3:4b-instruct`) as an explicit fallback via `LLM_BACKEND`. Embeddings are always local (`nomic-embed-text`, already pulled) regardless of which LLM backend is active.
 - All TigerGraph access — setup and runtime — goes through the `tigergraph-mcp` MCP server, never a parallel `pyTigerGraph` connection, per the hackathon's required-components list. Graph algorithms (Task 8.5) are likewise run through this same MCP `gsql` tool, not a separate interface.
 - Git workflow: local commits only, one per completed task, in order. No push to any remote until all 20 cases validate cleanly and the submission checklist is otherwise ready.
 - Every ID (`transaction_id`, `card_id`, `customer_id`, `case_id`) written into an answer JSON or the graph must be one that actually exists in the dataset. In particular: **`card_id` is derived by trusting the `-K` suffix given in `case_pack.csv`/`closed_cases_history.csv` for that `customer_id`, defaulting to `-K1` when unreferenced** — never invented from card1 grouping (card1 is 1:1 with `customer_id` in this dataset; there is no second distinguishable card to detect).
@@ -76,12 +76,12 @@ TG_GS_PORT=14240
 
 LLM_BACKEND=groq
 GROQ_API_KEY=your-groq-key-here
-GROQ_MODEL=llama-3.3-70b-versatile
+GROQ_MODEL=openai/gpt-oss-120b
 ```
 
 Copy to `.env` and fill in the real Savanna workspace hostname/credentials from the workspace you created (`https://savanna.tgcloud.io`, "Explore with Your Own Data").
 
-- [ ] **Step 3b: Get a free Groq API key** (do this yourself — account creation isn't something to automate): go to `https://console.groq.com`, sign up (no credit card required for the free tier), create an API key, paste it into `.env` as `GROQ_API_KEY`. While there, check the current model list at `https://console.groq.com/docs/models` and confirm `llama-3.3-70b-versatile` (or whatever the current strongest general-purpose model is called — model names on free platforms change) is available and supports tool/function calling; update `GROQ_MODEL` in `.env` if the name has changed since this plan was written. Also note the free tier's requests-per-minute limit from your account dashboard — Task 11's retry/backoff logic needs to know roughly what it's working around.
+- [ ] **Step 3b: Get a free Groq API key** (do this yourself — account creation isn't something to automate): go to `https://console.groq.com`, sign up (no credit card required for the free tier), create an API key, paste it into `.env` as `GROQ_API_KEY`. While there, check the current model list at `https://console.groq.com/docs/models` and confirm `openai/gpt-oss-120b` (or whatever the current strongest general-purpose model is called — model names on free platforms change) is available and supports tool/function calling; update `GROQ_MODEL` in `.env` if the name has changed since this plan was written. Also note the free tier's requests-per-minute limit from your account dashboard — Task 11's retry/backoff logic needs to know roughly what it's working around.
 
 - [ ] **Step 4: Confirm Ollama models are present** (still needed for embeddings, and as the LLM fallback)
 
@@ -2320,7 +2320,7 @@ from pydantic import BaseModel, ValidationError
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 LLM_BACKEND = os.environ.get("LLM_BACKEND", "groq")
-GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 OLLAMA_MODEL = "qwen3:4b-instruct"
 
 _SYSTEM_PROMPT = (
@@ -2588,7 +2588,7 @@ def test_simulator_typical_amount_confirms():
 .venv\Scripts\pytest tests/test_llm_wrapper.py -v
 ```
 
-Expected: passes; the first test is the real proof Groq's `llama-3.3-70b-versatile` can follow a JSON-schema instruction reliably, and the second proves the tool-calling round actually invokes a tool when the prompt is engineered to be ambiguous — if either fails repeatedly against the Groq backend, check `GROQ_API_KEY`/`GROQ_MODEL` in `.env` before assuming the model itself is the problem (a 429 surfacing as a test failure instead of a retry usually means `tenacity`'s `retry_if_exception_type(_RateLimited)` isn't catching the actual exception type the installed `openai` package version raises — confirm `openai.RateLimitError` is still the right class for the installed version). If Groq is unusably rate-limited during testing, set `LLM_BACKEND=ollama` in `.env` and re-run — this is the fallback path the spec anticipates, not a dead end.
+Expected: passes; the first test is the real proof Groq's `openai/gpt-oss-120b` can follow a JSON-schema instruction reliably, and the second proves the tool-calling round actually invokes a tool when the prompt is engineered to be ambiguous — if either fails repeatedly against the Groq backend, check `GROQ_API_KEY`/`GROQ_MODEL` in `.env` before assuming the model itself is the problem (a 429 surfacing as a test failure instead of a retry usually means `tenacity`'s `retry_if_exception_type(_RateLimited)` isn't catching the actual exception type the installed `openai` package version raises — confirm `openai.RateLimitError` is still the right class for the installed version). If Groq is unusably rate-limited during testing, set `LLM_BACKEND=ollama` in `.env` and re-run — this is the fallback path the spec anticipates, not a dead end.
 
 - [ ] **Step 5: Commit**
 
