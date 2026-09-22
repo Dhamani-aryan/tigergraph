@@ -121,6 +121,33 @@ def apply_policy(f: Findings) -> PolicyResult:
 def _finish(
     f: Findings, actions: list[ActionRec], sar_file: bool, sar_reason: str
 ) -> PolicyResult:
+    # Sec 3a: "Open one [CREATE_CASE] whenever fraud probability reaches 0.30, whenever
+    # you request evidence, or whenever a customer disputes a charge." This is a general
+    # trigger, independent of which specific rule (if any) fired above -- so it's applied
+    # here, at the single choke point every non-early-return path funnels through (R2's
+    # `denies` branch, R4's `no_reply` branch, and the general R5/R6/R9/R1/R8 fallthrough),
+    # rather than duplicated per-branch. R2/R6/R7/R9 already open their own case when they
+    # fire, so the guard below is a no-op there; this only fills the gap for paths that
+    # previously never opened one (e.g. R4's no_reply, or a bare moderate-probability
+    # VERIFY_WITH_CUSTOMER with no other rule triggered).
+    #
+    # R3 (`confirmed_legitimate`) and R7 (`disputes_recurring`) deliberately bypass this
+    # function entirely (they return their own PolicyResult directly) and so never pick up
+    # this trigger: R3 is a closed-as-legitimate verdict where opening a fraud case would be
+    # wrong regardless of the pre-confirmation probability, and R7 already opens its own case
+    # per its own rule text.
+    #
+    # The second half of Sec 3a's trigger -- "whenever you request evidence" -- is not
+    # implementable here: `Findings` has no field recording that an evidence request
+    # (VERIFY_WITH_CUSTOMER / STEP_UP_AUTH / an analyst request) was made independent of the
+    # probability that prompted it, so there's no signal to gate on beyond the actions this
+    # function already sees. In every path reachable today, requesting evidence coincides
+    # with a probability that is either >=0.30 (already covered below) or handled by an
+    # early-return branch (R3/R7) that intentionally opts out. If `Findings` ever grows an
+    # explicit "evidence requested" flag, this is where it should be checked too.
+    if f.fraud_probability >= 0.30 and not any(a.action == "CREATE_CASE" for a in actions):
+        actions.append(ActionRec(action="CREATE_CASE", route="auto", reason="Sec 3a"))
+
     # R10: BLOCK_ALL_CARDS only with >=2 confirmed-fraud cards or confirmed compromised
     # credentials -- this engine only ever sees single-card findings, so it never emits
     # BLOCK_ALL_CARDS; a caller investigating multiple cards for one customer would need

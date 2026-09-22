@@ -130,6 +130,32 @@ def test_approval_routes_match_policy_table():
         assert routes["FILE_REPORT"] == "L2"
 
 
+def test_sec3a_case_opens_on_probability_alone_with_no_other_triggering_rule():
+    """Reviewer's counterexample: no shared signal, no customer response, not card_testing
+    or undocumented, low exposure -- so R1/R2/R4/R5/R6/R7/R8/R9 all stay silent on
+    CREATE_CASE, but Sec 3a says a case opens once fraud_probability reaches 0.30 on its
+    own. Before the fix, this produced VERIFY_WITH_CUSTOMER with no CREATE_CASE at all."""
+    findings = Findings(
+        pattern="account_takeover", fraud_probability=0.6, single_signal=False
+    )
+    result = apply_policy(findings)
+    assert "CREATE_CASE" in _actions(result)
+    create_case = next(a for a in result.actions if a.action == "CREATE_CASE")
+    assert create_case.route == "auto"
+
+
+def test_r4_no_reply_also_opens_case_above_probability_threshold():
+    """R4's no_reply branch never emitted CREATE_CASE, even though no_reply is itself the
+    response to a requested verification -- one of Sec 3a's three case-opening triggers.
+    The probability-based half of Sec 3a should still open a case here."""
+    findings = Findings(
+        pattern="card_not_present_fraud", fraud_probability=0.6, single_signal=True,
+        exposure_usd=600.0, customer_response="no_reply",
+    )
+    result = apply_policy(findings)
+    assert "CREATE_CASE" in _actions(result)
+
+
 def test_worked_example_from_readme():
     """README example: HHG-017, card testing, prob 0.72 -> denies -> prob 0.86."""
     initial = Findings(pattern="card_testing", fraud_probability=0.72, single_signal=True)
