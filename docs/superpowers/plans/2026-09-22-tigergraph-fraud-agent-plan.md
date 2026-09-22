@@ -2875,8 +2875,27 @@ from src.policy.engine import apply_policy
 from src.policy.models import Findings
 from src.tg_client import TigerGraphMCP
 
-CLUSTER_FRAUD_RATE_COORDINATED_THRESHOLD = 0.5
-CLUSTER_MIN_SIZE_FOR_COORDINATED = 3
+# Task 8.5 empirically confirmed (live, independently verified twice) that the
+# dataset-wide baseline confirmed-fraud rate among ClosedCase rows is ~83.83%
+# (4,665/5,565) -- analysts only open a case when there's real cause, so most
+# closed cases confirm fraud REGARDLESS of whether the card is in a genuine
+# coordinated ring. A 0.5 threshold is therefore nearly meaningless: it clears
+# for almost any cluster with closed-case representation, including a verified
+# 3,565-card supercluster (26% of all cards) sitting at 0.847 -- indistinguishable
+# from baseline noise, not a real ring signal. 0.95 is chosen to sit clearly
+# above that baseline, so only clusters with a materially higher confirmed-fraud
+# concentration than "cases get investigated at all" trip this flag.
+CLUSTER_FRAUD_RATE_COORDINATED_THRESHOLD = 0.95
+# Aspirational, not applied: a minimum-sample-size floor would further guard
+# against a small cluster hitting rate=1.0 off a single closed case (observed
+# live during Task 8.5's review on several small clusters) -- but Card's schema
+# (Task 4) and Task 8.5's cluster_fraud_rate query only persist the RATIO, not
+# the underlying case count, onto each Card. Adding that would mean reopening
+# Task 8.5 (already complete and reviewed) for a new schema attribute, which
+# isn't warranted given the 0.5->0.95 fix already addresses the dominant,
+# confirmed problem. Documented here as a known limitation, not silently
+# dropped -- worth doing with more time (blog post "what we'd improve").
+CLUSTER_MIN_SIZE_FOR_COORDINATED = 3  # not currently wired into any check, see note above
 
 
 class AssessmentOutput(BaseModel):
