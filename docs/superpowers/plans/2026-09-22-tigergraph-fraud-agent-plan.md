@@ -232,18 +232,30 @@ class TigerGraphMCP:
     async def gsql(self, command: str) -> Any:
         return await self.call("tigergraph__gsql", {"command": command})
 
-    async def upsert_vectors(self, vertex_type: str, vectors: list[dict[str, Any]]) -> Any:
+    async def upsert_vectors(
+        self, vertex_type: str, vector_attribute: str, vectors: list[dict[str, Any]]
+    ) -> Any:
+        # vector_attribute is the name of a vector-typed attribute already added to
+        # vertex_type via tigergraph__add_vector_attribute (see Task 4's
+        # add_vector_attributes) -- required by the real tool schema, confirmed
+        # against docs/tigergraph-mcp-tools.json. Each item in `vectors` is
+        # {"vertex_id": ..., "vector": [...], "attributes": {...}} (optional attributes).
         return await self.call(
             "tigergraph__upsert_vectors",
-            {"vertex_type": vertex_type, "vectors": vectors},
+            {"vertex_type": vertex_type, "vector_attribute": vector_attribute, "vectors": vectors},
         )
 
     async def search_top_k_similarity(
-        self, vertex_type: str, query_vector: list[float], k: int = 5
+        self, vertex_type: str, vector_attribute: str, query_vector: list[float], top_k: int = 5
     ) -> Any:
         return await self.call(
             "tigergraph__search_top_k_similarity",
-            {"vertex_type": vertex_type, "query_vector": query_vector, "k": k},
+            {
+                "vertex_type": vertex_type,
+                "vector_attribute": vector_attribute,
+                "query_vector": query_vector,
+                "top_k": top_k,
+            },
         )
 
     async def run_installed_query(self, query_name: str, params: dict[str, Any]) -> Any:
@@ -429,8 +441,8 @@ git commit -m "feat: card_id derivation from case reference data"
 - Create: `scripts/create_schema.py`
 
 **Interfaces:**
-- Consumes: `TigerGraphMCP` (Task 2), the real `transactions.csv`/`identity.csv` headers.
-- Produces: `generate_transaction_attrs(csv_path) -> list[tuple[str, str]]` (attribute name, GSQL type pairs); `SCHEMA_GSQL: str` — the full `CREATE VERTEX`/`CREATE EDGE`/`CREATE GRAPH` statement block. Task 6 (loading jobs) and Task 10 (query tools) both assume these vertex/edge type names exist.
+- Consumes: `TigerGraphMCP` (Task 2), the real `transactions.csv`/`identity.csv` headers, local Ollama (`nomic-embed-text`) for the vector-dimension probe.
+- Produces: `generate_transaction_attrs(csv_path) -> list[tuple[str, str]]` (attribute name, GSQL type pairs); `SCHEMA_GSQL: str` — the full `CREATE VERTEX`/`CREATE EDGE`/`CREATE GRAPH` statement block; `add_vector_attributes(tg)` — adds a `"embedding"`-named vector attribute to `KnowledgeDoc`/`ClosedCase`/`Case`. Task 7 (loading jobs), Task 9 (knowledge ingestion), Task 10 (query tools), and Task 12/13 (case write-back) all assume these vertex/edge type names — and, for the three GraphRAG vertex types, the `"embedding"` vector attribute name specifically — exist.
 
 - [ ] **Step 1: Write `src/schema/columns.py`** — generates the `Transaction` attribute list programmatically instead of hand-typing 397 columns.
 
@@ -563,25 +575,58 @@ async def apply_schema(tg: TigerGraphMCP, transactions_csv: str, identity_csv: s
 
 **Note on `Case` vertex type name:** GSQL's own reserved words don't include "Case" but double-check the Task 1 dump / a dry run doesn't collide with anything; if `CREATE VERTEX Case` errors, rename to `FraudCase` consistently across this file, Task 12's `graph_flow.py`, and the spec's terminology (cosmetic rename only, no design change).
 
-- [ ] **Step 3: Write `scripts/create_schema.py`**
+- [ ] **Step 3: Add vector attributes to the three GraphRAG vertex types** — `tigergraph__upsert_vectors`/`tigergraph__search_top_k_similarity` (confirmed against the real tool schema in `docs/tigergraph-mcp-tools.json` during Task 2) both require a named vector-typed attribute to already exist on the vertex (`ALTER VERTEX ... ADD VECTOR ATTRIBUTE`) — a plain `STRING`/`DOUBLE` column will not work for embeddings. This has to happen after the vertex types exist (Step 1's schema) but doesn't need any data loaded yet.
+
+Add to `src/schema/build_schema.py`:
+
+```python
+import ollama
+
+
+async def add_vector_attributes(tg: TigerGraphMCP) -> None:
+    # Determine the real embedding dimension from the actual model rather than
+    # hardcoding it (nomic-embed-text is commonly cited as 768-dim, but verifying
+    # against a live call removes any risk of that being wrong or model-version-
+    # dependent) -- a dimension mismatch later would make every vector search fail.
+    probe = ollama.embeddings(model="nomic-embed-text", prompt="dimension probe")
+    dimension = len(probe["embedding"])
+    print(f"nomic-embed-text dimension: {dimension}")
+
+    for vertex_type in ("KnowledgeDoc", "ClosedCase", "Case"):
+        result = await tg.call(
+            "tigergraph__add_vector_attribute",
+            {
+                "vertex_type": vertex_type,
+                "vector_name": "embedding",
+                "dimension": dimension,
+                "metric": "COSINE",
+            },
+        )
+        print(f"{vertex_type}: {result}")
+```
+
+If the `ollama.embeddings()` call fails with a connection error, the Ollama daemon isn't running — start it (the Ollama desktop app, or `ollama serve` in a separate terminal) and retry; Task 1's `ollama list` check only confirmed the models are pulled, not that the daemon is live right now.
+
+- [ ] **Step 4: Write `scripts/create_schema.py`**
 
 ```python
 import asyncio
 
-from src.schema.build_schema import apply_schema
+from src.schema.build_schema import add_vector_attributes, apply_schema
 from src.tg_client import TigerGraphMCP
 
 
 async def main() -> None:
     async with TigerGraphMCP() as tg:
         await apply_schema(tg, "transactions.csv", "identity.csv")
+        await add_vector_attributes(tg)
 
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-- [ ] **Step 4: Run it against Savanna**
+- [ ] **Step 5: Run it against Savanna**
 
 ```bash
 .venv\Scripts\python scripts\create_schema.py
@@ -589,7 +634,9 @@ if __name__ == "__main__":
 
 Expected: no GSQL errors. If a specific `CREATE VERTEX`/`CREATE EDGE` statement fails (e.g. a reserved word, or DOUBLE-typing a column that's actually non-numeric), fix that one statement and re-run — GSQL schema creation is idempotent-ish (re-running `CREATE VERTEX` on an existing type errors harmlessly; drop and recreate via `DROP VERTEX <name>` if you need a clean retry).
 
-- [ ] **Step 5: Verify with a read-only check**
+**This is also the real test of the privilege question Task 1 flagged** (the `tigergraph12` user's `READ_SCHEMA` permission-denied response, never confirmed to affect write-side schema operations). If `CREATE GRAPH`, `CREATE VERTEX`, or `ADD VECTOR ATTRIBUTE` fail with a permission/authorization error here, that confirms the account genuinely lacks schema-write privileges and needs a role grant in the Savanna Access Management UI before continuing — report this plainly as BLOCKED with the exact error text rather than working around it. If they succeed, the earlier `READ_SCHEMA` denial was specific to that read-enumeration operation (plausible on an empty workspace with nothing to enumerate) and isn't a blocker after all.
+
+- [ ] **Step 6: Verify with a read-only check**
 
 ```bash
 .venv\Scripts\python -c "
@@ -604,11 +651,11 @@ asyncio.run(main())
 
 Expected: output lists all 9 vertex types and 12 edge types created above.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/schema/columns.py src/schema/build_schema.py scripts/create_schema.py
-git commit -m "feat: TigerGraph schema creation from CSV headers"
+git commit -m "feat: TigerGraph schema creation from CSV headers, with vector attributes for GraphRAG"
 ```
 
 ---
@@ -1989,7 +2036,8 @@ async def ingest_closed_case_narratives(tg: TigerGraphMCP, closed_cases_csv: str
         vectors = embed(batch_texts)
         await tg.upsert_vectors(
             "ClosedCase",
-            [{"id": cid, "embedding": vec} for cid, vec in zip(batch_ids, vectors)],
+            "embedding",
+            [{"vertex_id": cid, "vector": vec} for cid, vec in zip(batch_ids, vectors)],
         )
     print(f"Embedded {len(texts)} closed case narratives")
 
@@ -2004,7 +2052,8 @@ async def _upsert_knowledge_docs(tg: TigerGraphMCP, entries: list[dict]) -> None
         await tg.gsql(f"USE GRAPH {GRAPH_NAME}\n{statement};")
     await tg.upsert_vectors(
         "KnowledgeDoc",
-        [{"id": e["doc_id"], "embedding": e["embedding"]} for e in entries],
+        "embedding",
+        [{"vertex_id": e["doc_id"], "vector": e["embedding"]} for e in entries],
     )
 
 
@@ -2217,15 +2266,15 @@ from src.tg_client import TigerGraphMCP
 
 async def retrieve_knowledge(tg: TigerGraphMCP, query_text: str, top_k: int = 5) -> list[dict]:
     query_vector = embed([query_text])[0]
-    knowledge_hits = await tg.search_top_k_similarity("KnowledgeDoc", query_vector, top_k)
-    closed_case_hits = await tg.search_top_k_similarity("ClosedCase", query_vector, top_k)
+    knowledge_hits = await tg.search_top_k_similarity("KnowledgeDoc", "embedding", query_vector, top_k)
+    closed_case_hits = await tg.search_top_k_similarity("ClosedCase", "embedding", query_vector, top_k)
     # Search `Case` (this run's own cases) too -- without this, a later case-pack case
     # in the same batch can never retrieve an earlier one this agent already wrote,
     # which defeats the point of "case memory" within the run itself (see spec §6 step 8
     # and the README's "add your own cases to the graph as you close them"). This only
     # returns results once Task 12/13 actually upserts an embedding when writing a Case --
     # empty results here are expected until that write path exists, not a bug in this file.
-    own_case_hits = await tg.search_top_k_similarity("Case", query_vector, top_k)
+    own_case_hits = await tg.search_top_k_similarity("Case", "embedding", query_vector, top_k)
     return {
         "knowledge": knowledge_hits,
         "similar_cases": closed_case_hits + own_case_hits,
@@ -3034,7 +3083,7 @@ async def _write_case_to_graph(
                                                        # decoupled from ingestion until
                                                        # the write path actually needs it
         vector = embed([summary_text])[0]
-        await tg.upsert_vectors("Case", [{"id": graph_case_id, "embedding": vector}])
+        await tg.upsert_vectors("Case", "embedding", [{"vertex_id": graph_case_id, "vector": vector}])
         return True
     except Exception:  # noqa: BLE001
         return False
@@ -3575,5 +3624,5 @@ git commit -m "docs: add run instructions for submission"
 - **Task 7/8 cross-task conflict, found during subagent-driven-development's pre-flight scan:** the original Task 7 draft created `Card` vertices keyed by bare `customer_id`, contradicting Task 3's `-K1`/`-K2` suffix convention that Global Constraints, Task 8, and Task 10 all assumed. Worse, the obvious-looking fix (default every card to `-K1`, then add a second correctly-suffixed vertex for the exceptions in Task 8) doesn't actually work, because a customer only has one real transaction set — the `MADE` edges would still point at the wrongly-defaulted card, leaving the correctly-suffixed one empty. Fixed by resolving every customer's correct `card_id` via Task 3's functions *before* creating any `Card`/`OWNS`/`MADE` data (Task 7's `load_cards_and_made_edges`), which also made Task 8's separate `fix_card_ids` step entirely unnecessary — removed.
 - **Case memory within the run** (spec §6 step 8) had a real bug in the first draft — new `Case` vertices were written but never embedded, so `retrieve_knowledge` could never find them. Fixed by embedding on write in `_write_case_to_graph` (Task 12) and having `retrieve_knowledge` (Task 10) search `Case` alongside `ClosedCase`.
 - **LLM backend** switched from local-only (`qwen3:4b-instruct`) to Groq's free tier as primary (Task 11), with the local model kept as an explicit `LLM_BACKEND=ollama` fallback — both code paths exist, so a rate-limit problem mid-build doesn't block progress, it's a one-line `.env` change.
-- **MCP tool parameter names** are the one place this plan can't be 100% concrete ahead of time (external API not yet introspected) — Task 1 makes discovering them a first-class, verifiable step, and later tasks explicitly flag where to adjust against that discovery rather than silently assuming. The same honesty applies to Task 8.5's GSQL (multi-vertex-set joins, `WHILE`-loop change detection) — flagged as first-draft-expect-iteration, same as Task 10's queries.
+- **MCP tool parameter names** are the one place this plan can't be 100% concrete ahead of time (external API not yet introspected) — Task 1 makes discovering them a first-class, verifiable step, and later tasks explicitly flag where to adjust against that discovery rather than silently assuming. This paid off during execution: Task 2's implementer found `upsert_vectors`/`search_top_k_similarity` both actually require a `vector_attribute` parameter (naming which vector-typed attribute on the vertex to use) that the plan's original assumed signature omitted entirely — which in turn revealed that no vector attribute was ever added to `KnowledgeDoc`/`ClosedCase`/`Case` in Task 4's schema at all (a plain `STRING` column can't hold a searchable embedding; TigerGraph requires an explicit `ALTER VERTEX ... ADD VECTOR ATTRIBUTE`). Fixed by adding that step to Task 4 and cascading the corrected call shape (`vertex_id`/`vector` instead of `id`/`embedding`, plus the new `vector_attribute` argument) through every later `upsert_vectors`/`search_top_k_similarity` call site (Tasks 2's own wrapper docs, 9, 10, 12). The same honesty applies to Task 8.5's GSQL (multi-vertex-set joins, `WHILE`-loop change detection) — flagged as first-draft-expect-iteration, same as Task 10's queries.
 - **Known rough edges flagged inline for revisit during execution:** `_amount_from_trigger_text` needs to actually be threaded through `graph_flow.py` (flagged in Task 12's note), GSQL query syntax in Task 10 and Task 8.5 needs live iteration, `run_case.py`'s verdict/status thresholds are a first draft to be tightened against the Task 8 manual checkpoint, and Task 8.5's connected components run once after initial load rather than incrementally (documented as a known limitation in the spec, not silently glossed over).
