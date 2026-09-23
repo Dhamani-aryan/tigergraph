@@ -776,14 +776,27 @@ async def dispatch_followup_tool(
     """`cutoff_ts` (the case's `opened_at`) is required here too -- a
     follow-up call is still part of the SAME investigation and must not see
     anything the deterministic first pass wasn't allowed to see either."""
-    if name == "wider_region_check":
-        # No time-WINDOW narrowing for the "wider" follow-up (still no
-        # txn_ts/window_days, so region_neighbors returns its full
-        # LIMIT-capped set rather than the default pass's narrower window)
-        # -- but the cutoff itself is never optional.
-        return await region_neighbors(tg, arguments["addr1"], cutoff_ts=cutoff_ts)
-    if name == "closed_case_lookup_by_region":
-        return await closed_case_lookup(tg, addr1=arguments["addr1"])
+    if name in ("wider_region_check", "closed_case_lookup_by_region"):
+        # Reliability fix (2026-09-24), confirmed live: HHG-011/HHG-013's
+        # flagged transactions have a genuinely blank `addr1` (a real gap in
+        # the raw Vesta data, not every transaction has one) -- `graph_flow.
+        # py`'s `_flagged_txn_addr1` then correctly returns "" rather than
+        # inventing a region, but passing "" straight through to a
+        # VERTEX<BillingRegion> query parameter is a hard TigerGraph engine
+        # error ("invalid vertex id", SYS-0005), which crashed the entire
+        # case with no graceful fallback. An empty/blank region is not a
+        # bug to retry -- it's "no region to check" -- so this returns an
+        # empty result instead of ever sending "" as a vertex id.
+        addr1 = (arguments.get("addr1") or "").strip()
+        if not addr1:
+            return []
+        if name == "wider_region_check":
+            # No time-WINDOW narrowing for the "wider" follow-up (still no
+            # txn_ts/window_days, so region_neighbors returns its full
+            # LIMIT-capped set rather than the default pass's narrower window)
+            # -- but the cutoff itself is never optional.
+            return await region_neighbors(tg, addr1, cutoff_ts=cutoff_ts)
+        return await closed_case_lookup(tg, addr1=addr1)
     if name == "wider_card_window":
         return await card_window(
             tg,

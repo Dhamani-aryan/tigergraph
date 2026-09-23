@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from dataclasses import dataclass, field
 
 import ollama
@@ -56,10 +57,33 @@ class TokenTracker:
 token_tracker = TokenTracker()
 
 
+def _retry_after_seconds(exc: openai.RateLimitError) -> float | None:
+    """Groq's 429 carries a `retry-after` response header with the exact
+    wait, when it's honoring a per-minute TPM window (confirmed live: a
+    direct 20-token 'say hi' call succeeded outright seconds after a full
+    batch run's calls had been failing on _RateLimited -- i.e. this is a
+    short TPM burst window, not a daily/hard quota -- so waiting the
+    server's own stated duration is both correct and sufficient, rather
+    than tenacity's fixed exponential schedule guessing at it."""
+    response = getattr(exc, "response", None)
+    header = response.headers.get("retry-after") if response is not None else None
+    try:
+        return float(header) if header is not None else None
+    except ValueError:
+        return None
+
+
 @retry(
     retry=retry_if_exception_type(_RateLimited),
-    wait=wait_exponential(multiplier=1, min=2, max=30),
-    stop=stop_after_attempt(5),
+    # Reliability fix (2026-09-24): confirmed live during Task 14's batch
+    # run that the OLD schedule (5 attempts, max 30s backoff -- ~60s total)
+    # was not patient enough: every one of 11 cases run back-to-back hit
+    # Groq's TPM window and exhausted all 5 attempts before the window
+    # cleared. This schedule's own exponential ceiling (90s) plus the
+    # explicit Retry-After sleep below comfortably rides out a standard
+    # 60s TPM window even across several stacked calls.
+    wait=wait_exponential(multiplier=1, min=2, max=90),
+    stop=stop_after_attempt(8),
 )
 def _groq_chat(messages: list[dict], **kwargs) -> "openai.types.chat.ChatCompletion":
     client = _groq_client()
@@ -68,6 +92,12 @@ def _groq_chat(messages: list[dict], **kwargs) -> "openai.types.chat.ChatComplet
         token_tracker.add_from_response(response)
         return response
     except openai.RateLimitError as exc:
+        retry_after = _retry_after_seconds(exc)
+        if retry_after is not None:
+            # Sleep the server's own stated duration BEFORE handing off to
+            # tenacity's backoff, so the very next attempt (not just some
+            # later one) lands after the window actually clears.
+            time.sleep(min(retry_after + 1, 65))
         raise _RateLimited from exc
 
 

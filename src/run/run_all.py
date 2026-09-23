@@ -5,6 +5,12 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Reliability fix (2026-09-24): a small gap between cases so a case that
+# just made several heavy LLM calls doesn't hand its still-warm Groq TPM
+# window straight to the next case -- cheap insurance on top of llm.py's
+# own Retry-After handling, not a substitute for it.
+INTER_CASE_PAUSE_S = 5
+
 import pandas as pd
 
 from src.run.dataset_index import _default_data_dir, load_dataset_index
@@ -82,7 +88,9 @@ async def run_all(
         errors = {cid: msg for cid, msg in errors.items() if cid not in run_ids}
 
     async with TigerGraphMCP(allowed_tools=INVESTIGATION_ALLOWED_TOOLS) as tg:
-        for row in cases:
+        for i, row in enumerate(cases):
+            if i > 0:
+                await asyncio.sleep(INTER_CASE_PAUSE_S)
             case_id = row["case_id"]
             print(f"--- {case_id} ---", flush=True)
             try:
