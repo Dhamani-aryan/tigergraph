@@ -1,0 +1,82 @@
+{
+  "case_id": "DEMO-006",
+  "case": {
+    "status": "closed_fraud",
+    "verdict": "fraud",
+    "fraud_probability": 0.86,
+    "pattern": "out_of_region_use",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "9600991"
+    ],
+    "first_suspicious_txn_id": "9600991",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 402.1,
+    "evidence": [
+      {
+        "claim": "An in-person purchase in region 441 occurred 20 minutes after an in-person purchase in the home region 118.",
+        "source": "graph",
+        "ref": "query:find_region_anomalies_v1(card_id=DEMO-C8801-K1)",
+        "entity_ids": [
+          "9600991",
+          "9600984"
+        ]
+      }
+    ],
+    "similar_prior_cases": [],
+    "summary": "Card DEMO-C8801-K1 was used in person in region 441 twenty minutes after a purchase in its home region. The two locations cannot both be the cardholder. The card is declined and the customer warned.",
+    "written_to_graph": true,
+    "graph_case_id": "CASE-DEMO-006"
+  },
+  "evidence_requests": [],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "DECLINE_TRANSACTION",
+        "route": "L1",
+        "reason": "R8: out-of-region use settled above 0.85"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "Sec 3a: probability reached 0.30"
+      },
+      {
+        "action": "WARN_CUSTOMER",
+        "route": "auto",
+        "reason": "Customer should expect a replacement card"
+      }
+    ],
+    "final": [
+      {
+        "action": "DECLINE_TRANSACTION",
+        "route": "L1",
+        "reason": "R8: out-of-region use settled above 0.85"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "Sec 3a: probability reached 0.30"
+      },
+      {
+        "action": "WARN_CUSTOMER",
+        "route": "auto",
+        "reason": "Customer should expect a replacement card"
+      }
+    ],
+    "what_changed": "nothing"
+  },
+  "sar": {
+    "file": false,
+    "reason": "Exposure of $402.10 is below the $1,000 threshold with no shared origin.",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0,
+    "activity_dates": []
+  },
+  "stop_reason": "Concurrent home-region activity settled the verdict.",
+  "tool_calls": 6,
+  "tokens": 5020,
+  "latency_s": 10.1
+}

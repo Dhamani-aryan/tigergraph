@@ -1,0 +1,48 @@
+{
+  "mode": "fixtures",
+  "generated_at": "2026-09-23T17:29:47.513Z",
+  "source_commit": "e81cbf978b28ef6004503df6f60076707c453624",
+  "cases_found": 6,
+  "valid_cases": 6,
+  "traces_found": 4,
+  "summary_found": true,
+  "errors": [
+    "[DEMO-006] trace: trace file does not satisfy the trace contract; the answer is shown without it",
+    "[DEMO-006] trace · trigger.flagged_txn_id: Required",
+    "[DEMO-006] trace · trigger.card_id: Required",
+    "[DEMO-006] trace · trigger.customer_id: Required",
+    "[DEMO-006] trace · trigger.opened_at: Required",
+    "[DEMO-006] trace · cutoff_ts: Required",
+    "[DEMO-006] trace · steps: Expected array, received string",
+    "[DEMO-006] trace · probability_timeline.0.fraud_probability: Number must be less than or equal to 1",
+    "[DEMO-006] trace · signals: Required",
+    "[DEMO-006] trace · rules_fired: Required",
+    "[DEMO-006] trace · retrieval: Required",
+    "[DEMO-006] trace · subgraph.nodes.0.id: Expected string, received number",
+    "[DEMO-006] trace · subgraph.nodes.0.label: Required",
+    "[DEMO-006] trace · subgraph.nodes.0.role: Required",
+    "[DEMO-006] trace · subgraph.edges: Required",
+    "[DEMO-006] trace · graph_write: Required",
+    "[DEMO-006] trace · validation: Required"
+  ],
+  "warnings": [
+    "[DEMO-004] trace · steps[1].tool_calls[0].via: tool tigergraph__run_installed_query reports unknown invocation path via=\"sidecar\"",
+    "[DEMO-005] trace: graph write reported but read-back did not succeed; memory is treated as unverified"
+  ],
+  "case_files": [
+    "DEMO-001",
+    "DEMO-002",
+    "DEMO-003",
+    "DEMO-004",
+    "DEMO-005",
+    "DEMO-006"
+  ],
+  "trace_files": [
+    "DEMO-001",
+    "DEMO-002",
+    "DEMO-004",
+    "DEMO-005",
+    "DEMO-006"
+  ],
+  "source_label": "ui/fixtures — interface fixtures"
+}

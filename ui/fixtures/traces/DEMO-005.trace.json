@@ -1,0 +1,3614 @@
+{
+  "schema_version": "1.0",
+  "case_id": "DEMO-005",
+  "fixture_note": "INTERFACE FIXTURE — invented values for UI development; not an investigation outcome.",
+  "trigger": {
+    "trigger_type": "risk_score",
+    "trigger_text": "Real-time model scored transaction 9500133 ($1.99, online) at 0.93. Review and decide.",
+    "flagged_txn_id": "9500133",
+    "card_id": "DEMO-C7700-K1",
+    "customer_id": "DEMO-C7700",
+    "risk_score": 0.93,
+    "opened_at": "2016-11-20 03:22:30"
+  },
+  "cutoff_ts": "2016-11-20 03:22:30",
+  "steps": [
+    {
+      "step": 1,
+      "node": "gather_evidence",
+      "label": "Gather case context",
+      "started_ms": 0,
+      "duration_ms": 2600,
+      "summary": "Loaded the one-hour window and the merchant neighbourhood.",
+      "tool_calls": [
+        {
+          "tool": "tigergraph__run_installed_query",
+          "args": {
+            "graph": "FraudInvestigation",
+            "query_name": "get_transaction_window_v1",
+            "params": {
+              "card_id": "DEMO-C7700-K1",
+              "hours_before": 1
+            }
+          },
+          "via": "mcp",
+          "result_count": 12,
+          "duration_ms": 700
+        },
+        {
+          "tool": "tigergraph__run_installed_query",
+          "args": {
+            "graph": "FraudInvestigation",
+            "query_name": "merchant_neighbourhood_v1",
+            "params": {
+              "merchants": 12
+            }
+          },
+          "via": "mcp",
+          "result_count": 214,
+          "duration_ms": 1900
+        }
+      ]
+    },
+    {
+      "step": 2,
+      "node": "assess",
+      "label": "Assessment",
+      "started_ms": 2600,
+      "duration_ms": 3100,
+      "summary": "card_testing at 0.84.",
+      "tool_calls": []
+    },
+    {
+      "step": 3,
+      "node": "policy",
+      "label": "Initial policy",
+      "started_ms": 5700,
+      "duration_ms": 9,
+      "summary": "R5.",
+      "tool_calls": []
+    },
+    {
+      "step": 4,
+      "node": "request_evidence",
+      "label": "Request step-up",
+      "started_ms": 5709,
+      "duration_ms": 20,
+      "summary": "Step-up requested; simulated result: failed.",
+      "tool_calls": []
+    },
+    {
+      "step": 5,
+      "node": "reassess",
+      "label": "Reassess",
+      "started_ms": 5729,
+      "duration_ms": 2900,
+      "summary": "Probability 0.91.",
+      "tool_calls": []
+    },
+    {
+      "step": 6,
+      "node": "policy",
+      "label": "Final policy",
+      "started_ms": 8629,
+      "duration_ms": 9,
+      "summary": "R5 with failed step-up.",
+      "tool_calls": []
+    },
+    {
+      "step": 7,
+      "node": "write_case",
+      "label": "Write case memory",
+      "started_ms": 8638,
+      "duration_ms": 1800,
+      "summary": "Upsert returned success.",
+      "tool_calls": [
+        {
+          "tool": "tigergraph__add_nodes",
+          "args": {
+            "vertex_type": "FraudCase",
+            "vertex_id": "CASE-DEMO-005"
+          },
+          "via": "mcp",
+          "result_count": 1,
+          "duration_ms": 1800
+        }
+      ]
+    },
+    {
+      "step": 8,
+      "node": "read_back",
+      "label": "Independent read-back",
+      "started_ms": 10438,
+      "duration_ms": 1850,
+      "summary": "Read-back returned no vertex; memory is unverified.",
+      "tool_calls": [
+        {
+          "tool": "tigergraph__get_node",
+          "args": {
+            "vertex_type": "FraudCase",
+            "vertex_id": "CASE-DEMO-005"
+          },
+          "via": "mcp",
+          "result_count": 0,
+          "duration_ms": 1850,
+          "error": "vertex not found on read-back"
+        }
+      ]
+    }
+  ],
+  "probability_timeline": [
+    {
+      "step": 1,
+      "label": "Context",
+      "fraud_probability": 0.77
+    },
+    {
+      "step": 2,
+      "label": "Assess",
+      "fraud_probability": 0.84
+    },
+    {
+      "step": 5,
+      "label": "Reassess",
+      "fraud_probability": 0.91
+    }
+  ],
+  "signals": [
+    {
+      "name": "micro_amount_burst",
+      "fired": true,
+      "detail": "12 × $1.99 in 9 minutes",
+      "entity_ids": [
+        "9500100",
+        "9500103",
+        "9500106",
+        "9500109",
+        "9500112",
+        "9500115",
+        "9500118",
+        "9500121",
+        "9500124",
+        "9500127",
+        "9500130",
+        "9500133"
+      ]
+    },
+    {
+      "name": "merchant_fanout",
+      "fired": true,
+      "detail": "12 distinct merchants",
+      "entity_ids": []
+    },
+    {
+      "name": "new_device_online",
+      "fired": false,
+      "detail": "device known to the card",
+      "entity_ids": [
+        "DEMO-DEV-W10"
+      ]
+    }
+  ],
+  "rules_fired": [
+    {
+      "rule": "R5",
+      "phase": "initial",
+      "explanation": "Card testing: decline and step up."
+    },
+    {
+      "rule": "Sec 3a",
+      "phase": "initial",
+      "explanation": "Probability ≥ 0.30 opens a case."
+    },
+    {
+      "rule": "R5",
+      "phase": "final",
+      "explanation": "Failed challenge: block the card and monitor."
+    }
+  ],
+  "retrieval": {
+    "prior_cases": [
+      {
+        "case_id": "DEMO-CC-3301",
+        "outcome": "confirmed_fraud",
+        "pattern": "card_testing",
+        "score": 0.88,
+        "used": true
+      },
+      {
+        "case_id": "DEMO-CC-3310",
+        "outcome": "confirmed_fraud",
+        "pattern": "card_testing",
+        "score": 0.86,
+        "used": true
+      }
+    ],
+    "documents": [
+      {
+        "doc_id": "policy:R5",
+        "title": "Card testing",
+        "section": "Fraud Policy §R5",
+        "score": 0.82
+      }
+    ]
+  },
+  "subgraph": {
+    "nodes": [
+      {
+        "id": "DEMO-C7700",
+        "type": "Customer",
+        "label": "DEMO-C7700",
+        "role": "subject",
+        "discovered_at_step": 1,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-C7700-K1",
+        "type": "Card",
+        "label": "DEMO-C7700-K1",
+        "role": "subject",
+        "discovered_at_step": 1,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-DEV-W10",
+        "type": "Device",
+        "label": "Windows 10 · Chrome 65",
+        "role": "connected",
+        "discovered_at_step": 1,
+        "attrs": {
+          "profile": "Windows | Windows 10 | chrome 65.0 | 1920x1080"
+        }
+      },
+      {
+        "id": "9500100",
+        "type": "Transaction",
+        "label": "9500100 · $1.99",
+        "role": "affected",
+        "discovered_at_step": 1,
+        "attrs": {
+          "ts": "2016-11-20 03:10:00",
+          "amount_usd": 1.99,
+          "sequence": 1
+        }
+      },
+      {
+        "id": "DEMO-M-T00",
+        "type": "Merchant",
+        "label": "Merchant T-0",
+        "role": "context",
+        "discovered_at_step": 1,
+        "attrs": {}
+      },
+      {
+        "id": "9500103",
+        "type": "Transaction",
+        "label": "9500103 · $1.99",
+        "role": "affected",
+        "discovered_at_step": 1,
+        "attrs": {
+          "ts": "2016-11-20 03:11:00",
+          "amount_usd": 1.99,
+          "sequence": 2
+        }
+      },
+      {
+        "id": "DEMO-M-T01",
+        "type": "Merchant",
+        "label": "Merchant T-1",
+        "role": "context",
+        "discovered_at_step": 1,
+        "attrs": {}
+      },
+      {
+        "id": "9500106",
+        "type": "Transaction",
+        "label": "9500106 · $1.99",
+        "role": "affected",
+        "discovered_at_step": 1,
+        "attrs": {
+          "ts": "2016-11-20 03:12:00",
+          "amount_usd": 1.99,
+          "sequence": 3
+        }
+      },
+      {
+        "id": "DEMO-M-T02",
+        "type": "Merchant",
+        "label": "Merchant T-2",
+        "role": "context",
+        "discovered_at_step": 1,
+        "attrs": {}
+      },
+      {
+        "id": "9500109",
+        "type": "Transaction",
+        "label": "9500109 · $1.99",
+        "role": "affected",
+        "discovered_at_step": 1,
+        "attrs": {
+          "ts": "2016-11-20 03:13:00",
+          "amount_usd": 1.99,
+          "sequence": 4
+        }
+      },
+      {
+        "id": "DEMO-M-T03",
+        "type": "Merchant",
+        "label": "Merchant T-3",
+        "role": "context",
+        "discovered_at_step": 1,
+        "attrs": {}
+      },
+      {
+        "id": "9500112",
+        "type": "Transaction",
+        "label": "9500112 · $1.99",
+        "role": "affected",
+        "discovered_at_step": 1,
+        "attrs": {
+          "ts": "2016-11-20 03:14:00",
+          "amount_usd": 1.99,
+          "sequence": 5
+        }
+      },
+      {
+        "id": "DEMO-M-T04",
+        "type": "Merchant",
+        "label": "Merchant T-4",
+        "role": "context",
+        "discovered_at_step": 1,
+        "attrs": {}
+      },
+      {
+        "id": "9500115",
+        "type": "Transaction",
+        "label": "9500115 · $1.99",
+        "role": "affected",
+        "discovered_at_step": 1,
+        "attrs": {
+          "ts": "2016-11-20 03:15:00",
+          "amount_usd": 1.99,
+          "sequence": 6
+        }
+      },
+      {
+        "id": "DEMO-M-T05",
+        "type": "Merchant",
+        "label": "Merchant T-5",
+        "role": "context",
+        "discovered_at_step": 1,
+        "attrs": {}
+      },
+      {
+        "id": "9500118",
+        "type": "Transaction",
+        "label": "9500118 · $1.99",
+        "role": "affected",
+        "discovered_at_step": 1,
+        "attrs": {
+          "ts": "2016-11-20 03:16:00",
+          "amount_usd": 1.99,
+          "sequence": 7
+        }
+      },
+      {
+        "id": "DEMO-M-T06",
+        "type": "Merchant",
+        "label": "Merchant T-6",
+        "role": "context",
+        "discovered_at_step": 1,
+        "attrs": {}
+      },
+      {
+        "id": "9500121",
+        "type": "Transaction",
+        "label": "9500121 · $1.99",
+        "role": "affected",
+        "discovered_at_step": 1,
+        "attrs": {
+          "ts": "2016-11-20 03:17:00",
+          "amount_usd": 1.99,
+          "sequence": 8
+        }
+      },
+      {
+        "id": "DEMO-M-T07",
+        "type": "Merchant",
+        "label": "Merchant T-7",
+        "role": "context",
+        "discovered_at_step": 1,
+        "attrs": {}
+      },
+      {
+        "id": "9500124",
+        "type": "Transaction",
+        "label": "9500124 · $1.99",
+        "role": "affected",
+        "discovered_at_step": 1,
+        "attrs": {
+          "ts": "2016-11-20 03:18:00",
+          "amount_usd": 1.99,
+          "sequence": 9
+        }
+      },
+      {
+        "id": "DEMO-M-T08",
+        "type": "Merchant",
+        "label": "Merchant T-8",
+        "role": "context",
+        "discovered_at_step": 1,
+        "attrs": {}
+      },
+      {
+        "id": "9500127",
+        "type": "Transaction",
+        "label": "9500127 · $1.99",
+        "role": "affected",
+        "discovered_at_step": 1,
+        "attrs": {
+          "ts": "2016-11-20 03:19:00",
+          "amount_usd": 1.99,
+          "sequence": 10
+        }
+      },
+      {
+        "id": "DEMO-M-T09",
+        "type": "Merchant",
+        "label": "Merchant T-9",
+        "role": "context",
+        "discovered_at_step": 1,
+        "attrs": {}
+      },
+      {
+        "id": "9500130",
+        "type": "Transaction",
+        "label": "9500130 · $1.99",
+        "role": "affected",
+        "discovered_at_step": 1,
+        "attrs": {
+          "ts": "2016-11-20 03:20:00",
+          "amount_usd": 1.99,
+          "sequence": 11
+        }
+      },
+      {
+        "id": "DEMO-M-T10",
+        "type": "Merchant",
+        "label": "Merchant T-10",
+        "role": "context",
+        "discovered_at_step": 1,
+        "attrs": {}
+      },
+      {
+        "id": "9500133",
+        "type": "Transaction",
+        "label": "9500133 · $1.99",
+        "role": "flagged",
+        "discovered_at_step": 1,
+        "attrs": {
+          "ts": "2016-11-20 03:21:00",
+          "amount_usd": 1.99,
+          "sequence": 12
+        }
+      },
+      {
+        "id": "DEMO-M-T11",
+        "type": "Merchant",
+        "label": "Merchant T-11",
+        "role": "context",
+        "discovered_at_step": 1,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-CX000-K1",
+        "type": "Card",
+        "label": "DEMO-CX000-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600000",
+        "type": "Transaction",
+        "label": "9600000",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CU000",
+        "type": "Customer",
+        "label": "DEMO-CU000",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-CX001-K1",
+        "type": "Card",
+        "label": "DEMO-CX001-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600007",
+        "type": "Transaction",
+        "label": "9600007",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX002-K1",
+        "type": "Card",
+        "label": "DEMO-CX002-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600014",
+        "type": "Transaction",
+        "label": "9600014",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX003-K1",
+        "type": "Card",
+        "label": "DEMO-CX003-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600021",
+        "type": "Transaction",
+        "label": "9600021",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX004-K1",
+        "type": "Card",
+        "label": "DEMO-CX004-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600028",
+        "type": "Transaction",
+        "label": "9600028",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX005-K1",
+        "type": "Card",
+        "label": "DEMO-CX005-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600035",
+        "type": "Transaction",
+        "label": "9600035",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX006-K1",
+        "type": "Card",
+        "label": "DEMO-CX006-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600042",
+        "type": "Transaction",
+        "label": "9600042",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX007-K1",
+        "type": "Card",
+        "label": "DEMO-CX007-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600049",
+        "type": "Transaction",
+        "label": "9600049",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX008-K1",
+        "type": "Card",
+        "label": "DEMO-CX008-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600056",
+        "type": "Transaction",
+        "label": "9600056",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX009-K1",
+        "type": "Card",
+        "label": "DEMO-CX009-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600063",
+        "type": "Transaction",
+        "label": "9600063",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CU009",
+        "type": "Customer",
+        "label": "DEMO-CU009",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-CX010-K1",
+        "type": "Card",
+        "label": "DEMO-CX010-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600070",
+        "type": "Transaction",
+        "label": "9600070",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX011-K1",
+        "type": "Card",
+        "label": "DEMO-CX011-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600077",
+        "type": "Transaction",
+        "label": "9600077",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX012-K1",
+        "type": "Card",
+        "label": "DEMO-CX012-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600084",
+        "type": "Transaction",
+        "label": "9600084",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX013-K1",
+        "type": "Card",
+        "label": "DEMO-CX013-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600091",
+        "type": "Transaction",
+        "label": "9600091",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX014-K1",
+        "type": "Card",
+        "label": "DEMO-CX014-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600098",
+        "type": "Transaction",
+        "label": "9600098",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX015-K1",
+        "type": "Card",
+        "label": "DEMO-CX015-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600105",
+        "type": "Transaction",
+        "label": "9600105",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX016-K1",
+        "type": "Card",
+        "label": "DEMO-CX016-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600112",
+        "type": "Transaction",
+        "label": "9600112",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX017-K1",
+        "type": "Card",
+        "label": "DEMO-CX017-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600119",
+        "type": "Transaction",
+        "label": "9600119",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX018-K1",
+        "type": "Card",
+        "label": "DEMO-CX018-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600126",
+        "type": "Transaction",
+        "label": "9600126",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CU018",
+        "type": "Customer",
+        "label": "DEMO-CU018",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-CX019-K1",
+        "type": "Card",
+        "label": "DEMO-CX019-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600133",
+        "type": "Transaction",
+        "label": "9600133",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX020-K1",
+        "type": "Card",
+        "label": "DEMO-CX020-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600140",
+        "type": "Transaction",
+        "label": "9600140",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX021-K1",
+        "type": "Card",
+        "label": "DEMO-CX021-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600147",
+        "type": "Transaction",
+        "label": "9600147",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX022-K1",
+        "type": "Card",
+        "label": "DEMO-CX022-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600154",
+        "type": "Transaction",
+        "label": "9600154",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX023-K1",
+        "type": "Card",
+        "label": "DEMO-CX023-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600161",
+        "type": "Transaction",
+        "label": "9600161",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX024-K1",
+        "type": "Card",
+        "label": "DEMO-CX024-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600168",
+        "type": "Transaction",
+        "label": "9600168",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX025-K1",
+        "type": "Card",
+        "label": "DEMO-CX025-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600175",
+        "type": "Transaction",
+        "label": "9600175",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX026-K1",
+        "type": "Card",
+        "label": "DEMO-CX026-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600182",
+        "type": "Transaction",
+        "label": "9600182",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX027-K1",
+        "type": "Card",
+        "label": "DEMO-CX027-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600189",
+        "type": "Transaction",
+        "label": "9600189",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CU027",
+        "type": "Customer",
+        "label": "DEMO-CU027",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-CX028-K1",
+        "type": "Card",
+        "label": "DEMO-CX028-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600196",
+        "type": "Transaction",
+        "label": "9600196",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX029-K1",
+        "type": "Card",
+        "label": "DEMO-CX029-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600203",
+        "type": "Transaction",
+        "label": "9600203",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX030-K1",
+        "type": "Card",
+        "label": "DEMO-CX030-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600210",
+        "type": "Transaction",
+        "label": "9600210",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX031-K1",
+        "type": "Card",
+        "label": "DEMO-CX031-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600217",
+        "type": "Transaction",
+        "label": "9600217",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX032-K1",
+        "type": "Card",
+        "label": "DEMO-CX032-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600224",
+        "type": "Transaction",
+        "label": "9600224",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX033-K1",
+        "type": "Card",
+        "label": "DEMO-CX033-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600231",
+        "type": "Transaction",
+        "label": "9600231",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX034-K1",
+        "type": "Card",
+        "label": "DEMO-CX034-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600238",
+        "type": "Transaction",
+        "label": "9600238",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX035-K1",
+        "type": "Card",
+        "label": "DEMO-CX035-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600245",
+        "type": "Transaction",
+        "label": "9600245",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX036-K1",
+        "type": "Card",
+        "label": "DEMO-CX036-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600252",
+        "type": "Transaction",
+        "label": "9600252",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CU036",
+        "type": "Customer",
+        "label": "DEMO-CU036",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-CX037-K1",
+        "type": "Card",
+        "label": "DEMO-CX037-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600259",
+        "type": "Transaction",
+        "label": "9600259",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX038-K1",
+        "type": "Card",
+        "label": "DEMO-CX038-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600266",
+        "type": "Transaction",
+        "label": "9600266",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX039-K1",
+        "type": "Card",
+        "label": "DEMO-CX039-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600273",
+        "type": "Transaction",
+        "label": "9600273",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX040-K1",
+        "type": "Card",
+        "label": "DEMO-CX040-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600280",
+        "type": "Transaction",
+        "label": "9600280",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX041-K1",
+        "type": "Card",
+        "label": "DEMO-CX041-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600287",
+        "type": "Transaction",
+        "label": "9600287",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX042-K1",
+        "type": "Card",
+        "label": "DEMO-CX042-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600294",
+        "type": "Transaction",
+        "label": "9600294",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX043-K1",
+        "type": "Card",
+        "label": "DEMO-CX043-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600301",
+        "type": "Transaction",
+        "label": "9600301",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX044-K1",
+        "type": "Card",
+        "label": "DEMO-CX044-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600308",
+        "type": "Transaction",
+        "label": "9600308",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX045-K1",
+        "type": "Card",
+        "label": "DEMO-CX045-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600315",
+        "type": "Transaction",
+        "label": "9600315",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CU045",
+        "type": "Customer",
+        "label": "DEMO-CU045",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-CX046-K1",
+        "type": "Card",
+        "label": "DEMO-CX046-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600322",
+        "type": "Transaction",
+        "label": "9600322",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX047-K1",
+        "type": "Card",
+        "label": "DEMO-CX047-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600329",
+        "type": "Transaction",
+        "label": "9600329",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX048-K1",
+        "type": "Card",
+        "label": "DEMO-CX048-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600336",
+        "type": "Transaction",
+        "label": "9600336",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX049-K1",
+        "type": "Card",
+        "label": "DEMO-CX049-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600343",
+        "type": "Transaction",
+        "label": "9600343",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX050-K1",
+        "type": "Card",
+        "label": "DEMO-CX050-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600350",
+        "type": "Transaction",
+        "label": "9600350",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX051-K1",
+        "type": "Card",
+        "label": "DEMO-CX051-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600357",
+        "type": "Transaction",
+        "label": "9600357",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX052-K1",
+        "type": "Card",
+        "label": "DEMO-CX052-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600364",
+        "type": "Transaction",
+        "label": "9600364",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX053-K1",
+        "type": "Card",
+        "label": "DEMO-CX053-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600371",
+        "type": "Transaction",
+        "label": "9600371",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX054-K1",
+        "type": "Card",
+        "label": "DEMO-CX054-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600378",
+        "type": "Transaction",
+        "label": "9600378",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CU054",
+        "type": "Customer",
+        "label": "DEMO-CU054",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-CX055-K1",
+        "type": "Card",
+        "label": "DEMO-CX055-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600385",
+        "type": "Transaction",
+        "label": "9600385",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX056-K1",
+        "type": "Card",
+        "label": "DEMO-CX056-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600392",
+        "type": "Transaction",
+        "label": "9600392",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX057-K1",
+        "type": "Card",
+        "label": "DEMO-CX057-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600399",
+        "type": "Transaction",
+        "label": "9600399",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX058-K1",
+        "type": "Card",
+        "label": "DEMO-CX058-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600406",
+        "type": "Transaction",
+        "label": "9600406",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX059-K1",
+        "type": "Card",
+        "label": "DEMO-CX059-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600413",
+        "type": "Transaction",
+        "label": "9600413",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX060-K1",
+        "type": "Card",
+        "label": "DEMO-CX060-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600420",
+        "type": "Transaction",
+        "label": "9600420",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX061-K1",
+        "type": "Card",
+        "label": "DEMO-CX061-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600427",
+        "type": "Transaction",
+        "label": "9600427",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX062-K1",
+        "type": "Card",
+        "label": "DEMO-CX062-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600434",
+        "type": "Transaction",
+        "label": "9600434",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX063-K1",
+        "type": "Card",
+        "label": "DEMO-CX063-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600441",
+        "type": "Transaction",
+        "label": "9600441",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CU063",
+        "type": "Customer",
+        "label": "DEMO-CU063",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-CX064-K1",
+        "type": "Card",
+        "label": "DEMO-CX064-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600448",
+        "type": "Transaction",
+        "label": "9600448",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX065-K1",
+        "type": "Card",
+        "label": "DEMO-CX065-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600455",
+        "type": "Transaction",
+        "label": "9600455",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX066-K1",
+        "type": "Card",
+        "label": "DEMO-CX066-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600462",
+        "type": "Transaction",
+        "label": "9600462",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX067-K1",
+        "type": "Card",
+        "label": "DEMO-CX067-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600469",
+        "type": "Transaction",
+        "label": "9600469",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX068-K1",
+        "type": "Card",
+        "label": "DEMO-CX068-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600476",
+        "type": "Transaction",
+        "label": "9600476",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX069-K1",
+        "type": "Card",
+        "label": "DEMO-CX069-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600483",
+        "type": "Transaction",
+        "label": "9600483",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX070-K1",
+        "type": "Card",
+        "label": "DEMO-CX070-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600490",
+        "type": "Transaction",
+        "label": "9600490",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX071-K1",
+        "type": "Card",
+        "label": "DEMO-CX071-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600497",
+        "type": "Transaction",
+        "label": "9600497",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX072-K1",
+        "type": "Card",
+        "label": "DEMO-CX072-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600504",
+        "type": "Transaction",
+        "label": "9600504",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CU072",
+        "type": "Customer",
+        "label": "DEMO-CU072",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-CX073-K1",
+        "type": "Card",
+        "label": "DEMO-CX073-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600511",
+        "type": "Transaction",
+        "label": "9600511",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX074-K1",
+        "type": "Card",
+        "label": "DEMO-CX074-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600518",
+        "type": "Transaction",
+        "label": "9600518",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX075-K1",
+        "type": "Card",
+        "label": "DEMO-CX075-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600525",
+        "type": "Transaction",
+        "label": "9600525",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX076-K1",
+        "type": "Card",
+        "label": "DEMO-CX076-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600532",
+        "type": "Transaction",
+        "label": "9600532",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX077-K1",
+        "type": "Card",
+        "label": "DEMO-CX077-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600539",
+        "type": "Transaction",
+        "label": "9600539",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX078-K1",
+        "type": "Card",
+        "label": "DEMO-CX078-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600546",
+        "type": "Transaction",
+        "label": "9600546",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX079-K1",
+        "type": "Card",
+        "label": "DEMO-CX079-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600553",
+        "type": "Transaction",
+        "label": "9600553",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX080-K1",
+        "type": "Card",
+        "label": "DEMO-CX080-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600560",
+        "type": "Transaction",
+        "label": "9600560",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX081-K1",
+        "type": "Card",
+        "label": "DEMO-CX081-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600567",
+        "type": "Transaction",
+        "label": "9600567",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CU081",
+        "type": "Customer",
+        "label": "DEMO-CU081",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-CX082-K1",
+        "type": "Card",
+        "label": "DEMO-CX082-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600574",
+        "type": "Transaction",
+        "label": "9600574",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX083-K1",
+        "type": "Card",
+        "label": "DEMO-CX083-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600581",
+        "type": "Transaction",
+        "label": "9600581",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX084-K1",
+        "type": "Card",
+        "label": "DEMO-CX084-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600588",
+        "type": "Transaction",
+        "label": "9600588",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX085-K1",
+        "type": "Card",
+        "label": "DEMO-CX085-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600595",
+        "type": "Transaction",
+        "label": "9600595",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX086-K1",
+        "type": "Card",
+        "label": "DEMO-CX086-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600602",
+        "type": "Transaction",
+        "label": "9600602",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX087-K1",
+        "type": "Card",
+        "label": "DEMO-CX087-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600609",
+        "type": "Transaction",
+        "label": "9600609",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX088-K1",
+        "type": "Card",
+        "label": "DEMO-CX088-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600616",
+        "type": "Transaction",
+        "label": "9600616",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-CX089-K1",
+        "type": "Card",
+        "label": "DEMO-CX089-K1",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9600623",
+        "type": "Transaction",
+        "label": "9600623",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-19 22:00:00"
+        }
+      },
+      {
+        "id": "DEMO-REG-300",
+        "type": "Region",
+        "label": "Region 300",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-REG-301",
+        "type": "Region",
+        "label": "Region 301",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-REG-302",
+        "type": "Region",
+        "label": "Region 302",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-REG-303",
+        "type": "Region",
+        "label": "Region 303",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-REG-304",
+        "type": "Region",
+        "label": "Region 304",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-REG-305",
+        "type": "Region",
+        "label": "Region 305",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-REG-306",
+        "type": "Region",
+        "label": "Region 306",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-REG-307",
+        "type": "Region",
+        "label": "Region 307",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-REG-308",
+        "type": "Region",
+        "label": "Region 308",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-REG-309",
+        "type": "Region",
+        "label": "Region 309",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-REG-310",
+        "type": "Region",
+        "label": "Region 310",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-REG-311",
+        "type": "Region",
+        "label": "Region 311",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-CC-3301",
+        "type": "ClosedCase",
+        "label": "DEMO-CC-3301",
+        "role": "prior_case",
+        "discovered_at_step": 3,
+        "attrs": {
+          "outcome": "confirmed_fraud"
+        }
+      },
+      {
+        "id": "DEMO-CC-3310",
+        "type": "ClosedCase",
+        "label": "DEMO-CC-3310",
+        "role": "prior_case",
+        "discovered_at_step": 3,
+        "attrs": {
+          "outcome": "confirmed_fraud"
+        }
+      },
+      {
+        "id": "CASE-DEMO-005",
+        "type": "FraudCase",
+        "label": "CASE-DEMO-005",
+        "role": "this_case",
+        "discovered_at_step": 7,
+        "attrs": {}
+      }
+    ],
+    "edges": [
+      {
+        "source": "DEMO-C7700",
+        "target": "DEMO-C7700-K1",
+        "type": "OWNS"
+      },
+      {
+        "source": "DEMO-C7700-K1",
+        "target": "9500100",
+        "type": "MADE"
+      },
+      {
+        "source": "9500100",
+        "target": "DEMO-M-T00",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "9500100",
+        "target": "DEMO-DEV-W10",
+        "type": "USED_DEVICE"
+      },
+      {
+        "source": "DEMO-C7700-K1",
+        "target": "9500103",
+        "type": "MADE"
+      },
+      {
+        "source": "9500103",
+        "target": "DEMO-M-T01",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "9500103",
+        "target": "DEMO-DEV-W10",
+        "type": "USED_DEVICE"
+      },
+      {
+        "source": "9500100",
+        "target": "9500103",
+        "type": "NEXT_IN_EPISODE"
+      },
+      {
+        "source": "DEMO-C7700-K1",
+        "target": "9500106",
+        "type": "MADE"
+      },
+      {
+        "source": "9500106",
+        "target": "DEMO-M-T02",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "9500106",
+        "target": "DEMO-DEV-W10",
+        "type": "USED_DEVICE"
+      },
+      {
+        "source": "9500103",
+        "target": "9500106",
+        "type": "NEXT_IN_EPISODE"
+      },
+      {
+        "source": "DEMO-C7700-K1",
+        "target": "9500109",
+        "type": "MADE"
+      },
+      {
+        "source": "9500109",
+        "target": "DEMO-M-T03",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "9500109",
+        "target": "DEMO-DEV-W10",
+        "type": "USED_DEVICE"
+      },
+      {
+        "source": "9500106",
+        "target": "9500109",
+        "type": "NEXT_IN_EPISODE"
+      },
+      {
+        "source": "DEMO-C7700-K1",
+        "target": "9500112",
+        "type": "MADE"
+      },
+      {
+        "source": "9500112",
+        "target": "DEMO-M-T04",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "9500112",
+        "target": "DEMO-DEV-W10",
+        "type": "USED_DEVICE"
+      },
+      {
+        "source": "9500109",
+        "target": "9500112",
+        "type": "NEXT_IN_EPISODE"
+      },
+      {
+        "source": "DEMO-C7700-K1",
+        "target": "9500115",
+        "type": "MADE"
+      },
+      {
+        "source": "9500115",
+        "target": "DEMO-M-T05",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "9500115",
+        "target": "DEMO-DEV-W10",
+        "type": "USED_DEVICE"
+      },
+      {
+        "source": "9500112",
+        "target": "9500115",
+        "type": "NEXT_IN_EPISODE"
+      },
+      {
+        "source": "DEMO-C7700-K1",
+        "target": "9500118",
+        "type": "MADE"
+      },
+      {
+        "source": "9500118",
+        "target": "DEMO-M-T06",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "9500118",
+        "target": "DEMO-DEV-W10",
+        "type": "USED_DEVICE"
+      },
+      {
+        "source": "9500115",
+        "target": "9500118",
+        "type": "NEXT_IN_EPISODE"
+      },
+      {
+        "source": "DEMO-C7700-K1",
+        "target": "9500121",
+        "type": "MADE"
+      },
+      {
+        "source": "9500121",
+        "target": "DEMO-M-T07",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "9500121",
+        "target": "DEMO-DEV-W10",
+        "type": "USED_DEVICE"
+      },
+      {
+        "source": "9500118",
+        "target": "9500121",
+        "type": "NEXT_IN_EPISODE"
+      },
+      {
+        "source": "DEMO-C7700-K1",
+        "target": "9500124",
+        "type": "MADE"
+      },
+      {
+        "source": "9500124",
+        "target": "DEMO-M-T08",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "9500124",
+        "target": "DEMO-DEV-W10",
+        "type": "USED_DEVICE"
+      },
+      {
+        "source": "9500121",
+        "target": "9500124",
+        "type": "NEXT_IN_EPISODE"
+      },
+      {
+        "source": "DEMO-C7700-K1",
+        "target": "9500127",
+        "type": "MADE"
+      },
+      {
+        "source": "9500127",
+        "target": "DEMO-M-T09",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "9500127",
+        "target": "DEMO-DEV-W10",
+        "type": "USED_DEVICE"
+      },
+      {
+        "source": "9500124",
+        "target": "9500127",
+        "type": "NEXT_IN_EPISODE"
+      },
+      {
+        "source": "DEMO-C7700-K1",
+        "target": "9500130",
+        "type": "MADE"
+      },
+      {
+        "source": "9500130",
+        "target": "DEMO-M-T10",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "9500130",
+        "target": "DEMO-DEV-W10",
+        "type": "USED_DEVICE"
+      },
+      {
+        "source": "9500127",
+        "target": "9500130",
+        "type": "NEXT_IN_EPISODE"
+      },
+      {
+        "source": "DEMO-C7700-K1",
+        "target": "9500133",
+        "type": "MADE"
+      },
+      {
+        "source": "9500133",
+        "target": "DEMO-M-T11",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "9500133",
+        "target": "DEMO-DEV-W10",
+        "type": "USED_DEVICE"
+      },
+      {
+        "source": "9500130",
+        "target": "9500133",
+        "type": "NEXT_IN_EPISODE"
+      },
+      {
+        "source": "DEMO-CX000-K1",
+        "target": "9600000",
+        "type": "MADE"
+      },
+      {
+        "source": "9600000",
+        "target": "DEMO-M-T00",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CU000",
+        "target": "DEMO-CX000-K1",
+        "type": "OWNS"
+      },
+      {
+        "source": "DEMO-CX001-K1",
+        "target": "9600007",
+        "type": "MADE"
+      },
+      {
+        "source": "9600007",
+        "target": "DEMO-M-T01",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX002-K1",
+        "target": "9600014",
+        "type": "MADE"
+      },
+      {
+        "source": "9600014",
+        "target": "DEMO-M-T02",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX003-K1",
+        "target": "9600021",
+        "type": "MADE"
+      },
+      {
+        "source": "9600021",
+        "target": "DEMO-M-T03",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX004-K1",
+        "target": "9600028",
+        "type": "MADE"
+      },
+      {
+        "source": "9600028",
+        "target": "DEMO-M-T04",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX005-K1",
+        "target": "9600035",
+        "type": "MADE"
+      },
+      {
+        "source": "9600035",
+        "target": "DEMO-M-T05",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX006-K1",
+        "target": "9600042",
+        "type": "MADE"
+      },
+      {
+        "source": "9600042",
+        "target": "DEMO-M-T06",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX007-K1",
+        "target": "9600049",
+        "type": "MADE"
+      },
+      {
+        "source": "9600049",
+        "target": "DEMO-M-T07",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX008-K1",
+        "target": "9600056",
+        "type": "MADE"
+      },
+      {
+        "source": "9600056",
+        "target": "DEMO-M-T08",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX009-K1",
+        "target": "9600063",
+        "type": "MADE"
+      },
+      {
+        "source": "9600063",
+        "target": "DEMO-M-T09",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CU009",
+        "target": "DEMO-CX009-K1",
+        "type": "OWNS"
+      },
+      {
+        "source": "DEMO-CX010-K1",
+        "target": "9600070",
+        "type": "MADE"
+      },
+      {
+        "source": "9600070",
+        "target": "DEMO-M-T10",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX011-K1",
+        "target": "9600077",
+        "type": "MADE"
+      },
+      {
+        "source": "9600077",
+        "target": "DEMO-M-T11",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX012-K1",
+        "target": "9600084",
+        "type": "MADE"
+      },
+      {
+        "source": "9600084",
+        "target": "DEMO-M-T00",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX013-K1",
+        "target": "9600091",
+        "type": "MADE"
+      },
+      {
+        "source": "9600091",
+        "target": "DEMO-M-T01",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX014-K1",
+        "target": "9600098",
+        "type": "MADE"
+      },
+      {
+        "source": "9600098",
+        "target": "DEMO-M-T02",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX015-K1",
+        "target": "9600105",
+        "type": "MADE"
+      },
+      {
+        "source": "9600105",
+        "target": "DEMO-M-T03",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX016-K1",
+        "target": "9600112",
+        "type": "MADE"
+      },
+      {
+        "source": "9600112",
+        "target": "DEMO-M-T04",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX017-K1",
+        "target": "9600119",
+        "type": "MADE"
+      },
+      {
+        "source": "9600119",
+        "target": "DEMO-M-T05",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX018-K1",
+        "target": "9600126",
+        "type": "MADE"
+      },
+      {
+        "source": "9600126",
+        "target": "DEMO-M-T06",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CU018",
+        "target": "DEMO-CX018-K1",
+        "type": "OWNS"
+      },
+      {
+        "source": "DEMO-CX019-K1",
+        "target": "9600133",
+        "type": "MADE"
+      },
+      {
+        "source": "9600133",
+        "target": "DEMO-M-T07",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX020-K1",
+        "target": "9600140",
+        "type": "MADE"
+      },
+      {
+        "source": "9600140",
+        "target": "DEMO-M-T08",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX021-K1",
+        "target": "9600147",
+        "type": "MADE"
+      },
+      {
+        "source": "9600147",
+        "target": "DEMO-M-T09",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX022-K1",
+        "target": "9600154",
+        "type": "MADE"
+      },
+      {
+        "source": "9600154",
+        "target": "DEMO-M-T10",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX023-K1",
+        "target": "9600161",
+        "type": "MADE"
+      },
+      {
+        "source": "9600161",
+        "target": "DEMO-M-T11",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX024-K1",
+        "target": "9600168",
+        "type": "MADE"
+      },
+      {
+        "source": "9600168",
+        "target": "DEMO-M-T00",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX025-K1",
+        "target": "9600175",
+        "type": "MADE"
+      },
+      {
+        "source": "9600175",
+        "target": "DEMO-M-T01",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX026-K1",
+        "target": "9600182",
+        "type": "MADE"
+      },
+      {
+        "source": "9600182",
+        "target": "DEMO-M-T02",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX027-K1",
+        "target": "9600189",
+        "type": "MADE"
+      },
+      {
+        "source": "9600189",
+        "target": "DEMO-M-T03",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CU027",
+        "target": "DEMO-CX027-K1",
+        "type": "OWNS"
+      },
+      {
+        "source": "DEMO-CX028-K1",
+        "target": "9600196",
+        "type": "MADE"
+      },
+      {
+        "source": "9600196",
+        "target": "DEMO-M-T04",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX029-K1",
+        "target": "9600203",
+        "type": "MADE"
+      },
+      {
+        "source": "9600203",
+        "target": "DEMO-M-T05",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX030-K1",
+        "target": "9600210",
+        "type": "MADE"
+      },
+      {
+        "source": "9600210",
+        "target": "DEMO-M-T06",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX031-K1",
+        "target": "9600217",
+        "type": "MADE"
+      },
+      {
+        "source": "9600217",
+        "target": "DEMO-M-T07",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX032-K1",
+        "target": "9600224",
+        "type": "MADE"
+      },
+      {
+        "source": "9600224",
+        "target": "DEMO-M-T08",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX033-K1",
+        "target": "9600231",
+        "type": "MADE"
+      },
+      {
+        "source": "9600231",
+        "target": "DEMO-M-T09",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX034-K1",
+        "target": "9600238",
+        "type": "MADE"
+      },
+      {
+        "source": "9600238",
+        "target": "DEMO-M-T10",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX035-K1",
+        "target": "9600245",
+        "type": "MADE"
+      },
+      {
+        "source": "9600245",
+        "target": "DEMO-M-T11",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX036-K1",
+        "target": "9600252",
+        "type": "MADE"
+      },
+      {
+        "source": "9600252",
+        "target": "DEMO-M-T00",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CU036",
+        "target": "DEMO-CX036-K1",
+        "type": "OWNS"
+      },
+      {
+        "source": "DEMO-CX037-K1",
+        "target": "9600259",
+        "type": "MADE"
+      },
+      {
+        "source": "9600259",
+        "target": "DEMO-M-T01",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX038-K1",
+        "target": "9600266",
+        "type": "MADE"
+      },
+      {
+        "source": "9600266",
+        "target": "DEMO-M-T02",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX039-K1",
+        "target": "9600273",
+        "type": "MADE"
+      },
+      {
+        "source": "9600273",
+        "target": "DEMO-M-T03",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX040-K1",
+        "target": "9600280",
+        "type": "MADE"
+      },
+      {
+        "source": "9600280",
+        "target": "DEMO-M-T04",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX041-K1",
+        "target": "9600287",
+        "type": "MADE"
+      },
+      {
+        "source": "9600287",
+        "target": "DEMO-M-T05",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX042-K1",
+        "target": "9600294",
+        "type": "MADE"
+      },
+      {
+        "source": "9600294",
+        "target": "DEMO-M-T06",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX043-K1",
+        "target": "9600301",
+        "type": "MADE"
+      },
+      {
+        "source": "9600301",
+        "target": "DEMO-M-T07",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX044-K1",
+        "target": "9600308",
+        "type": "MADE"
+      },
+      {
+        "source": "9600308",
+        "target": "DEMO-M-T08",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX045-K1",
+        "target": "9600315",
+        "type": "MADE"
+      },
+      {
+        "source": "9600315",
+        "target": "DEMO-M-T09",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CU045",
+        "target": "DEMO-CX045-K1",
+        "type": "OWNS"
+      },
+      {
+        "source": "DEMO-CX046-K1",
+        "target": "9600322",
+        "type": "MADE"
+      },
+      {
+        "source": "9600322",
+        "target": "DEMO-M-T10",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX047-K1",
+        "target": "9600329",
+        "type": "MADE"
+      },
+      {
+        "source": "9600329",
+        "target": "DEMO-M-T11",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX048-K1",
+        "target": "9600336",
+        "type": "MADE"
+      },
+      {
+        "source": "9600336",
+        "target": "DEMO-M-T00",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX049-K1",
+        "target": "9600343",
+        "type": "MADE"
+      },
+      {
+        "source": "9600343",
+        "target": "DEMO-M-T01",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX050-K1",
+        "target": "9600350",
+        "type": "MADE"
+      },
+      {
+        "source": "9600350",
+        "target": "DEMO-M-T02",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX051-K1",
+        "target": "9600357",
+        "type": "MADE"
+      },
+      {
+        "source": "9600357",
+        "target": "DEMO-M-T03",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX052-K1",
+        "target": "9600364",
+        "type": "MADE"
+      },
+      {
+        "source": "9600364",
+        "target": "DEMO-M-T04",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX053-K1",
+        "target": "9600371",
+        "type": "MADE"
+      },
+      {
+        "source": "9600371",
+        "target": "DEMO-M-T05",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX054-K1",
+        "target": "9600378",
+        "type": "MADE"
+      },
+      {
+        "source": "9600378",
+        "target": "DEMO-M-T06",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CU054",
+        "target": "DEMO-CX054-K1",
+        "type": "OWNS"
+      },
+      {
+        "source": "DEMO-CX055-K1",
+        "target": "9600385",
+        "type": "MADE"
+      },
+      {
+        "source": "9600385",
+        "target": "DEMO-M-T07",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX056-K1",
+        "target": "9600392",
+        "type": "MADE"
+      },
+      {
+        "source": "9600392",
+        "target": "DEMO-M-T08",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX057-K1",
+        "target": "9600399",
+        "type": "MADE"
+      },
+      {
+        "source": "9600399",
+        "target": "DEMO-M-T09",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX058-K1",
+        "target": "9600406",
+        "type": "MADE"
+      },
+      {
+        "source": "9600406",
+        "target": "DEMO-M-T10",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX059-K1",
+        "target": "9600413",
+        "type": "MADE"
+      },
+      {
+        "source": "9600413",
+        "target": "DEMO-M-T11",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX060-K1",
+        "target": "9600420",
+        "type": "MADE"
+      },
+      {
+        "source": "9600420",
+        "target": "DEMO-M-T00",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX061-K1",
+        "target": "9600427",
+        "type": "MADE"
+      },
+      {
+        "source": "9600427",
+        "target": "DEMO-M-T01",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX062-K1",
+        "target": "9600434",
+        "type": "MADE"
+      },
+      {
+        "source": "9600434",
+        "target": "DEMO-M-T02",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX063-K1",
+        "target": "9600441",
+        "type": "MADE"
+      },
+      {
+        "source": "9600441",
+        "target": "DEMO-M-T03",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CU063",
+        "target": "DEMO-CX063-K1",
+        "type": "OWNS"
+      },
+      {
+        "source": "DEMO-CX064-K1",
+        "target": "9600448",
+        "type": "MADE"
+      },
+      {
+        "source": "9600448",
+        "target": "DEMO-M-T04",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX065-K1",
+        "target": "9600455",
+        "type": "MADE"
+      },
+      {
+        "source": "9600455",
+        "target": "DEMO-M-T05",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX066-K1",
+        "target": "9600462",
+        "type": "MADE"
+      },
+      {
+        "source": "9600462",
+        "target": "DEMO-M-T06",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX067-K1",
+        "target": "9600469",
+        "type": "MADE"
+      },
+      {
+        "source": "9600469",
+        "target": "DEMO-M-T07",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX068-K1",
+        "target": "9600476",
+        "type": "MADE"
+      },
+      {
+        "source": "9600476",
+        "target": "DEMO-M-T08",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX069-K1",
+        "target": "9600483",
+        "type": "MADE"
+      },
+      {
+        "source": "9600483",
+        "target": "DEMO-M-T09",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX070-K1",
+        "target": "9600490",
+        "type": "MADE"
+      },
+      {
+        "source": "9600490",
+        "target": "DEMO-M-T10",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX071-K1",
+        "target": "9600497",
+        "type": "MADE"
+      },
+      {
+        "source": "9600497",
+        "target": "DEMO-M-T11",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX072-K1",
+        "target": "9600504",
+        "type": "MADE"
+      },
+      {
+        "source": "9600504",
+        "target": "DEMO-M-T00",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CU072",
+        "target": "DEMO-CX072-K1",
+        "type": "OWNS"
+      },
+      {
+        "source": "DEMO-CX073-K1",
+        "target": "9600511",
+        "type": "MADE"
+      },
+      {
+        "source": "9600511",
+        "target": "DEMO-M-T01",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX074-K1",
+        "target": "9600518",
+        "type": "MADE"
+      },
+      {
+        "source": "9600518",
+        "target": "DEMO-M-T02",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX075-K1",
+        "target": "9600525",
+        "type": "MADE"
+      },
+      {
+        "source": "9600525",
+        "target": "DEMO-M-T03",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX076-K1",
+        "target": "9600532",
+        "type": "MADE"
+      },
+      {
+        "source": "9600532",
+        "target": "DEMO-M-T04",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX077-K1",
+        "target": "9600539",
+        "type": "MADE"
+      },
+      {
+        "source": "9600539",
+        "target": "DEMO-M-T05",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX078-K1",
+        "target": "9600546",
+        "type": "MADE"
+      },
+      {
+        "source": "9600546",
+        "target": "DEMO-M-T06",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX079-K1",
+        "target": "9600553",
+        "type": "MADE"
+      },
+      {
+        "source": "9600553",
+        "target": "DEMO-M-T07",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX080-K1",
+        "target": "9600560",
+        "type": "MADE"
+      },
+      {
+        "source": "9600560",
+        "target": "DEMO-M-T08",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX081-K1",
+        "target": "9600567",
+        "type": "MADE"
+      },
+      {
+        "source": "9600567",
+        "target": "DEMO-M-T09",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CU081",
+        "target": "DEMO-CX081-K1",
+        "type": "OWNS"
+      },
+      {
+        "source": "DEMO-CX082-K1",
+        "target": "9600574",
+        "type": "MADE"
+      },
+      {
+        "source": "9600574",
+        "target": "DEMO-M-T10",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX083-K1",
+        "target": "9600581",
+        "type": "MADE"
+      },
+      {
+        "source": "9600581",
+        "target": "DEMO-M-T11",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX084-K1",
+        "target": "9600588",
+        "type": "MADE"
+      },
+      {
+        "source": "9600588",
+        "target": "DEMO-M-T00",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX085-K1",
+        "target": "9600595",
+        "type": "MADE"
+      },
+      {
+        "source": "9600595",
+        "target": "DEMO-M-T01",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX086-K1",
+        "target": "9600602",
+        "type": "MADE"
+      },
+      {
+        "source": "9600602",
+        "target": "DEMO-M-T02",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX087-K1",
+        "target": "9600609",
+        "type": "MADE"
+      },
+      {
+        "source": "9600609",
+        "target": "DEMO-M-T03",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX088-K1",
+        "target": "9600616",
+        "type": "MADE"
+      },
+      {
+        "source": "9600616",
+        "target": "DEMO-M-T04",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CX089-K1",
+        "target": "9600623",
+        "type": "MADE"
+      },
+      {
+        "source": "9600623",
+        "target": "DEMO-M-T05",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-M-T00",
+        "target": "DEMO-REG-300",
+        "type": "LOCATED_IN"
+      },
+      {
+        "source": "DEMO-M-T01",
+        "target": "DEMO-REG-301",
+        "type": "LOCATED_IN"
+      },
+      {
+        "source": "DEMO-M-T02",
+        "target": "DEMO-REG-302",
+        "type": "LOCATED_IN"
+      },
+      {
+        "source": "DEMO-M-T03",
+        "target": "DEMO-REG-303",
+        "type": "LOCATED_IN"
+      },
+      {
+        "source": "DEMO-M-T04",
+        "target": "DEMO-REG-304",
+        "type": "LOCATED_IN"
+      },
+      {
+        "source": "DEMO-M-T05",
+        "target": "DEMO-REG-305",
+        "type": "LOCATED_IN"
+      },
+      {
+        "source": "DEMO-M-T06",
+        "target": "DEMO-REG-306",
+        "type": "LOCATED_IN"
+      },
+      {
+        "source": "DEMO-M-T07",
+        "target": "DEMO-REG-307",
+        "type": "LOCATED_IN"
+      },
+      {
+        "source": "DEMO-M-T08",
+        "target": "DEMO-REG-308",
+        "type": "LOCATED_IN"
+      },
+      {
+        "source": "DEMO-M-T09",
+        "target": "DEMO-REG-309",
+        "type": "LOCATED_IN"
+      },
+      {
+        "source": "DEMO-M-T10",
+        "target": "DEMO-REG-310",
+        "type": "LOCATED_IN"
+      },
+      {
+        "source": "DEMO-M-T11",
+        "target": "DEMO-REG-311",
+        "type": "LOCATED_IN"
+      },
+      {
+        "source": "DEMO-CC-3301",
+        "target": "DEMO-M-T03",
+        "type": "SIMILAR_TO"
+      },
+      {
+        "source": "DEMO-CC-3310",
+        "target": "DEMO-M-T07",
+        "type": "SIMILAR_TO"
+      },
+      {
+        "source": "CASE-DEMO-005",
+        "target": "DEMO-C7700-K1",
+        "type": "ABOUT_CARD"
+      }
+    ]
+  },
+  "graph_write": {
+    "written": true,
+    "graph_case_id": "CASE-DEMO-005",
+    "read_back_ok": false,
+    "written_at": "2016-11-20 03:22:41"
+  },
+  "validation": {
+    "passed": true,
+    "errors": [],
+    "warnings": [
+      "read-back did not confirm the graph write"
+    ]
+  },
+  "llm": {
+    "provider": "fixture",
+    "model": "none (interface fixture)",
+    "tokens": 6120
+  }
+}

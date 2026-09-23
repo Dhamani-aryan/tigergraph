@@ -1,0 +1,98 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  html,
+  body {
+    @apply bg-ink-950 text-zinc-200 antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+  body {
+    min-height: 100vh;
+    background-image:
+      radial-gradient(1200px 500px at 85% -10%, rgba(246, 139, 31, 0.07), transparent 60%),
+      radial-gradient(900px 400px at -10% 0%, rgba(56, 189, 248, 0.04), transparent 60%);
+    background-attachment: fixed;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-tg-400 ring-offset-2 ring-offset-ink-950;
+  }
+  ::selection {
+    background: rgba(246, 139, 31, 0.35);
+  }
+  code,
+  kbd,
+  samp,
+  pre {
+    @apply font-mono;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-xl border border-ink-700/80 bg-ink-900/80 shadow-panel backdrop-blur-sm;
+  }
+  .panel-header {
+    @apply flex items-center justify-between gap-3 border-b border-ink-700/70 px-4 py-3;
+  }
+  .panel-title {
+    @apply text-[13px] font-semibold uppercase tracking-[0.08em] text-zinc-400;
+  }
+  .id {
+    @apply font-mono text-[0.92em] tracking-tight;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .scroll-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #2a3441 transparent;
+  }
+  .th-sort {
+    @apply inline-flex items-center gap-1 rounded px-1 -mx-1 hover:text-zinc-100;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------- print: only the SAR document ---------- */
+@media print {
+  @page {
+    margin: 18mm 16mm;
+  }
+  html,
+  body {
+    background: #fff !important;
+    color: #111 !important;
+  }
+  body * {
+    visibility: hidden;
+  }
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}

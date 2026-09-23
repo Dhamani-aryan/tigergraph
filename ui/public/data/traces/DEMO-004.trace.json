@@ -1,0 +1,513 @@
+{
+  "schema_version": "1.0",
+  "case_id": "DEMO-004",
+  "fixture_note": "INTERFACE FIXTURE — invented values for UI development; not an investigation outcome.",
+  "trigger": {
+    "trigger_type": "analyst_request",
+    "trigger_text": "Analyst flagged unusual refund volume at merchant DEMO-M-R09 involving card DEMO-C6099-K1.",
+    "flagged_txn_id": "9400050",
+    "card_id": "DEMO-C6099-K1",
+    "customer_id": "DEMO-C6099",
+    "risk_score": null,
+    "opened_at": "2016-12-04 16:40:00"
+  },
+  "cutoff_ts": "2016-12-04 16:40:00",
+  "steps": [
+    {
+      "step": 1,
+      "node": "gather_evidence",
+      "label": "Gather case context",
+      "started_ms": 0,
+      "duration_ms": 2100,
+      "summary": "Loaded 48 hours of card activity including refunds.",
+      "tool_calls": [
+        {
+          "tool": "tigergraph__run_installed_query",
+          "args": {
+            "graph": "FraudInvestigation",
+            "query_name": "get_transaction_window_v1",
+            "params": {
+              "card_id": "DEMO-C6099-K1",
+              "hours_before": 48
+            }
+          },
+          "via": "mcp",
+          "result_count": 13,
+          "duration_ms": 820
+        },
+        {
+          "tool": "find_shared_origin_activity_v1",
+          "args": {
+            "device_profile": "Linux | Ubuntu 16.04.3 LTS Xenial Xerus x86_64 | HeadlessChrome 62.0.3202.94 (automation build; webdriver=true) | 1280x720 | proxy:IP_PROXY:ANONYMOUS | tz=UTC+00:00 | lang=en-US,en;q=0.9",
+            "api_key": "demo-fixture-api-key-should-be-redacted"
+          },
+          "via": "direct",
+          "result_count": 4,
+          "duration_ms": 610
+        }
+      ]
+    },
+    {
+      "step": 2,
+      "node": "merchant_refund_probe",
+      "label": "Merchant refund probe (custom step)",
+      "started_ms": 2100,
+      "duration_ms": 940,
+      "summary": "A step type the UI does not know; it is rendered generically.",
+      "tool_calls": [
+        {
+          "tool": "tigergraph__run_installed_query",
+          "args": {
+            "graph": "FraudInvestigation",
+            "query_name": "merchant_refund_cycles_v0",
+            "params": {
+              "merchant": "DEMO-M-R09"
+            }
+          },
+          "via": "sidecar",
+          "result_count": 22,
+          "duration_ms": 940
+        }
+      ]
+    },
+    {
+      "step": 3,
+      "node": "assess",
+      "label": "Assessment",
+      "started_ms": 3040,
+      "duration_ms": 4400,
+      "summary": "Structured assessment: undocumented, coordinated, probability 0.88.",
+      "tool_calls": []
+    },
+    {
+      "step": 4,
+      "node": "policy",
+      "label": "Policy",
+      "started_ms": 7440,
+      "duration_ms": 11,
+      "summary": "R9 and R6 fired.",
+      "tool_calls": []
+    },
+    {
+      "step": 5,
+      "node": "write_sar",
+      "label": "Draft SAR narrative",
+      "started_ms": 7451,
+      "duration_ms": 4300,
+      "summary": "Generated a 6-sentence narrative.",
+      "tool_calls": []
+    },
+    {
+      "step": 6,
+      "node": "write_case",
+      "label": "Write case memory",
+      "started_ms": 11751,
+      "duration_ms": 3020,
+      "summary": "Write rejected by the graph; case memory was NOT stored.",
+      "tool_calls": [
+        {
+          "tool": "tigergraph__add_nodes",
+          "args": {
+            "vertex_type": "FraudCase",
+            "vertex_id": "CASE-DEMO-004"
+          },
+          "via": "mcp",
+          "result_count": 0,
+          "duration_ms": 3020,
+          "error": "HTTP 503 from REST++ upsert (fixture)"
+        }
+      ]
+    }
+  ],
+  "probability_timeline": [
+    {
+      "step": 1,
+      "label": "Context",
+      "fraud_probability": 0.62
+    },
+    {
+      "step": 2,
+      "label": "Refund probe",
+      "fraud_probability": 0.8
+    },
+    {
+      "step": 3,
+      "label": "Assess",
+      "fraud_probability": 0.88
+    }
+  ],
+  "signals": [
+    {
+      "name": "refund_cycle",
+      "fired": true,
+      "detail": "6 purchase→refund→repurchase cycles in 90 minutes",
+      "entity_ids": [
+        "9400012",
+        "9400050"
+      ]
+    },
+    {
+      "name": "automation_device",
+      "fired": true,
+      "detail": "headless browser with webdriver flag",
+      "entity_ids": [
+        "DEMO-DEV-HL01"
+      ]
+    },
+    {
+      "name": "shared_device",
+      "fired": true,
+      "detail": "same device on 5 cards",
+      "entity_ids": [
+        "DEMO-DEV-HL01"
+      ]
+    },
+    {
+      "name": "amount_outlier",
+      "fired": false,
+      "detail": "individual amounts are small",
+      "entity_ids": []
+    }
+  ],
+  "rules_fired": [
+    {
+      "rule": "R9",
+      "phase": "initial",
+      "explanation": "Undocumented, coordinated abuse: case, report and analyst escalation."
+    },
+    {
+      "rule": "R6",
+      "phase": "initial",
+      "explanation": "Shared device: monitor connected cards."
+    }
+  ],
+  "retrieval": {
+    "prior_cases": [
+      {
+        "case_id": "DEMO-CC-2201",
+        "outcome": "confirmed_fraud",
+        "pattern": "card_testing",
+        "score": 0.41,
+        "used": false
+      }
+    ],
+    "documents": [
+      {
+        "doc_id": "policy:R9",
+        "title": "Undocumented patterns",
+        "section": "Fraud Policy §R9",
+        "score": 0.69
+      }
+    ]
+  },
+  "subgraph": {
+    "nodes": [
+      {
+        "id": "DEMO-C6099",
+        "type": "Customer",
+        "label": "DEMO-C6099",
+        "role": "subject",
+        "discovered_at_step": 1,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-C6099-K1",
+        "type": "Card",
+        "label": "DEMO-C6099-K1",
+        "role": "subject",
+        "discovered_at_step": 1,
+        "attrs": {}
+      },
+      {
+        "id": "9400012",
+        "type": "Transaction",
+        "label": "9400012 · cycle 1",
+        "role": "affected",
+        "discovered_at_step": 1,
+        "attrs": {
+          "ts": "2016-12-04 14:10:00",
+          "sequence": 1
+        }
+      },
+      {
+        "id": "9400019",
+        "type": "Transaction",
+        "label": "9400019 · cycle 2",
+        "role": "affected",
+        "discovered_at_step": 1,
+        "attrs": {
+          "ts": "2016-12-04 14:17:00",
+          "sequence": 2
+        }
+      },
+      {
+        "id": "9400027",
+        "type": "Transaction",
+        "label": "9400027 · cycle 3",
+        "role": "affected",
+        "discovered_at_step": 1,
+        "attrs": {
+          "ts": "2016-12-04 14:24:00",
+          "sequence": 3
+        }
+      },
+      {
+        "id": "9400031",
+        "type": "Transaction",
+        "label": "9400031 · cycle 4",
+        "role": "affected",
+        "discovered_at_step": 1,
+        "attrs": {
+          "ts": "2016-12-04 15:31:00",
+          "sequence": 4
+        }
+      },
+      {
+        "id": "9400044",
+        "type": "Transaction",
+        "label": "9400044 · cycle 5",
+        "role": "affected",
+        "discovered_at_step": 1,
+        "attrs": {
+          "ts": "2016-12-04 15:38:00",
+          "sequence": 5
+        }
+      },
+      {
+        "id": "9400050",
+        "type": "Transaction",
+        "label": "9400050 · cycle 6",
+        "role": "flagged",
+        "discovered_at_step": 1,
+        "attrs": {
+          "ts": "2016-12-04 16:01:00",
+          "sequence": 6
+        }
+      },
+      {
+        "id": "DEMO-RB-1",
+        "type": "RefundBatch",
+        "label": "Refund batch R09-1204",
+        "role": "anomaly",
+        "discovered_at_step": 2,
+        "attrs": {
+          "refunds": 6
+        }
+      },
+      {
+        "id": "DEMO-M-R09",
+        "type": "Merchant",
+        "label": "Merchant R-09",
+        "role": "connected",
+        "discovered_at_step": 1,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-DEV-HL01",
+        "type": "Device",
+        "label": "HeadlessChrome 62 · Ubuntu · proxy",
+        "role": "connected",
+        "discovered_at_step": 1,
+        "attrs": {
+          "profile": "Linux | Ubuntu 16.04.3 LTS Xenial Xerus x86_64 | HeadlessChrome 62.0.3202.94 (automation build; webdriver=true) | 1280x720 | proxy:IP_PROXY:ANONYMOUS | tz=UTC+00:00 | lang=en-US,en;q=0.9"
+        }
+      },
+      {
+        "id": "DEMO-C6100-K1",
+        "type": "Card",
+        "label": "DEMO-C6100-K1",
+        "role": "connected",
+        "discovered_at_step": 1,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-C6102-K1",
+        "type": "Card",
+        "label": "DEMO-C6102-K1",
+        "role": "connected",
+        "discovered_at_step": 1,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-C6107-K3",
+        "type": "Card",
+        "label": "DEMO-C6107-K3",
+        "role": "connected",
+        "discovered_at_step": 1,
+        "attrs": {}
+      },
+      {
+        "id": "DEMO-C6111-K1",
+        "type": "Card",
+        "label": "DEMO-C6111-K1",
+        "role": "connected",
+        "discovered_at_step": 1,
+        "attrs": {}
+      }
+    ],
+    "edges": [
+      {
+        "source": "DEMO-C6099",
+        "target": "DEMO-C6099-K1",
+        "type": "OWNS"
+      },
+      {
+        "source": "DEMO-C6099-K1",
+        "target": "9400012",
+        "type": "MADE"
+      },
+      {
+        "source": "9400012",
+        "target": "DEMO-M-R09",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "9400012",
+        "target": "DEMO-DEV-HL01",
+        "type": "USED_DEVICE"
+      },
+      {
+        "source": "DEMO-C6099-K1",
+        "target": "9400019",
+        "type": "MADE"
+      },
+      {
+        "source": "9400019",
+        "target": "DEMO-M-R09",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "9400019",
+        "target": "DEMO-DEV-HL01",
+        "type": "USED_DEVICE"
+      },
+      {
+        "source": "9400012",
+        "target": "9400019",
+        "type": "NEXT_IN_EPISODE"
+      },
+      {
+        "source": "DEMO-C6099-K1",
+        "target": "9400027",
+        "type": "MADE"
+      },
+      {
+        "source": "9400027",
+        "target": "DEMO-M-R09",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "9400027",
+        "target": "DEMO-DEV-HL01",
+        "type": "USED_DEVICE"
+      },
+      {
+        "source": "9400019",
+        "target": "9400027",
+        "type": "NEXT_IN_EPISODE"
+      },
+      {
+        "source": "DEMO-C6099-K1",
+        "target": "9400031",
+        "type": "MADE"
+      },
+      {
+        "source": "9400031",
+        "target": "DEMO-M-R09",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "9400031",
+        "target": "DEMO-DEV-HL01",
+        "type": "USED_DEVICE"
+      },
+      {
+        "source": "9400027",
+        "target": "9400031",
+        "type": "NEXT_IN_EPISODE"
+      },
+      {
+        "source": "DEMO-C6099-K1",
+        "target": "9400044",
+        "type": "MADE"
+      },
+      {
+        "source": "9400044",
+        "target": "DEMO-M-R09",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "9400044",
+        "target": "DEMO-DEV-HL01",
+        "type": "USED_DEVICE"
+      },
+      {
+        "source": "9400031",
+        "target": "9400044",
+        "type": "NEXT_IN_EPISODE"
+      },
+      {
+        "source": "DEMO-C6099-K1",
+        "target": "9400050",
+        "type": "MADE"
+      },
+      {
+        "source": "9400050",
+        "target": "DEMO-M-R09",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "9400050",
+        "target": "DEMO-DEV-HL01",
+        "type": "USED_DEVICE"
+      },
+      {
+        "source": "9400044",
+        "target": "9400050",
+        "type": "NEXT_IN_EPISODE"
+      },
+      {
+        "source": "DEMO-RB-1",
+        "target": "DEMO-M-R09",
+        "type": "REFUNDED_AT"
+      },
+      {
+        "source": "DEMO-C6100-K1",
+        "target": "DEMO-DEV-HL01",
+        "type": "SEEN_ON"
+      },
+      {
+        "source": "DEMO-C6102-K1",
+        "target": "DEMO-DEV-HL01",
+        "type": "SEEN_ON"
+      },
+      {
+        "source": "DEMO-C6107-K3",
+        "target": "DEMO-DEV-HL01",
+        "type": "SEEN_ON"
+      },
+      {
+        "source": "DEMO-C6111-K1",
+        "target": "DEMO-DEV-HL01",
+        "type": "SEEN_ON"
+      }
+    ]
+  },
+  "graph_write": {
+    "written": false,
+    "graph_case_id": "",
+    "read_back_ok": false
+  },
+  "validation": {
+    "passed": true,
+    "errors": [],
+    "warnings": [
+      "graph write failed: case memory not stored (submission gate blocked)"
+    ]
+  },
+  "llm": {
+    "provider": "fixture",
+    "model": "none (interface fixture)",
+    "tokens": 9905
+  }
+}
