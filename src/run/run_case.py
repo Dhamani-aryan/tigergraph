@@ -123,13 +123,20 @@ async def run_single_case(tg: TigerGraphMCP, case_row: dict) -> AnswerFile:
 def _grounded_similar_cases(final_state: dict, llm_ids: list[str]) -> list[str]:
     """Answer-quality fix (2026-09-23): the LLM's `similar_prior_case_ids`
     were passed straight into the answer file with no check that those IDs
-    actually came back from a real closed-case lookup -- an LLM can invent a
-    plausible-looking case ID. Filters to IDs that appear in this case's own
-    `closed_cases` evidence (README rule: "Every ID in your answer files
-    must exist in this dataset")."""
+    actually came back from a real lookup -- an LLM can invent a
+    plausible-looking case ID. Filters to IDs that appear in either of the
+    TWO sources this case's own evidence draws closed cases from:
+    `closed_cases` (the graph-traversal lookup by card/device/region) and
+    `knowledge.similar_cases` (retrieve_knowledge's vector search over
+    ClosedCase, which is where `assess_node`'s prompt actually points the
+    LLM for "closed case narratives clearly match" -- checking only the
+    first source, as an earlier version of this function did, would zero
+    out every legitimate vector-retrieved match)."""
     evidence = final_state.get("evidence") or []
     closed = next((e["data"] for e in evidence if e["type"] == "closed_cases"), []) or []
+    knowledge = next((e["data"] for e in evidence if e["type"] == "knowledge"), {}) or {}
     real_ids = {c.get("id") for c in closed if c.get("id")}
+    real_ids |= {c.get("id") for c in (knowledge.get("similar_cases") or []) if c.get("id")}
     return [cid for cid in llm_ids if cid in real_ids]
 
 
