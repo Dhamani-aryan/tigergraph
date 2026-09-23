@@ -230,7 +230,8 @@ CREATE OR REPLACE QUERY card_window(VERTEX<Card> input_card) FOR GRAPH {GRAPH_NA
     Start = {{input_card}};
     Txns = SELECT t FROM Start-(MADE)->Transaction:t;
     PRINT Txns[Txns.transaction_id, Txns.ts, Txns.TransactionAmt, Txns.addr1,
-               Txns.channel, Txns.risk_score, Txns.customer_id] AS transactions;
+               Txns.channel, Txns.risk_score, Txns.customer_id, Txns.ProductCD,
+               Txns.id_15, Txns.id_23, Txns.id_34, Txns.device_type] AS transactions;
 }}
 INSTALL QUERY card_window
 """.strip()
