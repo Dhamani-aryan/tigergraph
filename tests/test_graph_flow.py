@@ -27,6 +27,9 @@ def _patch_evidence_functions(
     async def _fake_device_neighbors(tg, transaction_id, cutoff_ts=None):
         return device_neighbors_result
 
+    async def _fake_device_profile_label(tg, transaction_id):
+        return "FAKE_DEVICE | Android | Chrome | 1080x1920"
+
     async def _fake_closed_case_lookup(tg, card_id=None, device_id=None, addr1=None):
         return []
 
@@ -39,6 +42,7 @@ def _patch_evidence_functions(
     monkeypatch.setattr(graph_flow, "card_window", _fake_card_window)
     monkeypatch.setattr(graph_flow, "customer_cards", _fake_customer_cards)
     monkeypatch.setattr(graph_flow, "device_neighbors", _fake_device_neighbors)
+    monkeypatch.setattr(graph_flow, "device_profile_label", _fake_device_profile_label)
     monkeypatch.setattr(graph_flow, "closed_case_lookup", _fake_closed_case_lookup)
     monkeypatch.setattr(graph_flow, "ring_membership", _fake_ring_membership)
     monkeypatch.setattr(graph_flow, "retrieve_knowledge", _fake_retrieve_knowledge)

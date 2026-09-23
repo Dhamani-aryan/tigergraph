@@ -436,6 +436,39 @@ async def device_neighbors(tg: TigerGraphMCP, transaction_id: str, cutoff_ts: st
 
 
 # --------------------------------------------------------------------------
+# device_profile_label
+# --------------------------------------------------------------------------
+DEVICE_PROFILE_LABEL_GSQL = f"""
+USE GRAPH {GRAPH_NAME}
+CREATE OR REPLACE QUERY device_profile_label(VERTEX<Transaction> input_txn) FOR GRAPH {GRAPH_NAME} {{
+    Start = {{input_txn}};
+    DevStep = SELECT d FROM Start-(FROM_DEVICE)->DeviceProfile:d;
+    PRINT DevStep[DevStep.device_info, DevStep.os, DevStep.browser, DevStep.screen] AS device_profile;
+}}
+INSTALL QUERY device_profile_label
+""".strip()
+
+
+async def device_profile_label(tg: TigerGraphMCP, transaction_id: str) -> str:
+    """Answer-quality fix (2026-09-23): the "DEVICE_INFO | OS | BROWSER |
+    SCREEN" label the README's own schema wants in `connected_device_
+    profiles` (e.g. "SAMSUNG SM-G892A Build/NRD90M | Android 7.0 | samsung
+    browser 6.2 | 2220x1080"), for the flagged transaction's own device.
+    Returns "" for an in-person transaction (no FROM_DEVICE edge -- README:
+    "in_person (product code W, no device record)")."""
+    await _ensure_installed(tg, "device_profile_label", DEVICE_PROFILE_LABEL_GSQL)
+    result = await _run_installed_query(tg, "device_profile_label", {"input_txn": transaction_id})
+    print_results = _print_results(result)
+    raw = print_results[0]["device_profile"] if print_results else []
+    rows = _flatten_vertices(raw, "DevStep")
+    if not rows:
+        return ""
+    r = rows[0]
+    parts = [r.get("device_info") or "", r.get("os") or "", r.get("browser") or "", r.get("screen") or ""]
+    return " | ".join(p for p in parts if p)
+
+
+# --------------------------------------------------------------------------
 # region_neighbors
 # --------------------------------------------------------------------------
 REGION_NEIGHBORS_GSQL = f"""

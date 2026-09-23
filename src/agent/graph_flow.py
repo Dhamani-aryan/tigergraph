@@ -7,6 +7,7 @@ from typing import Any
 from langgraph.graph import END, StateGraph
 from pydantic import BaseModel
 
+from src.agent.episode import build_episode, detect_out_of_region, detect_recurring_charge
 from src.agent.llm import generate_structured, generate_with_tools
 from src.agent.simulator import simulate_evidence_response
 from src.agent.state import InvestigationState
@@ -16,6 +17,7 @@ from src.graph.queries import (
     closed_case_lookup,
     customer_cards,
     device_neighbors,
+    device_profile_label,
     dispatch_followup_tool,
     region_neighbors,
     ring_membership,
@@ -62,6 +64,19 @@ CLUSTER_MIN_SIZE_FOR_COORDINATED = 3  # not currently wired into any check, see 
 # ring: single digits to low tens; this dataset's known collisions: hundreds), so the
 # exact cutoff between ~20 and ~300 isn't sensitive for this data.
 DEVICE_NEIGHBORS_COLLISION_CAP = 20
+
+# Answer-quality fix (2026-09-23): replaces the old, effectively-arbitrary
+# `hours=48` card_window call. Since every graph lookup is now bounded by
+# `cutoff_ts` (the case's own opened_at -- see the temporal leakage fix),
+# there is no leakage risk in asking for a LONG backward lookback: cutoff_ts
+# alone prevents anything from the future being returned, regardless of how
+# large `hours` is. A wide backward window is what an analyst's own case
+# file actually starts with (full card history to date), and it's what
+# `episode.py`'s card-testing/recurring-charge/out-of-region detectors need
+# (they can't see a pattern that a 48h window silently cut off). 400 days
+# covers this dataset's full ~6-month span (July-December 2016) with room
+# to spare in both directions.
+CARD_WINDOW_LOOKBACK_HOURS = 24 * 400
 
 # case_pack.csv has no `flagged_amount` column -- the README's case table only
 # shows dollar amounts inside `trigger_text` prose (e.g. "$77.07"). This regex
@@ -154,6 +169,12 @@ class AssessmentOutput(BaseModel):
     fraud_probability: float
     evidence_claims: list[str]
     similar_prior_case_ids: list[str] = []
+    # Answer-quality fix (2026-09-23): README requires this field "when
+    # pattern is undocumented" ("two or three sentences on what the pattern
+    # is, who it affects, and how you found it"). Previously always emitted
+    # as "" regardless of pattern -- there was nowhere for the LLM to put
+    # this text at all.
+    pattern_description: str = ""
 
 
 async def gather_evidence_node(tg: TigerGraphMCP, state: InvestigationState) -> InvestigationState:
@@ -179,11 +200,33 @@ async def gather_evidence_node(tg: TigerGraphMCP, state: InvestigationState) -> 
     # case is about whenever it isn't the card's most recent activity (confirmed
     # live: a 44-day-old flagged transaction was dropped entirely). Every
     # case-pack row's flagged_txn_id is exactly the reference this needs.
+    # hours=CARD_WINDOW_LOOKBACK_HOURS (see its own definition above): full
+    # backward history, safely capped at cutoff_ts.
+    flagged_txn_id = str(row["flagged_txn_id"])
     window = await card_window(
-        tg, card_id, hours=48, reference_txn_id=str(row["flagged_txn_id"]), cutoff_ts=cutoff_ts
+        tg, card_id, hours=CARD_WINDOW_LOOKBACK_HOURS,
+        reference_txn_id=flagged_txn_id, cutoff_ts=cutoff_ts,
     )
     evidence.append({"type": "card_window", "data": window})
     tool_calls += 1
+
+    # Answer-quality fix (2026-09-23): build the actual fraud EPISODE from
+    # card_window, instead of run_case.py later assuming affected_txn_ids is
+    # always just [flagged_txn_id] (see episode.py's module docstring for
+    # the full rationale). is_new_device now reads the flagged transaction's
+    # REAL id_15 attribute (backfilled from identity.csv) -- previously this
+    # signal didn't exist in the graph at all and was silently faked from
+    # shared_device (a different fact: device SHARING, not device NEWNESS).
+    flagged_row = next((t for t in window if t.get("id") == flagged_txn_id), None)
+    is_new_device = bool(flagged_row and flagged_row.get("id_15") == "New")
+    is_proxy = bool(flagged_row and "PROXY" in str(flagged_row.get("id_23") or ""))
+    episode = build_episode(window, flagged_txn_id)
+    out_of_region = detect_out_of_region(window, flagged_txn_id)
+    # R7 only ever applies to a customer's OWN dispute (README: "When the
+    # customer disputes a charge that matches their own recurring pattern")
+    # -- computed here regardless of trigger_type (cheap, pure Python), but
+    # only actually used by policy_node when trigger_type == "customer_report".
+    recurring_charge_detected = detect_recurring_charge(window, flagged_txn_id)
 
     cards = await customer_cards(tg, row["customer_id"])
     evidence.append({"type": "customer_cards", "data": cards})
@@ -191,6 +234,10 @@ async def gather_evidence_node(tg: TigerGraphMCP, state: InvestigationState) -> 
 
     neighbors = await device_neighbors(tg, str(row["flagged_txn_id"]), cutoff_ts=cutoff_ts)
     evidence.append({"type": "device_neighbors", "data": neighbors})
+    tool_calls += 1
+
+    device_label = await device_profile_label(tg, str(row["flagged_txn_id"]))
+    evidence.append({"type": "device_profile_label", "data": device_label})
     tool_calls += 1
 
     closed = await closed_case_lookup(tg, card_id=card_id)
@@ -221,6 +268,12 @@ async def gather_evidence_node(tg: TigerGraphMCP, state: InvestigationState) -> 
     distinct_neighbor_cards = len({n.get("id") for n in neighbors if n.get("id")})
     device_signal_is_meaningful = 0 < distinct_neighbor_cards <= DEVICE_NEIGHBORS_COLLISION_CAP
 
+    # Looked up by type, not a hardcoded index -- `evidence`'s order has
+    # already shifted once (device_profile_label inserted above); indexing
+    # by position here would silently break again the next time an item is
+    # added to this list.
+    closed_cases_data = next((e["data"] for e in evidence if e["type"] == "closed_cases"), [])
+
     return {
         **state,
         "card_id": card_id,
@@ -237,8 +290,33 @@ async def gather_evidence_node(tg: TigerGraphMCP, state: InvestigationState) -> 
         "shared_device": device_signal_is_meaningful or coordinated,
         "shared_region": coordinated,
         "shared_email": False,
-        "single_signal": row.get("trigger_type") == "risk_score" and not evidence[3]["data"] and not coordinated,
+        "single_signal": row.get("trigger_type") == "risk_score" and not closed_cases_data and not coordinated,
         "cluster_prior_fraud_rate": cluster_rate,
+        "episode": {
+            "txn_ids": episode.txn_ids,
+            "first_txn_id": episode.first_txn_id,
+            "exposure_usd": episode.exposure_usd,
+            "detected_pattern": episode.detected_pattern,
+            "first_date": episode.first_date,
+            "last_date": episode.last_date,
+        },
+        "is_new_device": is_new_device,
+        "is_proxy": is_proxy,
+        "out_of_region": out_of_region,
+        "recurring_charge_detected": recurring_charge_detected,
+        "device_profile_label": device_label,
+        # Answer-quality fix (2026-09-23): the README's `connected_card_ids`/
+        # `connected_device_profiles` fields -- previously always emitted as
+        # `[]` regardless of what device_neighbors/ring_membership actually
+        # found. Only populated when shared_device is the MEANINGFUL signal
+        # (cardinality-gated, not the raw 299-card fingerprint-collision
+        # noise -- see DEVICE_NEIGHBORS_COLLISION_CAP above), so a generic
+        # device collision doesn't get reported as if it were a real ring.
+        "connected_card_ids": (
+            sorted({n["id"] for n in neighbors if n.get("id") and n["id"] != card_id})
+            if device_signal_is_meaningful else []
+        ),
+        "connected_device_profiles": [device_label] if device_signal_is_meaningful and device_label else [],
     }
 
 
@@ -330,22 +408,76 @@ async def apply_followup_node(tg: TigerGraphMCP, state: InvestigationState) -> I
     }
 
 
+def _deterministic_pattern_override(state: InvestigationState) -> str | None:
+    """Answer-quality fix (2026-09-23): card_testing and the CNP-burst
+    patterns are decided from real, checkable facts in episode.py (a
+    specific transaction sequence; a new/shared device flag on the flagged
+    transaction), not an LLM guess -- so they take priority over whatever
+    the LLM independently proposes. `out_of_region_use` is similarly a
+    direct comparison of the flagged transaction's own addr1 against this
+    card's own history. account_takeover/undocumented/none have no
+    equivalent deterministic check here (README: describing an undocumented
+    pattern in your own words is scored, which is exactly what an LLM call
+    is for) -- returning None for those defers to the LLM's own `pattern`.
+    """
+    episode = state.get("episode") or {}
+    if episode.get("detected_pattern") == "card_testing":
+        return "card_testing"
+    if state.get("out_of_region"):
+        return "out_of_region_use"
+    if episode.get("detected_pattern") == "cnp_burst":
+        return "card_not_present_new_device" if state.get("is_new_device") else "card_not_present_fraud"
+    return None
+
+
 async def assess_node(state: InvestigationState) -> InvestigationState:
     row = state["case_row"]
+    episode = state.get("episode") or {}
+    deterministic_hints = (
+        f"Deterministic signals already computed from the graph (trust these over guessing): "
+        f"episode transactions (same fraud episode as the flagged one, by rule-based detection): "
+        f"{episode.get('txn_ids', [row.get('flagged_txn_id')])}; "
+        f"episode exposure so far: ${episode.get('exposure_usd', 0):.2f}; "
+        f"card-testing sequence detected: {episode.get('detected_pattern') == 'card_testing'}; "
+        f"burst of related online transactions detected: {episode.get('detected_pattern') == 'cnp_burst'}; "
+        f"flagged transaction is from a device marked NEW for this account (id_15): {state.get('is_new_device', False)}; "
+        f"flagged transaction is behind an anonymizing/hidden proxy (id_23): {state.get('is_proxy', False)}; "
+        f"out-of-region use detected (new billing region while home activity continues): {state.get('out_of_region', False)}."
+    )
     prompt = (
         f"Case trigger: {row.get('trigger_text', '')}\n"
+        f"{deterministic_hints}\n"
         f"Evidence gathered: {_summarize_evidence_for_prompt(state['evidence'])}\n\n"
         "Based on this evidence, classify the fraud pattern (one of: card_testing, "
         "card_not_present_fraud, card_not_present_new_device, out_of_region_use, "
-        "account_takeover, undocumented, none), estimate fraud_probability (0-1), "
-        "list evidence_claims (short strings), and similar_prior_case_ids if any closed "
-        "case narratives clearly match."
+        "account_takeover, undocumented, none). Prefer the deterministic signals above over your "
+        "own guess when they clearly apply; use account_takeover/undocumented/none for activity "
+        "they don't cover. If (and only if) pattern is undocumented, also fill "
+        "pattern_description with two or three sentences on what the pattern is, who it affects, "
+        "and how you found it; otherwise leave pattern_description as \"\". Estimate "
+        "fraud_probability (0-1), list evidence_claims (short strings), and "
+        "similar_prior_case_ids if any closed case narratives clearly match."
     )
     result = await generate_structured(prompt, AssessmentOutput)
-    return {**state, "assessment": result.model_dump()}
+    dumped = result.model_dump()
+    override = _deterministic_pattern_override(state)
+    if override is not None:
+        dumped["pattern"] = override
+        dumped["pattern_description"] = ""  # only "undocumented" carries a description
+    return {**state, "assessment": dumped}
 
 
 def stopping_check(state: InvestigationState) -> str:
+    # Answer-quality fix (2026-09-23): a customer_report case's trigger IS
+    # the customer's own statement ("I never made this purchase") -- it
+    # already arrived unprompted, before this investigation started. Asking
+    # a SIMULATED follow-up question the customer already answered in the
+    # trigger text would be redundant and dishonest (README: evidence_requests
+    # should record what was actually asked; nothing was asked here). See
+    # policy_node for how the report's own content is applied directly as
+    # `customer_response` instead.
+    if state["case_row"].get("trigger_type") == "customer_report":
+        return "stop"
     prob = state["assessment"]["fraud_probability"]
     if prob >= 0.85 or prob <= 0.15:
         return "stop"
@@ -361,7 +493,10 @@ async def evidence_request_node(state: InvestigationState) -> InvestigationState
         "customer_validation",
         flagged_amount=flagged_amount or 100.0,
         customer_median_amount=100.0,
-        is_new_device=state.get("shared_device", False),
+        # Real signal now (see gather_evidence_node) -- previously this was
+        # `shared_device`, a different fact entirely (device sharing across
+        # cards, not device newness for this account).
+        is_new_device=state.get("is_new_device", False),
         fraud_probability=state["assessment"]["fraud_probability"],
     )
     request = {
@@ -378,7 +513,8 @@ async def reassess_node(state: InvestigationState) -> InvestigationState:
         f"Original assessment: {state['assessment']}\n"
         f"Customer response: {response_text}\n\n"
         "Update the fraud_probability and evidence_claims given this new information. "
-        "Keep the same pattern unless the response clearly changes it."
+        "Keep the same pattern (and pattern_description, if pattern is undocumented) "
+        "unless the response clearly changes it."
     )
     result = await generate_structured(prompt, AssessmentOutput)
     return {**state, "assessment": result.model_dump()}
@@ -386,7 +522,11 @@ async def reassess_node(state: InvestigationState) -> InvestigationState:
 
 def _findings_from_state(state: InvestigationState, customer_response: str | None) -> Findings:
     assessment = state["assessment"]
-    row = state["case_row"]
+    # Answer-quality fix (2026-09-23): exposure is the episode's total, not
+    # just the flagged transaction's own amount (README Sec 4: "sum of the
+    # absolute amounts of every transaction ... in the fraud episode").
+    episode = state.get("episode") or {}
+    exposure_usd = episode.get("exposure_usd", 0.0)
     return Findings(
         pattern=assessment["pattern"],
         fraud_probability=assessment["fraud_probability"],
@@ -394,7 +534,7 @@ def _findings_from_state(state: InvestigationState, customer_response: str | Non
         shared_device=state.get("shared_device", False),
         shared_region=state.get("shared_region", False),
         shared_email=state.get("shared_email", False),
-        exposure_usd=_flagged_amount(row),
+        exposure_usd=exposure_usd,
         customer_response=customer_response,
         undocumented_coordinated=(
             assessment["pattern"] == "undocumented"
@@ -404,27 +544,44 @@ def _findings_from_state(state: InvestigationState, customer_response: str | Non
 
 
 async def policy_node(state: InvestigationState) -> InvestigationState:
+    row = state["case_row"]
     initial_findings = _findings_from_state(state, customer_response=None)
     initial_result = apply_policy(initial_findings)
 
-    if state.get("evidence_requests"):
+    # Answer-quality fix (2026-09-23): a customer_report case's own trigger
+    # text IS the customer's statement -- "initial" here means "before this
+    # report's own content is applied" (graph evidence + pattern alone),
+    # "final" means "with the customer's own already-on-file statement
+    # applied". Nothing was simulated or asked; R7 (recurring charge) is
+    # checked deterministically (episode.py) since this dataset has no
+    # merchant-name column to match against directly.
+    if row.get("trigger_type") == "customer_report":
+        customer_response = "disputes_recurring" if state.get("recurring_charge_detected") else "denies"
+        final_findings = _findings_from_state(state, customer_response=customer_response)
+        final_result = apply_policy(final_findings)
+        stop_reason = (
+            "Customer's own report already establishes a recurring-charge pattern (R7); "
+            "no further evidence needed." if customer_response == "disputes_recurring"
+            else "Customer's own report already establishes non-recognition of the charge (R2); "
+            "no simulated follow-up needed since the customer already stated this unprompted."
+        )
+    elif state.get("evidence_requests"):
         raw_response = state["evidence_requests"][-1]["assumed_response"]
         customer_response = "denies" if "did not make" in raw_response else (
             "confirmed_legitimate" if "confirms they made" in raw_response else "no_reply"
         )
         final_findings = _findings_from_state(state, customer_response=customer_response)
         final_result = apply_policy(final_findings)
+        stop_reason = "Simulated customer response settled the verdict."
     else:
         final_result = initial_result
+        stop_reason = "Fraud probability reached a decisive threshold with sufficient evidence."
 
     return {
         **state,
         "initial_policy_result": initial_result.model_dump(),
         "final_policy_result": final_result.model_dump(),
-        "stop_reason": (
-            "Customer response settled the verdict." if state.get("evidence_requests")
-            else "Fraud probability reached a decisive threshold with sufficient evidence."
-        ),
+        "stop_reason": stop_reason,
     }
 
 

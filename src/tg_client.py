@@ -58,24 +58,60 @@ def _resolve_tigergraph_mcp_command() -> str:
     return shutil.which("tigergraph-mcp") or "tigergraph-mcp"
 
 
+# Answer-quality / hardening fix (2026-09-23): the investigation runtime
+# (graph_flow.py / run_case.py) never needs schema-mutating or bulk-loading
+# tools -- those only run once, during setup (src/schema/*). The LLM itself
+# can't reach any MCP tool at all regardless (it only ever sees the 3
+# hardcoded FOLLOWUP_TOOL_SCHEMAS Python functions via generate_with_tools,
+# never this client object -- see src/graph/queries.py's dispatch_
+# followup_tool), so this isn't closing a path the model could exploit; it's
+# reducing the blast radius of a bug or a bad argument in OUR OWN code
+# during a live investigation run, the same defense-in-depth idea reviewed
+# in PROJECT_COMPARISON_AND_INTEGRATION_RECOMMENDATION.md's MCP-safety row.
+# tigergraph-mcp's own `--allowed-tools` flag (confirmed present via
+# `tigergraph-mcp --help`) restricts the SERVER PROCESS itself to exactly
+# this list -- every tool investigation.py's whole call path actually uses:
+# card_window/device_neighbors/region_neighbors/closed_case_lookup/
+# ring_membership/device_profile_label (run_installed_query, plus one-time
+# gsql installs), retrieve_knowledge (search_top_k_similarity), and the
+# case write-back + read-back receipt (add_nodes, upsert_vectors, get_node).
+INVESTIGATION_ALLOWED_TOOLS = (
+    "tigergraph__gsql,"
+    "tigergraph__run_installed_query,"
+    "tigergraph__search_top_k_similarity,"
+    "tigergraph__upsert_vectors,"
+    "tigergraph__add_nodes,"
+    "tigergraph__get_node"
+)
+
+
 class TigerGraphMCP:
     """Persistent MCP client session against a running tigergraph-mcp server.
 
     Usage:
         async with TigerGraphMCP() as tg:
             result = await tg.gsql("SHOW VERTEX TYPE Customer")
+
+        # Investigation runtime (run_case.py/run_all.py): restrict the server
+        # process to only the tools an investigation actually needs.
+        async with TigerGraphMCP(allowed_tools=INVESTIGATION_ALLOWED_TOOLS) as tg:
+            ...
     """
 
-    def __init__(self, env_path: str = ".env") -> None:
+    def __init__(self, env_path: str = ".env", allowed_tools: str | None = None) -> None:
         self._env_path = env_path
+        self._allowed_tools = allowed_tools
         self._stack: AsyncExitStack | None = None
         self.session: ClientSession | None = None
 
     async def __aenter__(self) -> "TigerGraphMCP":
         env_dict = dotenv_values(Path(self._env_path).resolve())
+        args = ["-vv"]
+        if self._allowed_tools:
+            args += ["--allowed-tools", self._allowed_tools]
         server_params = StdioServerParameters(
             command=_resolve_tigergraph_mcp_command(),
-            args=["-vv"],
+            args=args,
             env={**get_default_environment(), **env_dict},
         )
         self._stack = AsyncExitStack()
