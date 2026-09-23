@@ -124,23 +124,29 @@ def _clip_strings(value: Any, max_text_len: int) -> Any:
 
 
 def _summarize_evidence_for_prompt(
-    evidence: list[dict[str, Any]], max_items: int = 8, max_text_len: int = 300
+    evidence: list[dict[str, Any]], max_items: int = 3, max_text_len: int = 150
 ) -> list[dict[str, Any]]:
     """Trim the deterministic evidence pack down to something that fits this
     Groq account's token budget.
 
-    Confirmed live: passing `state['evidence']` verbatim into the assess/
-    reassess prompts blew a single request to ~15,300 tokens against an 8,000
-    TPM cap (`413 Request too large for model openai/gpt-oss-120b ... Limit
-    8000, Requested 15327`) -- `device_neighbors` alone can carry up to 300
-    card dicts (confirmed against this exact HHG-017/C04570-K1 fixture in
-    `docs/manual-case-checkpoint.md`: 621 shared transactions / up to 300
-    shared cards), and `retrieve_knowledge`'s hits carry full document/case
-    text. Every evidence type is kept (the LLM still sees that each lookup
-    ran and roughly what it found), but any list-shaped payload is capped to
-    `max_items` entries with an explicit `total_count` so the model knows
-    more exist rather than silently seeing a partial list as the whole
-    picture, and long string fields are clipped to `max_text_len` characters.
+    Confirmed live (original fix): passing `state['evidence']` verbatim into
+    the assess/reassess prompts blew a single request to ~15,300 tokens
+    against an 8,000 TPM cap (`413 Request too large for model openai/gpt-
+    oss-120b ... Limit 8000, Requested 15327`) -- `device_neighbors` alone
+    can carry up to 300 card dicts, and `retrieve_knowledge`'s hits carry
+    full document/case text.
+
+    Tightened again (2026-09-24), confirmed live during Task 14's batch
+    run: the 8,000 limit is per-MINUTE, not per-call, and this pipeline
+    makes several large calls per case (assess, sometimes reassess,
+    sometimes the SAR narrative) -- the original max_items=8/max_text_len=
+    300 kept any ONE call under budget but not several stacked inside the
+    same 60s window, so cases were exhausting Groq's retry budget even with
+    patient backoff (see llm.py). Every evidence type is still kept (the
+    LLM still sees that each lookup ran and roughly what it found), but
+    list-shaped payloads are capped tighter and string fields clipped
+    shorter, since `total_count` already tells the model more exist without
+    needing the full sample.
     """
     summary: list[dict[str, Any]] = []
     for item in evidence:

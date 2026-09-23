@@ -75,15 +75,18 @@ def _retry_after_seconds(exc: openai.RateLimitError) -> float | None:
 
 @retry(
     retry=retry_if_exception_type(_RateLimited),
-    # Reliability fix (2026-09-24): confirmed live during Task 14's batch
-    # run that the OLD schedule (5 attempts, max 30s backoff -- ~60s total)
-    # was not patient enough: every one of 11 cases run back-to-back hit
-    # Groq's TPM window and exhausted all 5 attempts before the window
-    # cleared. This schedule's own exponential ceiling (90s) plus the
-    # explicit Retry-After sleep below comfortably rides out a standard
-    # 60s TPM window even across several stacked calls.
-    wait=wait_exponential(multiplier=1, min=2, max=90),
-    stop=stop_after_attempt(8),
+    # Reliability fix (2026-09-24), REVISED: the real fix for sustained
+    # rate-limiting is smaller prompts (see _summarize_evidence_for_prompt
+    # in graph_flow.py -- Groq's cap is 8,000 tokens/MINUTE, shared across
+    # every call this pipeline makes in that window, not per call). This
+    # schedule is now a small fallback on top of the explicit Retry-After
+    # sleep below, not a second independent backoff -- the first version of
+    # this fix (max=90s here, STACKED on top of a separate up-to-65s sleep)
+    # made a single retry cycle take minutes, which just burned wall-clock
+    # time without fixing the actual cause and made an 11-case rerun take
+    # 2 hours and still mostly fail.
+    wait=wait_exponential(multiplier=1, min=1, max=15),
+    stop=stop_after_attempt(6),
 )
 def _groq_chat(messages: list[dict], **kwargs) -> "openai.types.chat.ChatCompletion":
     client = _groq_client()
@@ -94,10 +97,10 @@ def _groq_chat(messages: list[dict], **kwargs) -> "openai.types.chat.ChatComplet
     except openai.RateLimitError as exc:
         retry_after = _retry_after_seconds(exc)
         if retry_after is not None:
-            # Sleep the server's own stated duration BEFORE handing off to
-            # tenacity's backoff, so the very next attempt (not just some
-            # later one) lands after the window actually clears.
-            time.sleep(min(retry_after + 1, 65))
+            # Sleep the server's own stated duration -- this IS the wait,
+            # not an addition to tenacity's own backoff (see the retry
+            # decorator's docstring above for why stacking both was wrong).
+            time.sleep(min(retry_after + 0.5, 20))
         raise _RateLimited from exc
 
 
