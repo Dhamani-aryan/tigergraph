@@ -101,7 +101,9 @@ async def run_single_case(tg: TigerGraphMCP, case_row: dict) -> AnswerFile:
 
     narrative = ""
     if sar_info["sar_file"]:
-        narrative = await write_sar_narrative(case_row, assessment)
+        narrative = await write_sar_narrative(
+            case_row, assessment, episode=episode, connected_card_ids=connected_card_ids, exposure_usd=exposure_usd
+        )
 
     sar = _build_sar(case_row, sar_info, narrative, episode, connected_card_ids, flagged_txn_id, exposure_usd)
 
