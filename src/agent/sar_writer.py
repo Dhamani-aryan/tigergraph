@@ -16,6 +16,7 @@ async def write_sar_narrative(case_row: dict, case_summary: dict) -> str:
         "(locations, channels), how it was carried out, and why it is suspicious. Base it "
         "only on these facts -- do not invent details:\n\n"
         f"Customer: {case_row['customer_id']}, Card: {case_row['card_id']}\n"
+        f"Date: {str(case_row.get('opened_at', ''))[:10]}\n"
         f"Pattern: {case_summary['pattern']}\n"
         f"Fraud probability: {case_summary['fraud_probability']}\n"
         f"Evidence claims: {case_summary['evidence_claims']}\n"
