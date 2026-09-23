@@ -241,8 +241,23 @@ async def card_window(
     card_id: str,
     hours: float = 2.0,
     reference_txn_id: str | None = None,
+    cutoff_ts: str | None = None,
 ) -> list[dict]:
     """The card's transactions, windowed to `hours` around an anchor point.
+
+    **Temporal leakage fix (2026-09-23):** `cutoff_ts` (pass the case's
+    `opened_at`) caps the window so it never includes anything the bank
+    could not have seen when the case was opened. Before this fix, the
+    default `hours=48` symmetric window around the flagged transaction could
+    -- and on this dataset, for 13 of the 20 case-pack rows, DID -- include
+    transactions that happened *after* the case was opened (up to 61 for
+    HHG-018), which is future information relative to the investigation.
+    `opened_at` is only 1-6 hours after the flagged transaction across the
+    whole case pack, so this cap is the difference between a real 48h
+    forward window and the true (much narrower) window an analyst actually
+    had. `cutoff_ts` is optional (kept so this function still has a sane
+    standalone default) but every real call site (`gather_evidence_node`,
+    the `wider_card_window` follow-up tool) now always passes it.
 
     **Fixed after live task-10-review.md finding (Important, live-demonstrated
     defect):** the original version (no `reference_txn_id` parameter) always
@@ -290,6 +305,15 @@ async def card_window(
     if not valid:
         return txns
 
+    cutoff_dt = _parse_ts(cutoff_ts) if cutoff_ts else None
+    # Applied to EVERY branch below, not just the reference-anchored one --
+    # a cutoff means "nothing after this point", full stop, regardless of
+    # which anchor selected the window.
+    if cutoff_dt is not None:
+        valid = [(t, ts) for t, ts in valid if ts <= cutoff_dt]
+        if not valid:
+            return []
+
     reference_ts = None
     if reference_txn_id is not None:
         matches = [ts for t, ts in valid if t.get("id") == reference_txn_id]
@@ -299,14 +323,18 @@ async def card_window(
     if reference_ts is not None:
         low = reference_ts - timedelta(hours=hours)
         high = reference_ts + timedelta(hours=hours)
+        if cutoff_dt is not None and high > cutoff_dt:
+            high = cutoff_dt
         return [t for t, ts in valid if low <= ts <= high]
 
     # Fallback: no reference given (or it wasn't found on this card) --
     # original one-directional "hours before the card's own latest
-    # transaction" behavior, kept for backward compatibility.
+    # transaction" behavior, kept for backward compatibility. `valid` is
+    # already cutoff-filtered above, so "latest" here means "latest
+    # on-or-before cutoff", not the card's true latest transaction.
     latest = max(ts for _, ts in valid)
-    cutoff = latest - timedelta(hours=hours)
-    return [t for t, ts in valid if ts >= cutoff]
+    window_cutoff = latest - timedelta(hours=hours)
+    return [t for t, ts in valid if ts >= window_cutoff]
 
 
 # --------------------------------------------------------------------------
@@ -342,7 +370,7 @@ async def customer_cards(tg: TigerGraphMCP, customer_id: str) -> list[dict]:
 # --------------------------------------------------------------------------
 DEVICE_NEIGHBORS_GSQL = f"""
 USE GRAPH {GRAPH_NAME}
-CREATE OR REPLACE QUERY device_neighbors(VERTEX<Transaction> input_txn) FOR GRAPH {GRAPH_NAME} {{
+CREATE OR REPLACE QUERY device_neighbors(VERTEX<Transaction> input_txn, STRING cutoff_ts) FOR GRAPH {GRAPH_NAME} {{
     SetAccum<VERTEX<DeviceProfile>> @@device;
     SetAccum<VERTEX<Transaction>> @@sameDeviceTxns;
 
@@ -350,9 +378,16 @@ CREATE OR REPLACE QUERY device_neighbors(VERTEX<Transaction> input_txn) FOR GRAP
     DevStep = SELECT d FROM Start-(FROM_DEVICE)->DeviceProfile:d
               ACCUM @@device += d;
 
+    // Temporal leakage fix (2026-09-23): `t.ts <= cutoff_ts` excludes any
+    // transaction that happened after the case was opened. `ts` is a fixed-
+    // width "YYYY-MM-DD HH:MM:SS" STRING, so lexicographic <= is exactly
+    // chronological <= -- no DATETIME cast needed. Before this fix, another
+    // card could show up as a "shared device" match purely because it used
+    // the same device fingerprint WEEKS after this case's cutoff, which is
+    // not evidence the investigator could have had.
     AllTxns = {{Transaction.*}};
     SameDeviceTxns = SELECT t FROM AllTxns:t -(FROM_DEVICE)-> DeviceProfile:d2
-                      WHERE d2 IN @@device
+                      WHERE d2 IN @@device AND t.ts <= cutoff_ts
                       ACCUM @@sameDeviceTxns += t;
 
     AllCards = {{Card.*}};
@@ -367,8 +402,9 @@ INSTALL QUERY device_neighbors
 """.strip()
 
 
-async def device_neighbors(tg: TigerGraphMCP, transaction_id: str) -> list[dict]:
-    """Other Cards that share this transaction's device fingerprint.
+async def device_neighbors(tg: TigerGraphMCP, transaction_id: str, cutoff_ts: str) -> list[dict]:
+    """Other Cards that share this transaction's device fingerprint, using
+    only device activity on or before `cutoff_ts` (the case's `opened_at`).
 
     The brief's draft chains `Transaction -(FROM_DEVICE)-> DeviceProfile
     <-(FROM_DEVICE)- Transaction <-(MADE)- Card` in one FROM clause with a
@@ -377,14 +413,22 @@ async def device_neighbors(tg: TigerGraphMCP, transaction_id: str) -> list[dict]
     confirmed live parse errors on this server -- see the module docstring).
     Rewritten as: get the one DeviceProfile the input transaction points to
     (forward, trivial), then forward-seed-and-filter twice more (all
-    Transactions -> DeviceProfile, keep ones matching; all Cards -> those
-    Transactions, keep ones matching). Verified live against HHG-017's known
-    device fingerprint: 621 shared transactions / up to 300 (LIMIT-capped)
-    shared cards, matching Task 8's independently-confirmed 621/299 exactly
-    (299 < the 300 cap, so nothing was actually truncated for this fixture).
+    Transactions -> DeviceProfile, keep ones matching AND on/before cutoff;
+    all Cards -> those Transactions, keep ones matching). Verified live
+    against HHG-017's known device fingerprint before the temporal filter
+    was added: 621 shared transactions / up to 300 (LIMIT-capped) shared
+    cards, matching Task 8's independently-confirmed 621/299 exactly (299 <
+    the 300 cap, so nothing was actually truncated for that fixture); the
+    cutoff can only shrink that count, never grow it.
+
+    `cutoff_ts` is required, not optional, precisely because the un-bounded
+    version was the finding: every real caller has a case's `opened_at`
+    available, and there is no legitimate reason to call this without it.
     """
     await _ensure_installed(tg, "device_neighbors", DEVICE_NEIGHBORS_GSQL)
-    result = await _run_installed_query(tg, "device_neighbors", {"input_txn": transaction_id})
+    result = await _run_installed_query(
+        tg, "device_neighbors", {"input_txn": transaction_id, "cutoff_ts": cutoff_ts}
+    )
     print_results = _print_results(result)
     raw_cards = print_results[1]["shared_cards"] if len(print_results) > 1 else []
     return _flatten_vertices(raw_cards, "SharedCards")
@@ -395,10 +439,17 @@ async def device_neighbors(tg: TigerGraphMCP, transaction_id: str) -> list[dict]
 # --------------------------------------------------------------------------
 REGION_NEIGHBORS_GSQL = f"""
 USE GRAPH {GRAPH_NAME}
-CREATE OR REPLACE QUERY region_neighbors(VERTEX<BillingRegion> input_region) FOR GRAPH {GRAPH_NAME} {{
+CREATE OR REPLACE QUERY region_neighbors(VERTEX<BillingRegion> input_region, STRING cutoff_ts) FOR GRAPH {GRAPH_NAME} {{
+    // Temporal leakage fix (2026-09-23): `t.ts <= cutoff_ts` is now part of
+    // the WHERE clause GSQL evaluates BEFORE `LIMIT 500`, not a client-side
+    // filter applied after. This also fixes the previously-documented
+    // "LIMIT truncates before the time filter can run" defect for free --
+    // filtering first means the 500 returned rows are the region's 500
+    // most-relevant (on-or-before cutoff) rows, not an arbitrary pre-cutoff
+    // mix of past and future activity.
     AllTxns = {{Transaction.*}};
     RegionTxns = SELECT t FROM AllTxns:t -(BILLED_IN)-> BillingRegion:b
-                 WHERE b == input_region
+                 WHERE b == input_region AND t.ts <= cutoff_ts
                  LIMIT 500;
     PRINT RegionTxns[RegionTxns.transaction_id, RegionTxns.ts, RegionTxns.TransactionAmt,
                       RegionTxns.channel, RegionTxns.risk_score, RegionTxns.customer_id] AS transactions;
@@ -410,10 +461,12 @@ INSTALL QUERY region_neighbors
 async def region_neighbors(
     tg: TigerGraphMCP,
     addr1: str,
+    cutoff_ts: str,
     txn_ts: str | None = None,
     window_days: float | None = None,
 ) -> list[dict]:
-    """Other transactions billed in the same region as `addr1`.
+    """Other transactions billed in the same region as `addr1`, on or before
+    `cutoff_ts` (the case's `opened_at`).
 
     `BillingRegion` was never explicitly probed for `primary_id_as_attribute`
     before this task; avoided the same way as `card_window`/`customer_cards`
@@ -428,18 +481,18 @@ async def region_neighbors(
 
     Server-side `LIMIT 500` guards against the coarse `BillingRegion`
     collisions Task 8.5 found (max 2,006 cards sharing one region) blowing
-    up the response; `txn_ts`/`window_days`, when both given, then filter
-    that (possibly LIMIT-truncated) set down to the actual time window in
-    Python, same string-timestamp-parsing approach as `card_window`. Known
-    limitation, documented rather than silently accepted: for a region with
-    more than 500 transactions total, the LIMIT is applied BEFORE the time
-    filter, so a genuinely-in-window transaction could be excluded if 500
-    other out-of-window ones for that region happen to sort earlier in
-    GSQL's arbitrary vertex-set order. Confirmed live that addr1 "204.0"
-    (this task's own fixture's region) already hits this exact cap.
+    up the response; `cutoff_ts` is now applied in the SAME GSQL WHERE
+    clause, before that limit (see the query docstring above -- this
+    replaces the old client-side-only `txn_ts`/`window_days` narrowing,
+    which ran too late to prevent the LIMIT-before-filter defect). `txn_ts`/
+    `window_days`, when both given, still further narrow that (now
+    cutoff-safe) set down to a specific window in Python, same
+    string-timestamp-parsing approach as `card_window`.
     """
     await _ensure_installed(tg, "region_neighbors", REGION_NEIGHBORS_GSQL)
-    result = await _run_installed_query(tg, "region_neighbors", {"input_region": addr1})
+    result = await _run_installed_query(
+        tg, "region_neighbors", {"input_region": addr1, "cutoff_ts": cutoff_ts}
+    )
     print_results = _print_results(result)
     raw_txns = print_results[0]["transactions"] if print_results else []
     txns = _flatten_vertices(raw_txns, "RegionTxns")
@@ -554,6 +607,13 @@ async def closed_case_lookup(
     `confirmed_fraud` cases -- expected: Task 8's checkpoint already
     established this device fingerprint is a coarse category shared by 299
     customers, not a meaningful ring signal for this specific card).
+
+    No `cutoff_ts` parameter here, unlike `card_window`/`device_neighbors`/
+    `region_neighbors`: confirmed against the actual data (2026-09-23) that
+    every row in `closed_cases_history.csv` closes by 2016-11-06, and every
+    row in `case_pack.csv` opens from 2016-11-12 onward -- so a closed case
+    is, by construction, always fully in the past relative to any case this
+    function is called for. Revisit if the dataset changes.
     """
     results: list[dict] = []
     if card_id:
@@ -676,13 +736,18 @@ FOLLOWUP_TOOL_SCHEMAS: list[dict] = [
 ]
 
 
-async def dispatch_followup_tool(tg: TigerGraphMCP, name: str, arguments: dict) -> list[dict] | dict:
+async def dispatch_followup_tool(
+    tg: TigerGraphMCP, name: str, arguments: dict, cutoff_ts: str
+) -> list[dict] | dict:
+    """`cutoff_ts` (the case's `opened_at`) is required here too -- a
+    follow-up call is still part of the SAME investigation and must not see
+    anything the deterministic first pass wasn't allowed to see either."""
     if name == "wider_region_check":
-        # No time-window narrowing for the "wider" follow-up -- deliberately
-        # omits txn_ts/window_days so region_neighbors returns its full
-        # (LIMIT-capped) unfiltered set rather than the default pass's
-        # narrower time window.
-        return await region_neighbors(tg, arguments["addr1"])
+        # No time-WINDOW narrowing for the "wider" follow-up (still no
+        # txn_ts/window_days, so region_neighbors returns its full
+        # LIMIT-capped set rather than the default pass's narrower window)
+        # -- but the cutoff itself is never optional.
+        return await region_neighbors(tg, arguments["addr1"], cutoff_ts=cutoff_ts)
     if name == "closed_case_lookup_by_region":
         return await closed_case_lookup(tg, addr1=arguments["addr1"])
     if name == "wider_card_window":
@@ -691,5 +756,6 @@ async def dispatch_followup_tool(tg: TigerGraphMCP, name: str, arguments: dict) 
             arguments["card_id"],
             hours=arguments.get("hours", 168),
             reference_txn_id=arguments.get("reference_txn_id"),
+            cutoff_ts=cutoff_ts,
         )
     raise ValueError(f"Unknown follow-up tool: {name}")

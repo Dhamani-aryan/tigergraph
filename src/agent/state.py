@@ -6,6 +6,7 @@ from typing import Any, TypedDict
 class InvestigationState(TypedDict, total=False):
     case_row: dict[str, Any]
     card_id: str
+    cutoff_ts: str  # case_row["opened_at"]; every graph lookup that can see other transactions is bounded to this
     evidence: list[dict[str, Any]]
     assessment: dict[str, Any]  # LLM output: pattern, probability, claims, similar_cases
     single_signal: bool

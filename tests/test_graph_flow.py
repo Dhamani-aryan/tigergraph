@@ -15,7 +15,7 @@ def _patch_evidence_functions(
     shared_device/shared_region/single_signal logic can be exercised synthetically,
     without a live TigerGraph connection or LLM call."""
 
-    async def _fake_card_window(tg, card_id, hours, reference_txn_id=None):
+    async def _fake_card_window(tg, card_id, hours, reference_txn_id=None, cutoff_ts=None):
         # The flagged transaction itself must be present so gather_evidence_node's
         # (indirect, via later nodes) reference resolution has something real to
         # find; the specific fields don't matter for the shared_device assertions.
@@ -24,7 +24,7 @@ def _patch_evidence_functions(
     async def _fake_customer_cards(tg, customer_id):
         return []
 
-    async def _fake_device_neighbors(tg, transaction_id):
+    async def _fake_device_neighbors(tg, transaction_id, cutoff_ts=None):
         return device_neighbors_result
 
     async def _fake_closed_case_lookup(tg, card_id=None, device_id=None, addr1=None):
@@ -50,6 +50,10 @@ _CASE_ROW = {
     "flagged_txn_id": "3450629",
     "trigger_type": "risk_score",
     "trigger_text": "Real-time model scored transaction 3450629 ($100.09, online) at 0.57.",
+    # HHG-017's real case-open time (1h after the flagged txn's own ts,
+    # 2016-11-11 23:46:24) -- gather_evidence_node now requires opened_at to
+    # compute cutoff_ts for the temporal leakage fix.
+    "opened_at": "2016-11-12 00:46:24",
 }
 
 

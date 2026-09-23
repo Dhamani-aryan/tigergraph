@@ -162,13 +162,26 @@ async def gather_evidence_node(tg: TigerGraphMCP, state: InvestigationState) -> 
     evidence: list[dict[str, Any]] = []
     tool_calls = 0
 
+    # Temporal cutoff fix (2026-09-23): every graph lookup below that can see
+    # OTHER transactions (card_window, device_neighbors, region_neighbors) is
+    # now bounded to `opened_at` -- the moment the bank actually opened this
+    # case. Confirmed live on the real case pack: without this, card_window's
+    # ±48h window and the unbounded device/region lookups could see activity
+    # AFTER the case opened (up to 61 extra transactions on HHG-018), which
+    # is future information no analyst had at investigation time.
+    # closed_case_lookup needs no cutoff: every closed case in this dataset
+    # closes before any case-pack case opens (verified against the CSVs).
+    cutoff_ts = str(row["opened_at"])
+
     # reference_txn_id is required here, not optional -- Task 10's review found
     # that without it, card_window anchors on the card's own LATEST transaction
     # rather than the flagged one, silently excluding the exact transaction the
     # case is about whenever it isn't the card's most recent activity (confirmed
     # live: a 44-day-old flagged transaction was dropped entirely). Every
     # case-pack row's flagged_txn_id is exactly the reference this needs.
-    window = await card_window(tg, card_id, hours=48, reference_txn_id=str(row["flagged_txn_id"]))
+    window = await card_window(
+        tg, card_id, hours=48, reference_txn_id=str(row["flagged_txn_id"]), cutoff_ts=cutoff_ts
+    )
     evidence.append({"type": "card_window", "data": window})
     tool_calls += 1
 
@@ -176,7 +189,7 @@ async def gather_evidence_node(tg: TigerGraphMCP, state: InvestigationState) -> 
     evidence.append({"type": "customer_cards", "data": cards})
     tool_calls += 1
 
-    neighbors = await device_neighbors(tg, str(row["flagged_txn_id"]))
+    neighbors = await device_neighbors(tg, str(row["flagged_txn_id"]), cutoff_ts=cutoff_ts)
     evidence.append({"type": "device_neighbors", "data": neighbors})
     tool_calls += 1
 
@@ -211,6 +224,7 @@ async def gather_evidence_node(tg: TigerGraphMCP, state: InvestigationState) -> 
     return {
         **state,
         "card_id": card_id,
+        "cutoff_ts": cutoff_ts,
         "evidence": evidence,
         "tool_calls": state.get("tool_calls", 0) + tool_calls,
         # shared_device/shared_region now come from the graph-algorithm cluster output
@@ -303,7 +317,11 @@ async def apply_followup_node(tg: TigerGraphMCP, state: InvestigationState) -> I
     if not pending:
         return state
     arguments = _resolve_followup_arguments(state, pending["name"], pending["arguments"])
-    followup_result = await dispatch_followup_tool(tg, pending["name"], arguments)
+    # Same cutoff as the deterministic first pass (see gather_evidence_node)
+    # -- a follow-up lookup is still part of this investigation, so it must
+    # not be able to see anything past the case's own opened_at either.
+    cutoff_ts = state.get("cutoff_ts") or str(state["case_row"]["opened_at"])
+    followup_result = await dispatch_followup_tool(tg, pending["name"], arguments, cutoff_ts=cutoff_ts)
     evidence = [*state["evidence"], {"type": f"followup:{pending['name']}", "data": followup_result}]
     return {
         **state,

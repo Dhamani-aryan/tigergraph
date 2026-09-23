@@ -23,6 +23,15 @@ KNOWN_REGION = "204.0"  # billing region shared by KNOWN_TXN and several others
 KNOWN_DEVICE = "Dec9ef04aa023"  # HHG-017's device fingerprint (299-customer collision)
 KNOWN_RING_CARD = "C03528-K1"  # 24-member ring per Task 8.5's spot check
 
+# Temporal cutoff fix (2026-09-23): card_window/device_neighbors/region_neighbors
+# now require a `cutoff_ts`. Every existing test below that isn't specifically
+# testing the cutoff itself passes this sentinel -- a date after every
+# timestamp in the dataset (transactions.csv ends 2016-12-31 23:58:54) -- so it
+# behaves exactly like "no cutoff", preserving each test's original intent.
+NO_EFFECTIVE_CUTOFF = "2099-01-01 00:00:00"
+# HHG-017's actual case-open time: 1 hour after KNOWN_TXN (2016-11-11 23:46:24).
+HHG_017_OPENED_AT = "2016-11-12 00:46:24"
+
 
 @pytest.mark.asyncio
 async def test_card_window_returns_known_transaction():
@@ -36,7 +45,7 @@ async def test_card_window_returns_known_transaction():
     # enough to span from 2016-12-25 back through 2016-11-11 instead of
     # assuming the flagged transaction is always the most recent one.
     async with TigerGraphMCP() as tg:
-        result = await card_window(tg, KNOWN_CARD, hours=24 * 60)
+        result = await card_window(tg, KNOWN_CARD, hours=24 * 60, cutoff_ts=NO_EFFECTIVE_CUTOFF)
         assert result
         txn_ids = {t["id"] for t in result}
         assert KNOWN_TXN in txn_ids
@@ -46,8 +55,8 @@ async def test_card_window_returns_known_transaction():
 @pytest.mark.asyncio
 async def test_card_window_small_window_narrows_results():
     async with TigerGraphMCP() as tg:
-        full_history = await card_window(tg, KNOWN_CARD, hours=100000)
-        narrow = await card_window(tg, KNOWN_CARD, hours=1)
+        full_history = await card_window(tg, KNOWN_CARD, hours=100000, cutoff_ts=NO_EFFECTIVE_CUTOFF)
+        narrow = await card_window(tg, KNOWN_CARD, hours=1, cutoff_ts=NO_EFFECTIVE_CUTOFF)
         assert len(narrow) < len(full_history)
         assert len(narrow) >= 1  # the card's own latest transaction always qualifies
 
@@ -65,7 +74,7 @@ async def test_card_window_without_reference_excludes_flagged_txn_at_hours_48():
     # flagged transaction without reference_txn_id -- the fix is the new
     # parameter below, not a change to the no-reference fallback.
     async with TigerGraphMCP() as tg:
-        result = await card_window(tg, KNOWN_CARD, hours=48)
+        result = await card_window(tg, KNOWN_CARD, hours=48, cutoff_ts=NO_EFFECTIVE_CUTOFF)
         txn_ids = {t["id"] for t in result}
         assert KNOWN_TXN not in txn_ids
 
@@ -74,9 +83,13 @@ async def test_card_window_without_reference_excludes_flagged_txn_at_hours_48():
 async def test_card_window_with_reference_txn_id_anchors_on_reference_not_latest():
     # The actual fix: passing reference_txn_id=KNOWN_TXN must anchor the
     # +/-hours window on ITS timestamp (2016-11-11 23:46:24), not on the
-    # card's unrelated most-recent transaction (2016-12-25).
+    # card's unrelated most-recent transaction (2016-12-25). cutoff_ts is the
+    # no-op sentinel here -- this test is about the reference anchor, not the
+    # cutoff (see test_card_window_cutoff_ts_clips_window_below for that).
     async with TigerGraphMCP() as tg:
-        result = await card_window(tg, KNOWN_CARD, hours=48, reference_txn_id=KNOWN_TXN)
+        result = await card_window(
+            tg, KNOWN_CARD, hours=48, reference_txn_id=KNOWN_TXN, cutoff_ts=NO_EFFECTIVE_CUTOFF
+        )
         txn_ids = {t["id"] for t in result}
         assert KNOWN_TXN in txn_ids
         # The two neighboring transactions from the manual checkpoint
@@ -94,9 +107,36 @@ async def test_card_window_with_reference_txn_id_anchors_on_reference_not_latest
 @pytest.mark.asyncio
 async def test_card_window_unknown_reference_txn_id_falls_back_to_latest_anchor():
     async with TigerGraphMCP() as tg:
-        fallback = await card_window(tg, KNOWN_CARD, hours=1, reference_txn_id="not-a-real-txn-id")
-        latest_only = await card_window(tg, KNOWN_CARD, hours=1)
+        fallback = await card_window(
+            tg, KNOWN_CARD, hours=1, reference_txn_id="not-a-real-txn-id", cutoff_ts=NO_EFFECTIVE_CUTOFF
+        )
+        latest_only = await card_window(tg, KNOWN_CARD, hours=1, cutoff_ts=NO_EFFECTIVE_CUTOFF)
         assert {t["id"] for t in fallback} == {t["id"] for t in latest_only}
+
+
+@pytest.mark.asyncio
+async def test_card_window_cutoff_ts_never_returns_anything_after_cutoff():
+    # The safety property the fix guarantees, checked directly against live
+    # data rather than a hand-picked count: with reference_txn_id=KNOWN_TXN
+    # and hours=48 (the real gather_evidence_node call shape), the nominal
+    # window would extend to 2016-11-13 23:46:24 -- but no row in the result
+    # may have a `ts` after HHG_017_OPENED_AT (2016-11-12 00:46:24, HHG-017's
+    # real case-open time, 1h after KNOWN_TXN) when that's passed as
+    # cutoff_ts. This dataset's own known-good fixture (KNOWN_CARD's next
+    # transaction after KNOWN_TXN is 44 days later, per the manual checkpoint)
+    # happens to have no activity in the 1h-48h gap either, so this doesn't
+    # assert the result set shrinks -- only that the invariant holds, which
+    # is the actual leakage guarantee.
+    # test_device_neighbors_cutoff_ts_never_includes_post_cutoff_activity and
+    # test_region_neighbors_cutoff_ts_never_returns_anything_after_cutoff
+    # below cover the same invariant on fixtures with real after-cutoff
+    # neighbor activity (the 299-card device collision, the 500-cap region).
+    async with TigerGraphMCP() as tg:
+        capped = await card_window(
+            tg, KNOWN_CARD, hours=48, reference_txn_id=KNOWN_TXN, cutoff_ts=HHG_017_OPENED_AT
+        )
+        assert KNOWN_TXN in {t["id"] for t in capped}
+        assert all(t["ts"] <= HHG_017_OPENED_AT for t in capped)
 
 
 @pytest.mark.asyncio
@@ -122,7 +162,7 @@ async def test_customer_cards_returns_known_card():
 @pytest.mark.asyncio
 async def test_device_neighbors_matches_known_collision_count():
     async with TigerGraphMCP() as tg:
-        result = await device_neighbors(tg, KNOWN_TXN)
+        result = await device_neighbors(tg, KNOWN_TXN, cutoff_ts=NO_EFFECTIVE_CUTOFF)
         assert result
         # Task 8's checkpoint found 299 distinct customers/cards sharing
         # this device; device_neighbors LIMITs shared_cards at 300.
@@ -131,9 +171,28 @@ async def test_device_neighbors_matches_known_collision_count():
 
 
 @pytest.mark.asyncio
+async def test_device_neighbors_cutoff_ts_never_includes_post_cutoff_activity():
+    # Leakage fix: this device fingerprint is a known 299-customer generic
+    # collision spanning the whole 6-month dataset (Task 8's checkpoint), so
+    # restricting to on/before HHG-017's case-open time must not silently
+    # keep counting cards whose ONLY shared-device activity is later than
+    # that. Checked as a subset relationship (every capped card is also in
+    # the uncapped set), which holds regardless of exactly how many cards
+    # the cutoff removes.
+    async with TigerGraphMCP() as tg:
+        capped = await device_neighbors(tg, KNOWN_TXN, cutoff_ts=HHG_017_OPENED_AT)
+        uncapped = await device_neighbors(tg, KNOWN_TXN, cutoff_ts=NO_EFFECTIVE_CUTOFF)
+        capped_ids = {c["id"] for c in capped}
+        uncapped_ids = {c["id"] for c in uncapped}
+        assert KNOWN_CARD in capped_ids  # the flagged transaction's own card must survive
+        assert capped_ids <= uncapped_ids
+        assert len(capped_ids) <= len(uncapped_ids)
+
+
+@pytest.mark.asyncio
 async def test_region_neighbors_returns_transactions_for_known_region():
     async with TigerGraphMCP() as tg:
-        result = await region_neighbors(tg, KNOWN_REGION)
+        result = await region_neighbors(tg, KNOWN_REGION, cutoff_ts=NO_EFFECTIVE_CUTOFF)
         assert result
         assert all("ts" in t and "TransactionAmt" in t for t in result)
 
@@ -141,11 +200,26 @@ async def test_region_neighbors_returns_transactions_for_known_region():
 @pytest.mark.asyncio
 async def test_region_neighbors_time_window_narrows_results():
     async with TigerGraphMCP() as tg:
-        unfiltered = await region_neighbors(tg, KNOWN_REGION)
+        unfiltered = await region_neighbors(tg, KNOWN_REGION, cutoff_ts=NO_EFFECTIVE_CUTOFF)
         windowed = await region_neighbors(
-            tg, KNOWN_REGION, txn_ts="2016-11-11 23:46:24", window_days=1
+            tg, KNOWN_REGION, cutoff_ts=NO_EFFECTIVE_CUTOFF,
+            txn_ts="2016-11-11 23:46:24", window_days=1,
         )
         assert len(windowed) <= len(unfiltered)
+
+
+@pytest.mark.asyncio
+async def test_region_neighbors_cutoff_ts_never_returns_anything_after_cutoff():
+    # Leakage fix, and the previously-documented "LIMIT truncates before the
+    # time filter" defect: KNOWN_REGION is known to hit the 500-row cap
+    # unfiltered (confirmed live pre-fix), so the cutoff must be applied
+    # inside the same GSQL WHERE clause as the LIMIT, not after it -- checked
+    # directly rather than by count, since the cap can make counts alone
+    # misleading.
+    async with TigerGraphMCP() as tg:
+        capped = await region_neighbors(tg, KNOWN_REGION, cutoff_ts=HHG_017_OPENED_AT)
+        assert capped
+        assert all(t["ts"] <= HHG_017_OPENED_AT for t in capped)
 
 
 @pytest.mark.asyncio
@@ -209,7 +283,8 @@ async def test_retrieve_knowledge_returns_policy_and_case_hits():
 async def test_dispatch_followup_tool_routes_to_correct_function():
     async with TigerGraphMCP() as tg:
         result = await dispatch_followup_tool(
-            tg, "wider_card_window", {"card_id": KNOWN_CARD, "hours": 100000}
+            tg, "wider_card_window", {"card_id": KNOWN_CARD, "hours": 100000},
+            cutoff_ts=NO_EFFECTIVE_CUTOFF,
         )
         assert result is not None
         assert len(result) == 59  # same full-history count as card_window's own test
@@ -222,13 +297,28 @@ async def test_dispatch_followup_tool_wider_card_window_passes_through_reference
             tg,
             "wider_card_window",
             {"card_id": KNOWN_CARD, "hours": 48, "reference_txn_id": KNOWN_TXN},
+            cutoff_ts=NO_EFFECTIVE_CUTOFF,
         )
         txn_ids = {t["id"] for t in result}
         assert KNOWN_TXN in txn_ids
 
 
 @pytest.mark.asyncio
+async def test_dispatch_followup_tool_wider_card_window_respects_cutoff_ts():
+    # A follow-up call is still part of the same investigation -- it must
+    # not be able to see past the case's own cutoff either.
+    async with TigerGraphMCP() as tg:
+        result = await dispatch_followup_tool(
+            tg,
+            "wider_card_window",
+            {"card_id": KNOWN_CARD, "hours": 100000, "reference_txn_id": KNOWN_TXN},
+            cutoff_ts=HHG_017_OPENED_AT,
+        )
+        assert all(t["ts"] <= HHG_017_OPENED_AT for t in result)
+
+
+@pytest.mark.asyncio
 async def test_dispatch_followup_tool_unknown_name_raises():
     async with TigerGraphMCP() as tg:
         with pytest.raises(ValueError, match="Unknown follow-up tool"):
-            await dispatch_followup_tool(tg, "not_a_real_tool", {})
+            await dispatch_followup_tool(tg, "not_a_real_tool", {}, cutoff_ts=NO_EFFECTIVE_CUTOFF)
