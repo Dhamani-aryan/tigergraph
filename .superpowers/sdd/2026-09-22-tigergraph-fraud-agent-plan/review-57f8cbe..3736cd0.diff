@@ -1,0 +1,64 @@
+# Review package: 57f8cbe..3736cd0
+
+## Commits
+3736cd0 fix: ground SAR narrative's "when" element in the case's opened_at date
+
+## Files changed
+ src/agent/sar_writer.py  | 1 +
+ tests/test_sar_writer.py | 5 +++++
+ 2 files changed, 6 insertions(+)
+
+## Diff
+diff --git a/src/agent/sar_writer.py b/src/agent/sar_writer.py
+index b732598..a26cec6 100644
+--- a/src/agent/sar_writer.py
++++ b/src/agent/sar_writer.py
+@@ -9,17 +9,18 @@ class SARNarrativeOutput(BaseModel):
+     narrative: str
+ 
+ 
+ async def write_sar_narrative(case_row: dict, case_summary: dict) -> str:
+     prompt = (
+         "Write a suspicious activity report narrative, six to twelve sentences, covering "
+         "who (customer, cards, merchants, devices), what happened, when (dates), where "
+         "(locations, channels), how it was carried out, and why it is suspicious. Base it "
+         "only on these facts -- do not invent details:\n\n"
+         f"Customer: {case_row['customer_id']}, Card: {case_row['card_id']}\n"
++        f"Date: {str(case_row.get('opened_at', ''))[:10]}\n"
+         f"Pattern: {case_summary['pattern']}\n"
+         f"Fraud probability: {case_summary['fraud_probability']}\n"
+         f"Evidence claims: {case_summary['evidence_claims']}\n"
+         f"Trigger: {case_row.get('trigger_text', '')}\n"
+     )
+     result = await generate_structured(prompt, SARNarrativeOutput)
+     return result.narrative
+diff --git a/tests/test_sar_writer.py b/tests/test_sar_writer.py
+index f205af1..29c2a6f 100644
+--- a/tests/test_sar_writer.py
++++ b/tests/test_sar_writer.py
+@@ -1,20 +1,25 @@
+ import pytest
+ 
+ from src.agent.sar_writer import write_sar_narrative
+ 
+ 
+ @pytest.mark.asyncio
+ async def test_narrative_mentions_key_facts():
+     case_row = {
+         "customer_id": "C04570",
+         "card_id": "C04570-K1",
++        "opened_at": "2016-11-12 00:46:24",
+         "trigger_text": "Real-time model scored transaction 3450629 ($100.09, online) at 0.57.",
+     }
+     case_summary = {
+         "pattern": "card_testing",
+         "fraud_probability": 0.86,
+         "evidence_claims": ["Three small authorizations then a larger purchase"],
+     }
+     narrative = await write_sar_narrative(case_row, case_summary)
+     assert len(narrative) > 100
+     assert "C04570" in narrative or "card" in narrative.lower()
++    # Medium finding from review: the narrative's "when" element must actually be
++    # grounded in a date, not omitted -- 2016 is the only year present anywhere in
++    # the inputs, so its presence confirms the date reached the prompt and the LLM.
++    assert "2016" in narrative

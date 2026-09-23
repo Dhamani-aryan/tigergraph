@@ -29,6 +29,3 @@ data/vectors/
 
 # Isolated worktrees (subagent-driven-development)
 .worktrees/
-
-# SDD ledger/workspace scratch (subagent-driven-development)
-.superpowers/

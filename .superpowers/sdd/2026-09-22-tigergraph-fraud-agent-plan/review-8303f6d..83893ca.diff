@@ -1,0 +1,186 @@
+# Review package: 8303f6d..83893ca
+
+## Commits
+83893ca fix: drop the leading USE GRAPH statement from the schema-creation GSQL
+cf38026 feat: TigerGraph schema creation from CSV headers, with vector attributes for GraphRAG
+
+## Files changed
+ scripts/create_schema.py   | 14 +++++++
+ src/schema/build_schema.py | 98 ++++++++++++++++++++++++++++++++++++++++++++++
+ src/schema/columns.py      | 43 ++++++++++++++++++++
+ 3 files changed, 155 insertions(+)
+
+## Diff
+diff --git a/scripts/create_schema.py b/scripts/create_schema.py
+new file mode 100644
+index 0000000..38bb473
+--- /dev/null
++++ b/scripts/create_schema.py
+@@ -0,0 +1,14 @@
++import asyncio
++
++from src.schema.build_schema import add_vector_attributes, apply_schema
++from src.tg_client import TigerGraphMCP
++
++
++async def main() -> None:
++    async with TigerGraphMCP() as tg:
++        await apply_schema(tg, "transactions.csv", "identity.csv")
++        await add_vector_attributes(tg)
++
++
++if __name__ == "__main__":
++    asyncio.run(main())
+diff --git a/src/schema/build_schema.py b/src/schema/build_schema.py
+new file mode 100644
+index 0000000..3ad8f6b
+--- /dev/null
++++ b/src/schema/build_schema.py
+@@ -0,0 +1,98 @@
++from __future__ import annotations
++
++import ollama
++
++from src.schema.columns import generate_attrs, to_gsql_attr_list
++from src.tg_client import TigerGraphMCP
++
++GRAPH_NAME = "FraudInvestigation"
++
++
++def build_schema_gsql(transactions_csv: str, identity_csv: str) -> str:
++    txn_attrs = generate_attrs(transactions_csv, primary_key="TransactionID")
++    txn_attr_gsql = to_gsql_attr_list(txn_attrs)
++
++    return f"""
++CREATE VERTEX Customer (PRIMARY_ID customer_id STRING)
++CREATE VERTEX Card (
++    PRIMARY_ID card_id STRING, customer_id STRING,
++    ring_cluster_id STRING, cluster_prior_fraud_rate DOUBLE
++)
++CREATE VERTEX Transaction (
++    PRIMARY_ID transaction_id STRING,
++    {txn_attr_gsql}
++) WITH primary_id_as_attribute="true"
++CREATE VERTEX DeviceProfile (
++    PRIMARY_ID device_id STRING,
++    device_info STRING, os STRING, browser STRING, screen STRING
++)
++CREATE VERTEX EmailDomain (PRIMARY_ID domain STRING)
++CREATE VERTEX BillingRegion (PRIMARY_ID addr1 STRING)
++CREATE VERTEX ClosedCase (
++    PRIMARY_ID case_id STRING,
++    customer_id STRING, card_id STRING, opened_at STRING, closed_at STRING,
++    outcome STRING, pattern STRING, first_fraud_txn_id STRING,
++    n_txns INT, exposure_usd DOUBLE, actions_taken STRING,
++    report_filed STRING, analyst_notes STRING
++)
++CREATE VERTEX FraudCase (
++    PRIMARY_ID case_id STRING,
++    customer_id STRING, card_id STRING, status STRING, verdict STRING,
++    fraud_probability DOUBLE, pattern STRING, exposure_usd DOUBLE,
++    summary STRING, written_at STRING
++)
++CREATE VERTEX KnowledgeDoc (
++    PRIMARY_ID doc_id STRING,
++    source STRING, section STRING, text STRING
++)
++
++CREATE DIRECTED EDGE OWNS (FROM Customer, TO Card)
++CREATE DIRECTED EDGE MADE (FROM Card, TO Transaction)
++CREATE DIRECTED EDGE FROM_DEVICE (FROM Transaction, TO DeviceProfile)
++CREATE DIRECTED EDGE PURCHASER_EMAIL (FROM Transaction, TO EmailDomain)
++CREATE DIRECTED EDGE BILLED_IN (FROM Transaction, TO BillingRegion)
++CREATE DIRECTED EDGE NEXT (FROM Transaction, TO Transaction)
++CREATE DIRECTED EDGE INVOLVES (FROM ClosedCase, TO Transaction)
++CREATE DIRECTED EDGE ON_CARD (FROM ClosedCase, TO Card)
++CREATE DIRECTED EDGE CONNECTED_TO (FROM ClosedCase, TO Card)
++CREATE DIRECTED EDGE CASE_INVOLVES (FROM FraudCase, TO Transaction)
++CREATE DIRECTED EDGE CASE_ON_CARD (FROM FraudCase, TO Card)
++CREATE DIRECTED EDGE CASE_CONNECTED_TO (FROM FraudCase, TO Card)
++CREATE UNDIRECTED EDGE SHARES_ORIGIN (FROM Card, TO Card, origin_type STRING)
++
++CREATE GRAPH {GRAPH_NAME} (
++    Customer, Card, Transaction, DeviceProfile, EmailDomain, BillingRegion,
++    ClosedCase, FraudCase, KnowledgeDoc,
++    OWNS, MADE, FROM_DEVICE, PURCHASER_EMAIL, BILLED_IN, NEXT,
++    INVOLVES, ON_CARD, CONNECTED_TO, CASE_INVOLVES, CASE_ON_CARD, CASE_CONNECTED_TO,
++    SHARES_ORIGIN
++)
++""".strip()
++
++
++async def apply_schema(tg: TigerGraphMCP, transactions_csv: str, identity_csv: str) -> None:
++    gsql = build_schema_gsql(transactions_csv, identity_csv)
++    result = await tg.gsql(gsql)
++    print(result)
++
++
++async def add_vector_attributes(tg: TigerGraphMCP) -> None:
++    # Determine the real embedding dimension from the actual model rather than
++    # hardcoding it (nomic-embed-text is commonly cited as 768-dim, but verifying
++    # against a live call removes any risk of that being wrong or model-version-
++    # dependent) -- a dimension mismatch later would make every vector search fail.
++    probe = ollama.embeddings(model="nomic-embed-text", prompt="dimension probe")
++    dimension = len(probe["embedding"])
++    print(f"nomic-embed-text dimension: {dimension}")
++
++    for vertex_type in ("KnowledgeDoc", "ClosedCase", "FraudCase"):
++        result = await tg.call(
++            "tigergraph__add_vector_attribute",
++            {
++                "vertex_type": vertex_type,
++                "vector_name": "embedding",
++                "dimension": dimension,
++                "metric": "COSINE",
++            },
++        )
++        print(f"{vertex_type}: {result}")
+diff --git a/src/schema/columns.py b/src/schema/columns.py
+new file mode 100644
+index 0000000..9b590fa
+--- /dev/null
++++ b/src/schema/columns.py
+@@ -0,0 +1,43 @@
++from __future__ import annotations
++
++import csv
++from pathlib import Path
++
++# Columns whose GSQL type should be STRING even though they look numeric or are
++# sparsely populated categoricals, per the README's column-group descriptions.
++_STRING_COLUMNS = {
++    "TransactionID",
++    "ProductCD",
++    "card4",
++    "card6",
++    "addr1",
++    "addr2",
++    "P_emaildomain",
++    "R_emaildomain",
++    "customer_id",
++    "channel",
++    *(f"M{i}" for i in range(1, 10)),
++    *(f"id_{i:02d}" for i in (12, 15, 16, 23, 27, 28, 29, 30, 31, 33, 34, 35, 36, 37, 38)),
++    "DeviceType",
++    "DeviceInfo",
++}
++
++
++def generate_attrs(csv_path: str | Path, primary_key: str) -> list[tuple[str, str]]:
++    """Read just the header row and yield (attr_name, gsql_type) pairs.
++    primary_key is excluded (it becomes the vertex's PRIMARY_ID, not a listed attr).
++    """
++    with open(csv_path, newline="", encoding="utf-8") as f:
++        header = next(csv.reader(f))
++
++    attrs: list[tuple[str, str]] = []
++    for col in header:
++        if col == primary_key:
++            continue
++        gsql_type = "STRING" if col in _STRING_COLUMNS else "DOUBLE"
++        attrs.append((col, gsql_type))
++    return attrs
++
++
++def to_gsql_attr_list(attrs: list[tuple[str, str]]) -> str:
++    return ",\n    ".join(f"{name} {gsql_type}" for name, gsql_type in attrs)

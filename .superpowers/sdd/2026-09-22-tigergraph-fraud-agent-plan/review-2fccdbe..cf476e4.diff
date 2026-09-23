@@ -1,0 +1,378 @@
+# Review package: 2fccdbe..cf476e4
+
+## Commits
+cf476e4 fix: state exact schema field names in LLM prompt; gate shared_device on cardinality
+
+## Files changed
+ src/agent/graph_flow.py   |  32 +++++++++++-
+ src/agent/llm.py          |  30 +++++++++++-
+ tests/test_graph_flow.py  | 122 ++++++++++++++++++++++++++++++++++++++++++++++
+ tests/test_llm_wrapper.py |  58 ++++++++++++++++++++++
+ 4 files changed, 238 insertions(+), 4 deletions(-)
+
+## Diff
+diff --git a/src/agent/graph_flow.py b/src/agent/graph_flow.py
+index 07fc67f..7489e28 100644
+--- a/src/agent/graph_flow.py
++++ b/src/agent/graph_flow.py
+@@ -40,20 +40,36 @@ CLUSTER_FRAUD_RATE_COORDINATED_THRESHOLD = 0.95
+ # against a small cluster hitting rate=1.0 off a single closed case (observed
+ # live during Task 8.5's review on several small clusters) -- but Card's schema
+ # (Task 4) and Task 8.5's cluster_fraud_rate query only persist the RATIO, not
+ # the underlying case count, onto each Card. Adding that would mean reopening
+ # Task 8.5 (already complete and reviewed) for a new schema attribute, which
+ # isn't warranted given the 0.5->0.95 fix already addresses the dominant,
+ # confirmed problem. Documented here as a known limitation, not silently
+ # dropped -- worth doing with more time (blog post "what we'd improve").
+ CLUSTER_MIN_SIZE_FOR_COORDINATED = 3  # not currently wired into any check, see note above
+ 
++# Task 12 review finding (confirmed live against HHG-017/C04570-K1's own flagged
++# transaction): `device_neighbors` can return a large, generic-fingerprint collision
++# (299 distinct cards here -- a common Windows/Chrome/1920x1080 profile, per Task 8's
++# manual checkpoint) that is noise, not a real ring signal -- the exact same failure
++# mode `coordinated`'s 0.5->0.95 threshold above exists to filter out for the sibling
++# `shared_region` signal, but `shared_device` had no analogous guard at all (a bare
++# `bool(neighbors)`), so it counted a 299-way collision as identically strong evidence
++# to a real 2-3 card ring. Mirrors Task 8.5's own `SHARES_ORIGIN` edge-building
++# precedent, which already caps/excludes buckets over 20 members from contributing an
++# edge at all ("cap=20", task-8.5-report.md) -- reused verbatim here rather than
++# inventing a new number, since this dataset's genuine small-scale device sharing and
++# its large fingerprint-collision noise are separated by orders of magnitude (a real
++# ring: single digits to low tens; this dataset's known collisions: hundreds), so the
++# exact cutoff between ~20 and ~300 isn't sensitive for this data.
++DEVICE_NEIGHBORS_COLLISION_CAP = 20
++
+ # case_pack.csv has no `flagged_amount` column -- the README's case table only
+ # shows dollar amounts inside `trigger_text` prose (e.g. "$77.07"). This regex
+ # pulls the first dollar amount out of that prose. Confirmed against every
+ # trigger_text style seen in case_pack.csv (risk_score/chargeback/manual_review
+ # triggers), which all quote the flagged amount as "$<amount>" with exactly two
+ # decimal digits.
+ _AMOUNT_RE = re.compile(r"\$([\d,]+\.\d{2})")
+ 
+ 
+ def _amount_from_trigger_text(trigger_text: str) -> float:
+@@ -176,30 +192,42 @@ async def gather_evidence_node(tg: TigerGraphMCP, state: InvestigationState) ->
+         tg, f"fraud investigation {row.get('trigger_text', '')}", top_k=5
+     )
+     evidence.append({"type": "knowledge", "data": knowledge})
+     tool_calls += 1
+ 
+     cluster_rate = ring.get("cluster_prior_fraud_rate", 0.0) or 0.0
+     coordinated = (
+         cluster_rate >= CLUSTER_FRAUD_RATE_COORDINATED_THRESHOLD and bool(ring.get("ring_cluster_id"))
+     )
+ 
++    # Distinct-card count, not raw row count (device_neighbors' own SharedCards
++    # SELECT could in principle repeat a card, though it hasn't been observed to in
++    # practice) -- gated the same way `coordinated` gates shared_region, so a
++    # large collision (this dataset's confirmed 299-card fingerprint-collision
++    # false positive) doesn't count as identically strong evidence to a real,
++    # small-scale shared device.
++    distinct_neighbor_cards = len({n.get("id") for n in neighbors if n.get("id")})
++    device_signal_is_meaningful = 0 < distinct_neighbor_cards <= DEVICE_NEIGHBORS_COLLISION_CAP
++
+     return {
+         **state,
+         "card_id": card_id,
+         "evidence": evidence,
+         "tool_calls": state.get("tool_calls", 0) + tool_calls,
+         # shared_device/shared_region now come from the graph-algorithm cluster output
+         # (Task 8.5) as well as the live neighbor check -- either signal is enough to
+         # flag a shared origin, since the cluster catches multi-hop chains a single
+-        # device_neighbors lookup would miss.
+-        "shared_device": bool(neighbors) or coordinated,
++        # device_neighbors lookup would miss. Both signals are now gated against the
++        # same class of false positive (a large, generic collision that isn't a real
++        # ring) -- device_signal_is_meaningful for shared_device, coordinated's own
++        # cluster_prior_fraud_rate threshold for shared_region.
++        "shared_device": device_signal_is_meaningful or coordinated,
+         "shared_region": coordinated,
+         "shared_email": False,
+         "single_signal": row.get("trigger_type") == "risk_score" and not evidence[3]["data"] and not coordinated,
+         "cluster_prior_fraud_rate": cluster_rate,
+     }
+ 
+ 
+ async def agentic_followup_node(state: InvestigationState) -> InvestigationState:
+     """Spec step 2a: one bounded, real function-calling round. The LLM sees a summary
+     of the deterministic evidence and may request exactly one additional targeted
+diff --git a/src/agent/llm.py b/src/agent/llm.py
+index de3eee8..2ae5275 100644
+--- a/src/agent/llm.py
++++ b/src/agent/llm.py
+@@ -67,36 +67,62 @@ def _groq_chat(messages: list[dict], **kwargs) -> "openai.types.chat.ChatComplet
+         response = client.chat.completions.create(model=GROQ_MODEL, messages=messages, **kwargs)
+         token_tracker.add_from_response(response)
+         return response
+     except openai.RateLimitError as exc:
+         raise _RateLimited from exc
+ 
+ 
+ async def generate_structured(
+     prompt: str, schema: type[BaseModel], max_retries: int = 2
+ ) -> BaseModel:
++    """Task 12 review finding (confirmed live, reproducibly): Groq's
++    `response_format={"type": "json_object"}` only guarantees syntactically valid
++    JSON, not that the model uses the schema's actual field names. With only prose
++    describing the desired content ("classify the fraud pattern...") and no literal
++    key names anywhere in the prompt, the model inferred a plausible-but-wrong key
++    (`fraud_pattern` instead of `AssessmentOutput`'s real `pattern` field) and
++    repeated the exact same mistake across all `max_retries` attempts -- the old
++    generic "that wasn't valid JSON, try again" retry message never told it WHICH
++    key was wrong, so a consistent misread wasn't self-correcting. This is a
++    real, non-negligible failure mode for Task 13's batch run (one independent
++    reviewer re-run of the exact same test hit it, even though the original run
++    didn't). Fix: state the schema's own `model_json_schema()` explicitly in the
++    very first prompt (not just the retry-correction message), so the model has
++    concrete key-name guidance before it ever guesses wrong, and repeat the exact
++    required field names on every retry too.
++    """
+     last_error: Exception | None = None
++    schema_json = json.dumps(schema.model_json_schema())
++    field_names = list(schema.model_fields)
++    schema_prompt = (
++        f"{prompt}\n\n"
++        f"Respond with a single JSON object that matches EXACTLY this JSON schema "
++        f"(use these exact field names -- {field_names} -- and no others):\n{schema_json}"
++    )
+     messages = [
+         {"role": "system", "content": _SYSTEM_PROMPT},
+-        {"role": "user", "content": prompt},
++        {"role": "user", "content": schema_prompt},
+     ]
+     for attempt in range(max_retries + 1):
+         raw = await _chat_raw(messages, schema)
+         try:
+             return schema.model_validate(json.loads(raw))
+         except (json.JSONDecodeError, ValidationError) as exc:
+             last_error = exc
+             messages.append({"role": "assistant", "content": raw})
+             messages.append(
+                 {
+                     "role": "user",
+-                    "content": f"That was not valid JSON matching the schema ({exc}). Try again, JSON only.",
++                    "content": (
++                        f"That was not valid JSON matching the schema ({exc}). "
++                        f"Use exactly these field names: {field_names}. Try again, JSON only."
++                    ),
+                 }
+             )
+     raise RuntimeError(
+         f"Failed to get valid structured output after {max_retries + 1} attempts"
+     ) from last_error
+ 
+ 
+ async def _chat_raw(messages: list[dict], schema: type[BaseModel]) -> str:
+     if LLM_BACKEND == "groq":
+         response = _groq_chat(
+diff --git a/tests/test_graph_flow.py b/tests/test_graph_flow.py
+new file mode 100644
+index 0000000..d42c6f2
+--- /dev/null
++++ b/tests/test_graph_flow.py
+@@ -0,0 +1,122 @@
++from __future__ import annotations
++
++import pytest
++
++from src.agent import graph_flow
++
++
++def _patch_evidence_functions(
++    monkeypatch,
++    *,
++    device_neighbors_result: list[dict],
++    ring_result: dict,
++):
++    """Stub every graph/vector-search call `gather_evidence_node` makes, so its
++    shared_device/shared_region/single_signal logic can be exercised synthetically,
++    without a live TigerGraph connection or LLM call."""
++
++    async def _fake_card_window(tg, card_id, hours, reference_txn_id=None):
++        # The flagged transaction itself must be present so gather_evidence_node's
++        # (indirect, via later nodes) reference resolution has something real to
++        # find; the specific fields don't matter for the shared_device assertions.
++        return [{"id": reference_txn_id, "addr1": "204.0", "ts": "2016-11-11 23:46:24"}]
++
++    async def _fake_customer_cards(tg, customer_id):
++        return []
++
++    async def _fake_device_neighbors(tg, transaction_id):
++        return device_neighbors_result
++
++    async def _fake_closed_case_lookup(tg, card_id=None, device_id=None, addr1=None):
++        return []
++
++    async def _fake_ring_membership(tg, card_id):
++        return ring_result
++
++    async def _fake_retrieve_knowledge(tg, query_text, top_k=5):
++        return {"knowledge": [], "similar_cases": []}
++
++    monkeypatch.setattr(graph_flow, "card_window", _fake_card_window)
++    monkeypatch.setattr(graph_flow, "customer_cards", _fake_customer_cards)
++    monkeypatch.setattr(graph_flow, "device_neighbors", _fake_device_neighbors)
++    monkeypatch.setattr(graph_flow, "closed_case_lookup", _fake_closed_case_lookup)
++    monkeypatch.setattr(graph_flow, "ring_membership", _fake_ring_membership)
++    monkeypatch.setattr(graph_flow, "retrieve_knowledge", _fake_retrieve_knowledge)
++
++
++_CASE_ROW = {
++    "card_id": "C04570-K1",
++    "customer_id": "C04570",
++    "flagged_txn_id": "3450629",
++    "trigger_type": "risk_score",
++    "trigger_text": "Real-time model scored transaction 3450629 ($100.09, online) at 0.57.",
++}
++
++
++@pytest.mark.asyncio
++async def test_shared_device_false_positive_gated_by_cardinality(monkeypatch):
++    """Task 12 review: shared_device used to be set from bare `bool(neighbors)`, so a
++    generic-device-fingerprint collision shared by hundreds of unrelated cards (HHG-017's
++    real live device_neighbors result: 299 cards, all in the same low-rate cluster --
++    exactly the collision Task 8's manual checkpoint already identified as noise, not a
++    real ring) counted as a genuine shared-device signal. Reproduces that shape
++    synthetically and asserts the new cardinality gate excludes it."""
++    large_collision = [
++        {"id": f"C{i:05d}-K1", "ring_cluster_id": "RING-BIG", "cluster_prior_fraud_rate": 0.8469}
++        for i in range(299)
++    ]
++    _patch_evidence_functions(
++        monkeypatch,
++        device_neighbors_result=large_collision,
++        ring_result={"ring_cluster_id": "RING-BIG", "cluster_prior_fraud_rate": 0.8469},
++    )
++
++    state = await graph_flow.gather_evidence_node(tg=None, state={"case_row": _CASE_ROW})
++
++    assert state["shared_device"] is False
++    # 0.8469 is below the 0.95 coordinated threshold too, so shared_region should stay
++    # False here as well -- confirms this isn't accidentally passing via the sibling
++    # signal instead of the cardinality gate actually doing the filtering.
++    assert state["shared_region"] is False
++
++
++@pytest.mark.asyncio
++async def test_shared_device_true_for_small_genuine_collision(monkeypatch):
++    """A small number of cards genuinely sharing a device (below the collision cap)
++    should still count as a real shared-device signal -- confirms the cardinality gate
++    doesn't over-correct into never flagging device sharing at all."""
++    small_collision = [
++        {"id": "C00001-K1", "ring_cluster_id": None, "cluster_prior_fraud_rate": None},
++        {"id": "C00002-K1", "ring_cluster_id": None, "cluster_prior_fraud_rate": None},
++    ]
++    _patch_evidence_functions(
++        monkeypatch,
++        device_neighbors_result=small_collision,
++        ring_result={"ring_cluster_id": None, "cluster_prior_fraud_rate": None},
++    )
++
++    state = await graph_flow.gather_evidence_node(tg=None, state={"case_row": _CASE_ROW})
++
++    assert state["shared_device"] is True
++
++
++@pytest.mark.asyncio
++async def test_shared_device_true_when_cluster_genuinely_coordinated_even_if_collision_large(monkeypatch):
++    """A large device collision that ALSO clears the coordinated cluster-fraud-rate
++    threshold should still count as shared -- the cardinality gate only removes the
++    ungated bool(neighbors) path, it must not suppress the independent, already-gated
++    `coordinated` signal."""
++    large_collision = [
++        {"id": f"C{i:05d}-K1", "ring_cluster_id": "RING-REAL", "cluster_prior_fraud_rate": 0.97}
++        for i in range(50)
++    ]
++    _patch_evidence_functions(
++        monkeypatch,
++        device_neighbors_result=large_collision,
++        ring_result={"ring_cluster_id": "RING-REAL", "cluster_prior_fraud_rate": 0.97},
++    )
++
++    state = await graph_flow.gather_evidence_node(tg=None, state={"case_row": _CASE_ROW})
++
++    assert state["shared_device"] is True
++    assert state["shared_region"] is True
+diff --git a/tests/test_llm_wrapper.py b/tests/test_llm_wrapper.py
+index 76f3aaa..7628679 100644
+--- a/tests/test_llm_wrapper.py
++++ b/tests/test_llm_wrapper.py
+@@ -62,19 +62,77 @@ def test_simulator_anomalous_amount_denies():
+     response = simulate_evidence_response(
+         "customer_validation",
+         flagged_amount=500.0,
+         customer_median_amount=50.0,
+         is_new_device=False,
+         fraud_probability=0.7,
+     )
+     assert "did not make" in response
+ 
+ 
++@pytest.mark.asyncio
++async def test_generate_structured_prompt_states_exact_schema_field_names(monkeypatch):
++    """Task 12 review: Groq's response_format={"type": "json_object"} only guarantees
++    syntactically valid JSON, not correct field names -- on a live re-run the model
++    consistently emitted `fraud_pattern` instead of the schema's real `pattern` field,
++    exhausting all retries, because the prompt never stated the literal expected keys
++    anywhere. This asserts the fix without any live LLM call: the schema's own field
++    names are embedded in the very FIRST prompt sent to the model, not only in a
++    post-failure retry message."""
++    import src.agent.llm as llm_module
++
++    captured: list[list[dict]] = []
++
++    async def _fake_chat_raw(messages, schema):
++        captured.append(messages)
++        return '{"pattern": "card_testing"}'
++
++    monkeypatch.setattr(llm_module, "_chat_raw", _fake_chat_raw)
++
++    class _PatternSchema(BaseModel):
++        pattern: str
++
++    result = await llm_module.generate_structured("Classify the pattern.", _PatternSchema)
++    assert result.pattern == "card_testing"
++    assert len(captured) == 1  # succeeded on the first attempt, no retry needed
++    first_user_prompt = captured[0][-1]["content"]
++    assert '"pattern"' in first_user_prompt  # the literal required key, not just prose
++    assert '"properties"' in first_user_prompt  # the rendered JSON schema, not just a key list
++
++
++@pytest.mark.asyncio
++async def test_generate_structured_recovers_from_wrong_key_name_via_retry(monkeypatch):
++    """Deterministically reproduces the review's exact failure shape (model emits
++    `fraud_pattern` instead of `pattern` on the first attempt) without a live LLM
++    call, and confirms the retry loop's improved feedback (which now states the
++    exact required field names, not just a generic "not valid JSON") lets a
++    self-correcting model recover within the existing retry budget."""
++    import src.agent.llm as llm_module
++
++    responses = iter(
++        [
++            '{"fraud_pattern": "card_testing"}',  # wrong key, same shape the live run hit
++            '{"pattern": "card_testing"}',  # corrected on retry
++        ]
++    )
++
++    async def _fake_chat_raw(messages, schema):
++        return next(responses)
++
++    monkeypatch.setattr(llm_module, "_chat_raw", _fake_chat_raw)
++
++    class _PatternSchema(BaseModel):
++        pattern: str
++
++    result = await llm_module.generate_structured("Classify the pattern.", _PatternSchema, max_retries=2)
++    assert result.pattern == "card_testing"
++
++
+ def test_simulator_typical_amount_confirms():
+     response = simulate_evidence_response(
+         "customer_validation",
+         flagged_amount=52.0,
+         customer_median_amount=50.0,
+         is_new_device=False,
+         fraud_probability=0.2,
+     )
+     assert "confirms" in response

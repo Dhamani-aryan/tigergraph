@@ -1,0 +1,394 @@
+# Review package: fa1ddd9..7d21659
+
+## Commits
+7d21659 feat: knowledge ingestion (policy, patterns, regulatory PDFs, closed-case embeddings)
+
+## Files changed
+ scripts/ingest_knowledge.py      | 161 +++++++++++++++++++++++++++++++++++++++
+ src/ingestion/__init__.py        |   0
+ src/ingestion/embeddings.py      |   7 ++
+ src/ingestion/policy_chunks.py   |  20 +++++
+ src/ingestion/regulatory_docs.py | 117 ++++++++++++++++++++++++++++
+ tests/test_policy_chunks.py      |  17 +++++
+ tests/test_regulatory_docs.py    |  17 +++++
+ 7 files changed, 339 insertions(+)
+
+## Diff
+diff --git a/scripts/ingest_knowledge.py b/scripts/ingest_knowledge.py
+new file mode 100644
+index 0000000..80deccf
+--- /dev/null
++++ b/scripts/ingest_knowledge.py
+@@ -0,0 +1,161 @@
++import asyncio
++import time
++from pathlib import Path
++
++import pandas as pd
++
++from src.ingestion.embeddings import embed
++from src.ingestion.policy_chunks import POLICY_CHUNKS
++from src.ingestion.regulatory_docs import (
++    REGULATORY_HTML_KNOWN,
++    REGULATORY_PDFS,
++    chunk_text,
++    download_pdf,
++    extract_pdf_text,
++)
++from src.tg_client import TigerGraphMCP
++
++GRAPH_NAME = "FraudInvestigation"
++
++
++async def ingest_policy_and_patterns(tg: TigerGraphMCP) -> None:
++    texts = [c["text"] for c in POLICY_CHUNKS]
++    vectors = embed(texts)
++    entries = [
++        {**chunk, "embedding": vec} for chunk, vec in zip(POLICY_CHUNKS, vectors)
++    ]
++    await _upsert_knowledge_docs(tg, entries)
++    print(f"Ingested {len(entries)} policy/pattern chunks")
++
++
++# Live-observed on this ingestion run: the OFAC SDN list PDF is a genuine,
++# successfully-downloaded-and-parsed PDF, but it is a bulk enumeration of
++# ~20,000 sanctioned individuals/entities (21.2M chars of extracted text),
++# structurally unlike the other 7 regulatory PDFs (guidance prose, which
++# together produced only 344 chunks total). Embedding all ~19,339 of its
++# chunks locally would take hours and would not meaningfully improve
++# retrieval quality for this agent's fraud-policy questions (near-duplicate
++# short name/alias entries dominating the KnowledgeDoc vector index). Capped
++# per-document at MAX_CHUNKS_PER_DOC, keeping the first N chunks (which
++# include the list's front matter) -- documented and logged, not a silent
++# drop, and distinct from both the "anticipated HTML" and "genuine failure"
++# categories below.
++MAX_CHUNKS_PER_DOC = 300
++
++
++async def ingest_regulatory_pdfs(tg: TigerGraphMCP) -> None:
++    all_chunks: list[dict] = []
++    anticipated_html_skips = 0
++    genuine_failures: list[tuple[str, str]] = []
++    capped_docs: list[tuple[str, int, int]] = []  # (doc_id_prefix, original_count, kept_count)
++
++    # Known-HTML README links: skip up front, don't even try a PDF parse.
++    for doc_id_prefix, url in REGULATORY_HTML_KNOWN:
++        print(f"Skipping {url}: known HTML page, not a PDF (anticipated)")
++        anticipated_html_skips += 1
++
++    # Links that should genuinely be PDF bytes -- attempt download + parse,
++    # and report any failure honestly rather than assuming it's the known
++    # HTML-vs-PDF issue.
++    for doc_id_prefix, url in REGULATORY_PDFS:
++        try:
++            pdf_path = download_pdf(url, Path("data/raw/regulatory"))
++            text = extract_pdf_text(pdf_path)
++            chunks = chunk_text(text, doc_id_prefix)
++            if not chunks:
++                raise ValueError("PDF parsed but produced zero usable chunks (empty/unextractable text)")
++            if len(chunks) > MAX_CHUNKS_PER_DOC:
++                print(
++                    f"Capping {url}: parsed {len(chunks)} chunks (bulk enumeration document), "
++                    f"keeping first {MAX_CHUNKS_PER_DOC} -- see MAX_CHUNKS_PER_DOC note above"
++                )
++                capped_docs.append((doc_id_prefix, len(chunks), MAX_CHUNKS_PER_DOC))
++                chunks = chunks[:MAX_CHUNKS_PER_DOC]
++            all_chunks.extend(chunks)
++        except Exception as exc:  # noqa: BLE001 -- best-effort ingestion, log and continue
++            print(f"Skipping {url}: GENUINE failure (expected a PDF) - {type(exc).__name__}: {exc}")
++            genuine_failures.append((url, str(exc)))
++
++    print(
++        f"Regulatory link summary: {len(REGULATORY_PDFS)} expected-PDF links attempted, "
++        f"{len(REGULATORY_PDFS) - len(genuine_failures)} succeeded, "
++        f"{len(genuine_failures)} genuinely failed; "
++        f"{anticipated_html_skips} known-HTML links skipped as anticipated; "
++        f"{len(capped_docs)} document(s) capped: "
++        + (", ".join(f"{d} ({orig} -> {kept})" for d, orig, kept in capped_docs) or "none")
++    )
++
++    if not all_chunks:
++        print("No regulatory chunks produced; skipping upsert.")
++        return
++    vectors = embed([c["text"] for c in all_chunks])
++    entries = [{**chunk, "embedding": vec} for chunk, vec in zip(all_chunks, vectors)]
++    await _upsert_knowledge_docs(tg, entries)
++    print(f"Ingested {len(entries)} regulatory chunks (from {len(REGULATORY_PDFS) - len(genuine_failures)} PDFs)")
++
++
++async def ingest_closed_case_narratives(tg: TigerGraphMCP, closed_cases_csv: str) -> None:
++    df = pd.read_csv(closed_cases_csv)
++    texts = df["analyst_notes"].fillna("").tolist()
++    case_ids = df["case_id"].tolist()
++    batch_size = 200
++    total = len(texts)
++    start_time = time.monotonic()
++    for start in range(0, total, batch_size):
++        batch_texts = texts[start : start + batch_size]
++        batch_ids = case_ids[start : start + batch_size]
++        vectors = embed(batch_texts)
++        await tg.upsert_vectors(
++            "ClosedCase",
++            "embedding",
++            [{"vertex_id": cid, "vector": vec} for cid, vec in zip(batch_ids, vectors)],
++        )
++        done = min(start + batch_size, total)
++        elapsed = time.monotonic() - start_time
++        print(f"  embedded {done}/{total} closed-case narratives ({elapsed:.0f}s elapsed)")
++    print(f"Embedded {len(texts)} closed case narratives")
++
++
++async def _upsert_knowledge_docs(tg: TigerGraphMCP, entries: list[dict]) -> None:
++    # Task 7 confirmed live against this server: raw tg.gsql("INSERT INTO
++    # VERTEX/EDGE ...") is rejected outright (the /gsql/v1/statements
++    # endpoint's parser never accepts "insert" as a top-level statement). Use
++    # the tigergraph__add_nodes MCP tool (REST++ batch upsert) instead,
++    # batched at 500 like the rest of this ingestion script's batches.
++    for i in range(0, len(entries), 500):
++        batch = entries[i : i + 500]
++        await tg.call(
++            "tigergraph__add_nodes",
++            {
++                "vertex_type": "KnowledgeDoc",
++                "vertex_id": "doc_id",
++                "vertices": [
++                    {
++                        "doc_id": e["doc_id"],
++                        "source": e["source"],
++                        "section": e["section"],
++                        "text": e["text"],
++                    }
++                    for e in batch
++                ],
++            },
++        )
++    # upsert_vectors takes vector_attribute + {"vertex_id", "vector"} dicts
++    # (see src/tg_client.py) -- not the {"id", "embedding"} shape the
++    # original plan brief assumed.
++    await tg.upsert_vectors(
++        "KnowledgeDoc",
++        "embedding",
++        [{"vertex_id": e["doc_id"], "vector": e["embedding"]} for e in entries],
++    )
++
++
++async def main() -> None:
++    async with TigerGraphMCP() as tg:
++        await ingest_policy_and_patterns(tg)
++        await ingest_regulatory_pdfs(tg)
++        await ingest_closed_case_narratives(tg, "closed_cases_history.csv")
++
++
++if __name__ == "__main__":
++    asyncio.run(main())
+diff --git a/src/ingestion/__init__.py b/src/ingestion/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/src/ingestion/embeddings.py b/src/ingestion/embeddings.py
+new file mode 100644
+index 0000000..7be15af
+--- /dev/null
++++ b/src/ingestion/embeddings.py
+@@ -0,0 +1,7 @@
++from __future__ import annotations
++
++import ollama
++
++
++def embed(texts: list[str], model: str = "nomic-embed-text") -> list[list[float]]:
++    return [ollama.embeddings(model=model, prompt=t)["embedding"] for t in texts]
+diff --git a/src/ingestion/policy_chunks.py b/src/ingestion/policy_chunks.py
+new file mode 100644
+index 0000000..78f3597
+--- /dev/null
++++ b/src/ingestion/policy_chunks.py
+@@ -0,0 +1,20 @@
++from __future__ import annotations
++
++POLICY_CHUNKS: list[dict[str, str]] = [
++    {"doc_id": "policy-r1", "source": "policy", "section": "R1", "text": "R1. Verify before you block on a weak signal. If the case rests on a single signal (including a risk score alone) and your assessed fraud probability is below 0.70, recommend VERIFY_WITH_CUSTOMER or STEP_UP_AUTH before any block. Blocking a legitimate customer on one signal is a policy breach."},
++    {"doc_id": "policy-r2", "source": "policy", "section": "R2", "text": "R2. Customer denies the transaction. Recommend BLOCK_CARD and CREATE_CASE. Add FILE_REPORT if exposure exceeds $1,000 or the case connects to a shared device profile or another card's fraud."},
++    {"doc_id": "policy-r3", "source": "policy", "section": "R3", "text": "R3. Customer confirms the transaction. Recommend CLOSE_NO_FRAUD. Note the confirmation in the case file."},
++    {"doc_id": "policy-r4", "source": "policy", "section": "R4", "text": "R4. No reply within 24 hours. Recommend MONITOR_CARD and DECLINE_TRANSACTION for pending authorizations. Escalate if exposure exceeds $500."},
++    {"doc_id": "policy-r5", "source": "policy", "section": "R5", "text": "R5. Card testing. Three or more small online authorizations on one card within an hour, followed by a larger purchase: recommend DECLINE_TRANSACTION and STEP_UP_AUTH. If a purchase over $100 has already cleared, recommend BLOCK_CARD."},
++    {"doc_id": "policy-r6", "source": "policy", "section": "R6", "text": "R6. Shared origin. When several cards show fraud from the same device profile, the same billing region, or the same recipient email in one window, name the shared element, recommend CREATE_CASE and FILE_REPORT, and MONITOR_CONNECTED_CARDS for every card that shares it."},
++    {"doc_id": "policy-r7", "source": "policy", "section": "R7", "text": "R7. Disputed but legitimate. When the customer disputes a charge that matches their own recurring pattern (same merchant, same amount, monthly), recommend CREATE_CASE, VERIFY_WITH_CUSTOMER, and WARN_CUSTOMER. Do not block."},
++    {"doc_id": "policy-r8", "source": "policy", "section": "R8", "text": "R8. Escalate when uncertain and exposed. If the verdict is uncertain and exposure exceeds $500, or the evidence conflicts, recommend ESCALATE_TO_ANALYST."},
++    {"doc_id": "policy-r9", "source": "policy", "section": "R9", "text": "R9. Undocumented patterns. When activity fits none of the known patterns but the evidence shows coordinated or repeated abuse across customers, recommend CREATE_CASE, FILE_REPORT, and ESCALATE_TO_ANALYST, and describe the pattern in your own words. Do not force it into a known category."},
++    {"doc_id": "policy-r10", "source": "policy", "section": "R10", "text": "R10. Never BLOCK_ALL_CARDS unless at least two of the customer's cards show confirmed fraud or the customer's credentials are confirmed compromised."},
++    {"doc_id": "policy-case-vs-report", "source": "policy", "section": "3a", "text": "A case (CREATE_CASE) is the bank's internal record of an investigation. Open one whenever fraud probability reaches 0.30, whenever you request evidence, or whenever a customer disputes a charge. A suspicious activity report (FILE_REPORT) is a regulatory filing sent outside the bank. File one when fraud is confirmed or strongly suspected and at least one of: exposure exceeds $1,000; the activity connects to a shared device profile, a shared region cluster, or another customer's fraud; the pattern is coordinated or undocumented (R9)."},
++    {"doc_id": "pattern-card-testing", "source": "pattern", "section": "1", "text": "Card testing. A stolen card number is checked before use: three or more tiny online authorizations, often under $5, then a larger purchase. Confirmed by the sequence itself. Policy R5."},
++    {"doc_id": "pattern-cnp-fraud", "source": "pattern", "section": "2", "text": "Card-not-present fraud. The number is used online without the card. Amounts and products that don't fit the cardholder's history, often in a burst of two to four within 48 hours. On its own, one unusual online purchase is ambiguous: verify. Policy R1 to R4."},
++    {"doc_id": "pattern-cnp-new-device", "source": "pattern", "section": "3", "text": "Card-not-present fraud from a new device. Same as above, with the identity record marking the device as New for this account, sometimes behind a proxy. Stronger than pattern 2, still not proof: people buy new phones."},
++    {"doc_id": "pattern-out-of-region", "source": "pattern", "section": "4", "text": "Out-of-region use. Card-present purchases in a billing region the cardholder has no history in, while their normal activity continues at home. Several days of purchases in one new region is a trip, not a clone. Policy R2, R3."},
++    {"doc_id": "pattern-account-takeover", "source": "pattern", "section": "5", "text": "Account takeover. Mixed-channel activity inconsistent with the cardholder, often with device and match-flag anomalies, pointing to stolen credentials rather than a stolen number."},
++]
+diff --git a/src/ingestion/regulatory_docs.py b/src/ingestion/regulatory_docs.py
+new file mode 100644
+index 0000000..f2eac3f
+--- /dev/null
++++ b/src/ingestion/regulatory_docs.py
+@@ -0,0 +1,117 @@
++from __future__ import annotations
++
++import re
++from pathlib import Path
++
++import requests
++from pypdf import PdfReader
++
++# The 10 README "Regulatory references" links (README.md, lines 128-150) that
++# actually serve PDF bytes -- 7 FinCEN advisories/guidance docs, 1 FATF
++# report, and the OFAC SDN list (all URLs end in .pdf). Attempted via
++# download_pdf + extract_pdf_text below.
++REGULATORY_PDFS: list[tuple[str, str]] = [
++    ("fincen-sar-faqs-2025", "https://www.fincen.gov/system/files/2025-10/SAR-FAQs-October-2025.pdf"),
++    ("fincen-sar-narrative-guidance", "https://www.fincen.gov/system/files/shared/sar_guidance_narrative.pdf"),
++    ("fincen-sar-narrative-complete", "https://www.fincen.gov/system/files/shared/sarnarrcompletguidfinal_112003.pdf"),
++    ("fincen-sar-supporting-docs", "https://www.fincen.gov/system/files/shared/fin-2007-g003.pdf"),
++    ("fincen-sar-trends-tips", "https://www.fincen.gov/sites/default/files/sar_report/sar_tti_19.pdf"),
++    ("fincen-imposter-mule", "https://www.fincen.gov/system/files/advisory/2020-07-07/Advisory_%20Imposter_and_Money_Mule_COVID_19_508_FINAL.pdf"),
++    ("fincen-identity-suspicious", "https://www.fincen.gov/system/files/shared/FTA_Identity_Final508.pdf"),
++    ("fatf-cyber-fraud", "https://www.fatf-gafi.org/content/dam/fatf-gafi/reports/Illicit-financial-flows-cyber-enabled-fraud.pdf.coredownload.inline.pdf"),
++    ("ofac-sdn-list", "https://www.treasury.gov/ofac/downloads/sdnlist.pdf"),
++]
++
++# The remaining 7 README regulatory links (README.md, lines 133, 139-143,
++# 146-147) are HTML pages, not PDFs, despite living in the same "Regulatory
++# references" section -- one FinCEN advisory rendered as an HTML page rather
++# than a PDF, five FATF typology pages, and both FFIEC BSA/AML manual pages.
++# Known in advance from inspecting the README's own links (not discovered by
++# a failed pypdf parse), so the ingestion script skips these immediately with
++# an "anticipated" message instead of attempting (and failing) a PDF parse.
++REGULATORY_HTML_KNOWN: list[tuple[str, str]] = [
++    ("fincen-account-takeover", "https://www.fincen.gov/resources/advisories/fincen-advisory-fin-2011-a016"),
++    ("fatf-new-payment-methods", "https://www.fatf-gafi.org/en/publications/Methodsandtrends/Reportonnewpaymentmethods.html"),
++    ("fatf-professional-ml", "https://www.fatf-gafi.org/en/publications/Methodsandtrends/Professional-money-laundering.html"),
++    ("fatf-remittance-ml", "https://www.fatf-gafi.org/en/publications/Methodsandtrends/Moneylaunderingthroughmoneyremittanceandcurrencyexchangeproviders.html"),
++    ("fatf-trade-based-ml", "https://www.fatf-gafi.org/en/publications/Methodsandtrends/Trade-based-money-laundering-trends-and-developments.html"),
++    ("fatf-international-cooperation", "https://www.fatf-gafi.org/en/publications/Methodsandtrends/international-cooperation-against-money-laundering.html"),
++    ("ffiec-red-flags", "https://bsaaml.ffiec.gov/manual/Appendices/07"),
++    ("ffiec-sar-reporting", "https://bsaaml.ffiec.gov/manual/AssessingComplianceWithBSARegulatoryRequirements/04"),
++]
++
++
++def download_pdf(url: str, dest_dir: Path) -> Path:
++    dest_dir.mkdir(parents=True, exist_ok=True)
++    filename = dest_dir / (url.split("/")[-1].split("?")[0] or "doc.pdf")
++    if not filename.exists():
++        resp = requests.get(url, timeout=60, headers={"User-Agent": "Mozilla/5.0"})
++        resp.raise_for_status()
++        filename.write_bytes(resp.content)
++    return filename
++
++
++def extract_pdf_text(pdf_path: Path) -> str:
++    reader = PdfReader(str(pdf_path))
++    return "\n".join(page.extract_text() or "" for page in reader.pages)
++
++
++def _split_oversized(paragraph: str, max_chars: int) -> list[str]:
++    """Hard-split a single "paragraph" that itself exceeds max_chars, on
++    whitespace boundaries. Needed because pypdf's text extraction sometimes
++    produces a stretch of text with no blank-line break at all (e.g. a
++    table-heavy page, or a long unbroken list like the OFAC SDN list) --
++    live-observed on this ingestion run to produce single re.split "paragraphs"
++    up to ~140,000 chars, which blew past nomic-embed-text's context window
++    and made ollama.embeddings() fail outright with a 500 "input length
++    exceeds the context length" error. Without this, chunk_text's max_chars
++    cap only bounds *between*-paragraph buffering, never a single oversized
++    paragraph, so every downstream chunk stayed silently oversized."""
++    if len(paragraph) <= max_chars:
++        return [paragraph]
++    words = paragraph.split(" ")
++    parts: list[str] = []
++    buf = ""
++    for word in words:
++        # Guard the pathological case of a single "word" (no spaces at all,
++        # e.g. garbled PDF extraction) that alone exceeds max_chars.
++        while len(word) > max_chars:
++            parts.append(word[:max_chars])
++            word = word[max_chars:]
++        if buf and len(buf) + 1 + len(word) > max_chars:
++            parts.append(buf)
++            buf = word
++        else:
++            buf = f"{buf} {word}" if buf else word
++    if buf:
++        parts.append(buf)
++    return parts
++
++
++def chunk_text(text: str, doc_id_prefix: str, max_chars: int = 1200) -> list[dict[str, str]]:
++    raw_paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip() and len(p.strip()) > 40]
++    paragraphs: list[str] = []
++    for p in raw_paragraphs:
++        paragraphs.extend(_split_oversized(p, max_chars))
++    chunks: list[dict[str, str]] = []
++    buf = ""
++    idx = 0
++    for para in paragraphs:
++        if len(buf) + len(para) > max_chars and buf:
++            chunks.append({
++                "doc_id": f"{doc_id_prefix}-{idx}",
++                "source": "regulatory",
++                "section": str(idx),
++                "text": buf.strip(),
++            })
++            idx += 1
++            buf = ""
++        buf += para + "\n\n"
++    if buf.strip():
++        chunks.append({
++            "doc_id": f"{doc_id_prefix}-{idx}",
++            "source": "regulatory",
++            "section": str(idx),
++            "text": buf.strip(),
++        })
++    return chunks
+diff --git a/tests/test_policy_chunks.py b/tests/test_policy_chunks.py
+new file mode 100644
+index 0000000..85798d0
+--- /dev/null
++++ b/tests/test_policy_chunks.py
+@@ -0,0 +1,17 @@
++from src.ingestion.policy_chunks import POLICY_CHUNKS
++
++
++def test_covers_all_ten_rules():
++    sections = {c["section"] for c in POLICY_CHUNKS if c["source"] == "policy"}
++    for rule in (f"R{i}" for i in range(1, 11)):
++        assert rule in sections, f"missing {rule}"
++
++
++def test_covers_all_five_patterns():
++    patterns = [c for c in POLICY_CHUNKS if c["source"] == "pattern"]
++    assert len(patterns) == 5
++
++
++def test_every_chunk_has_required_fields():
++    for chunk in POLICY_CHUNKS:
++        assert chunk["doc_id"] and chunk["source"] and chunk["section"] and chunk["text"]
+diff --git a/tests/test_regulatory_docs.py b/tests/test_regulatory_docs.py
+new file mode 100644
+index 0000000..be0685e
+--- /dev/null
++++ b/tests/test_regulatory_docs.py
+@@ -0,0 +1,17 @@
++from src.ingestion.regulatory_docs import chunk_text
++
++
++def test_chunk_text_splits_on_paragraphs_within_max_chars():
++    text = "\n\n".join([f"Paragraph number {i} with some real content padding here." * 3 for i in range(10)])
++    chunks = chunk_text(text, "test-doc", max_chars=500)
++    assert len(chunks) > 1
++    for c in chunks:
++        assert len(c["text"]) <= 600  # allows the last paragraph to slightly exceed max_chars
++        assert c["source"] == "regulatory"
++
++
++def test_chunk_text_drops_short_noise_paragraphs():
++    text = "Real paragraph with enough content to survive the length filter here.\n\nshort\n\nAnother real paragraph with plenty of content in it too."
++    chunks = chunk_text(text, "test-doc")
++    joined = " ".join(c["text"] for c in chunks)
++    assert "short" not in joined

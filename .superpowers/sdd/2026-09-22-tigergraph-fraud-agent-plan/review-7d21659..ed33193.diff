@@ -1,0 +1,860 @@
+# Review package: 7d21659..ed33193
+
+## Commits
+ed33193 feat: deterministic graph evidence-gathering queries and vector retrieval
+
+## Files changed
+ src/graph/__init__.py       |   0
+ src/graph/queries.py        | 581 ++++++++++++++++++++++++++++++++++++++++++++
+ src/graph/vector_search.py  |  70 ++++++
+ tests/test_graph_queries.py | 175 +++++++++++++
+ 4 files changed, 826 insertions(+)
+
+## Diff
+diff --git a/src/graph/__init__.py b/src/graph/__init__.py
+new file mode 100644
+index 0000000..e69de29
+diff --git a/src/graph/queries.py b/src/graph/queries.py
+new file mode 100644
+index 0000000..46c6d4e
+--- /dev/null
++++ b/src/graph/queries.py
+@@ -0,0 +1,581 @@
++from __future__ import annotations
++
++from datetime import datetime, timedelta
++from typing import Any
++
++from src.tg_client import TigerGraphMCP
++
++GRAPH_NAME = "FraudInvestigation"
++
++# --------------------------------------------------------------------------
++# Why this file looks nothing like the task-10 brief's draft
++# --------------------------------------------------------------------------
++#
++# The brief's draft used bare `INTERPRET QUERY () FOR GRAPH ... { ... }`
++# (no formal CREATE/INSTALL) with either a WHERE-clause primary-key filter
++# (`WHERE c.card_id == "..."`) or, per the brief's own fallback note, a
++# `VERTEX<Type>` query PARAMETER passed through `tg.gsql` as a single command
++# string. Both were tried live against this server before writing any query
++# below, and both fail, for two separate reasons that stack on top of each
++# other:
++#
++# 1. WHERE-clause primary-key filtering fails exactly as predicted for every
++#    vertex type except Transaction: `Card`, `DeviceProfile`, `ClosedCase`
++#    (confirmed live here too -- `Cases.case_id` throws the same
++#    "indicates no valid vertex type ... refers to a primary_id, which is
++#    not directly usable" error TYP-158) all lack
++#    `primary_id_as_attribute`. `Customer`/`BillingRegion`/`FraudCase` are
++#    assumed to share this (identical plain PRIMARY_ID declaration in
++#    src/schema/build_schema.py) per the task's own instruction, and never
++#    needed a WHERE-clause probe here because every query below avoids
++#    filtering by primary-key attribute entirely (see point 3).
++#
++# 2. Separately and more fundamentally: **`INTERPRET QUERY` on this server
++#    does not accept parameters at all**, confirmed live with the exact
++#    error `Semantic Check Fails: Run interpreted query doesn't support
++#    parameter.` -- posting `INTERPRET QUERY (VERTEX<Card> input_card) FOR
++#    GRAPH ... { Start = {input_card}; ... }` through `tg.gsql` (the single
++#    "command" string channel the brief specified) compiles but refuses to
++#    execute. This means the brief's own suggested fix (a typed
++#    `VERTEX<Type>` parameter) cannot be delivered through an interpreted
++#    query on this server, no matter how the query body is written --
++#    contrary to the brief's framing that only the WHERE-clause needed
++#    fixing. Every query below is therefore a real, named, formally
++#    installed GSQL query object (`CREATE OR REPLACE QUERY ... INSTALL
++#    QUERY ...`, run via `tigergraph__run_installed_query`/`tg.run_installed_
++#    query`) -- the exact mechanism Task 8.5's `connected_components.py`
++#    already established for this server, not the brief's "interpreted
++#    queries are fine, no install ceremony needed" assumption. Query install
++#    takes ~20-30s the first time (confirmed live, see `_ensure_installed`
++#    below); this cost is paid at most once per query per process, not once
++#    per call, via a module-level cache -- once installed, GSQL persists the
++#    query server-side across process restarts too, so redundant installs
++#    are also gsql-side no-ops (though the ~20-30s round trip through
++#    `tg.gsql` for the CREATE-OR-REPLACE re-issue in a *new* process is not
++#    free; see `_ensure_installed`'s docstring for how the cache handles this).
++#
++# 3. **No edge in Task 4's schema has a declared `REVERSE_EDGE`** (Task 8's
++#    finding), and unlike Task 8.5's finding that this didn't matter for a
++#    forward-only traversal, several of this task's queries genuinely need
++#    to go from the "one" side (a known DeviceProfile/BillingRegion vertex)
++#    back to the "many" side (its Transactions). This task's own framing
++#    suggested the native backward pattern-arrow (`<-(EdgeName)-`) as the
++#    fix -- **tested live and confirmed to be a hard GSQL PARSE error on
++#    this server** (`no viable alternative at input 'from Devs:d <-('`),
++#    not merely a semantic one. The actual confirmed-working pattern
++#    (identical to Task 8's own resolution, re-verified here) is: seed from
++#    the "many" side's FULL vertex set (e.g. `{Transaction.*}`), traverse
++#    the edge FORWARD in its declared direction, and filter the target
++#    endpoint against the known vertex/vertex-set -- `WHERE target ==
++#    paramVertex` for a single known vertex, or `WHERE target IN
++#    @@setAccum` for a set collected earlier in the same query (GSQL
++#    rejects `IN` against a plain vertex-set *variable* -- confirmed live,
++#    `TYP-8027: Vertex set variable '...' is not supported for IN/NOT IN
++#    clause` -- so every "join against an earlier step's results" below
++#    goes through a `SetAccum<VERTEX<T>>` accumulator, never the raw
++#    SELECT-produced vertex-set variable).
++#
++# 4. This dialect still does not support multi-hop chained FROM-clause
++#    patterns (Task 8.5's finding, re-confirmed implicitly by every query
++#    below being written as sequential single-hop SELECTs).
++#
++# 5. Primary IDs are never referenced with `alias.card_id`/`alias.case_id`
++#    etc. in any SELECT/WHERE/PRINT below (would hit finding #1) -- `v_id`
++#    in the JSON response (present automatically, confirmed live, regardless
++#    of `primary_id_as_attribute`) is used instead wherever a primary id is
++#    needed in the returned data.
++
++_INSTALLED_QUERIES: set[str] = set()
++
++
++async def _ensure_installed(tg: TigerGraphMCP, query_name: str, create_and_install_gsql: str) -> None:
++    """Install (or confirm already-installed) a named GSQL query, exactly
++    once per process. GSQL install is idempotent and persists server-side
++    across process restarts, but each `CREATE OR REPLACE QUERY ... INSTALL
++    QUERY ...` round trip still costs ~20-30s live (confirmed repeatedly
++    during this task's development) even when nothing changed, so this
++    module-level set avoids paying that cost more than once per query per
++    running process -- Task 12 is expected to call these functions many
++    times per case-processing run, not once.
++
++    The tigergraph-mcp `gsql` tool call itself always reports
++    `success: true` (it's a successful HTTP round trip) even when the GSQL
++    *content* failed to install -- a `CREATE QUERY` with a syntax/semantic
++    error comes back as a normal 200 response whose `data.result` text says
++    "Saved as draft query ... Query installation failed!". So a plain
++    success-envelope check is not enough; the response text itself has to
++    be inspected for the server's own installation-outcome message.
++    """
++    if query_name in _INSTALLED_QUERIES:
++        return
++    result = await tg.gsql(create_and_install_gsql)
++    text = str(result.get("data", {}).get("result", "")) if isinstance(result, dict) else str(result)
++    if "Query installation finished." not in text or "Successfully created queries" not in text:
++        raise RuntimeError(f"Failed to install GSQL query '{query_name}': {text}")
++    _INSTALLED_QUERIES.add(query_name)
++
++
++def _print_results(run_result: dict[str, Any]) -> list[dict[str, Any]]:
++    """Unwrap a `tg.run_installed_query(...)` envelope down to the list of
++    PRINT-statement results.
++
++    Confirmed live (this task): `tg.run_installed_query` returns the same
++    `{"success", "operation", "data", ...}` envelope as `tg.gsql` (Task 2's
++    finding, reused here) -- NOT a bare list. The actual PRINT outputs live
++    at `data["result"]`, a list with one entry per PRINT statement in
++    source order, e.g. for a query with two PRINT statements:
++    `[{"first_print_alias": [...]}, {"second_print_alias": [...]}]`. Each
++    vertex-set PRINT entry is itself a list of
++    `{"v_id": ..., "v_type": ..., "attributes": {"Alias.field": value, ...}}`
++    dicts (confirmed live against known HHG-017/CC-1383/RING-C00001-K1
++    fixtures throughout this task's development -- see task-10-report.md).
++    """
++    if not isinstance(run_result, dict):
++        return []
++    return run_result.get("data", {}).get("result", []) or []
++
++
++def _flatten_vertices(vertex_list: list[dict[str, Any]], prefix: str) -> list[dict[str, Any]]:
++    """Turn a PRINT'd vertex list (`{"v_id", "v_type", "attributes": {"Alias.x": v}}`)
++    into a flat `[{"id": v_id, "x": v, ...}]` list, stripping the GSQL
++    alias prefix (e.g. "Txns.") from each attribute key so callers (and the
++    LLM prompt this feeds in Task 12) see plain field names."""
++    flattened: list[dict[str, Any]] = []
++    for entry in vertex_list:
++        row: dict[str, Any] = {"id": entry.get("v_id")}
++        for key, value in entry.get("attributes", {}).items():
++            plain_key = key.split(".", 1)[1] if "." in key else key
++            row[plain_key] = value
++        flattened.append(row)
++    return flattened
++
++
++def _parse_ts(ts: str | None) -> datetime | None:
++    if not ts:
++        return None
++    try:
++        return datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
++    except (ValueError, TypeError):
++        return None
++
++
++# --------------------------------------------------------------------------
++# card_window
++# --------------------------------------------------------------------------
++CARD_WINDOW_GSQL = f"""
++USE GRAPH {GRAPH_NAME}
++CREATE OR REPLACE QUERY card_window(VERTEX<Card> input_card) FOR GRAPH {GRAPH_NAME} {{
++    Start = {{input_card}};
++    Txns = SELECT t FROM Start-(MADE)->Transaction:t;
++    PRINT Txns[Txns.transaction_id, Txns.ts, Txns.TransactionAmt, Txns.addr1,
++               Txns.channel, Txns.risk_score, Txns.customer_id] AS transactions;
++}}
++INSTALL QUERY card_window
++""".strip()
++
++
++async def card_window(tg: TigerGraphMCP, card_id: str, hours: float = 2.0) -> list[dict]:
++    """The card's transactions, windowed to the `hours` immediately before
++    its most recent transaction.
++
++    Design note: the interface (and the brief's draft) takes only
++    `(card_id, hours)` -- no reference timestamp -- so there is no
++    caller-supplied anchor to window around. `card_window`'s GSQL therefore
++    returns the card's FULL transaction history (a single VERTEX<Card>-
++    parameterized forward MADE traversal, confirmed live: exactly 59 rows
++    for C04570-K1, matching Task 8's independently-verified count), and the
++    `hours` window is applied in Python, anchored on the card's own most
++    recent transaction timestamp (the natural anchor when no specific
++    flagged transaction is passed in) -- not in GSQL, since `ts` is a plain
++    STRING attribute (no `primary_id_as_attribute`-style gap here, but also
++    no DATETIME type to do arithmetic on server-side without extra parsing
++    ceremony this task doesn't need at this data scale, typically dozens of
++    rows per card).
++    """
++    await _ensure_installed(tg, "card_window", CARD_WINDOW_GSQL)
++    result = await tg.run_installed_query("card_window", {"input_card": card_id})
++    print_results = _print_results(result)
++    raw_txns = print_results[0]["transactions"] if print_results else []
++    txns = _flatten_vertices(raw_txns, "Txns")
++
++    parsed = [(t, _parse_ts(t.get("ts"))) for t in txns]
++    valid = [(t, ts) for t, ts in parsed if ts is not None]
++    if not valid:
++        return txns
++    latest = max(ts for _, ts in valid)
++    cutoff = latest - timedelta(hours=hours)
++    return [t for t, ts in valid if ts >= cutoff]
++
++
++# --------------------------------------------------------------------------
++# customer_cards
++# --------------------------------------------------------------------------
++CUSTOMER_CARDS_GSQL = f"""
++USE GRAPH {GRAPH_NAME}
++CREATE OR REPLACE QUERY customer_cards(VERTEX<Customer> input_customer) FOR GRAPH {GRAPH_NAME} {{
++    Start = {{input_customer}};
++    Cards = SELECT c FROM Start-(OWNS)->Card:c;
++    PRINT Cards[Cards.ring_cluster_id, Cards.cluster_prior_fraud_rate] AS cards;
++}}
++INSTALL QUERY customer_cards
++""".strip()
++
++
++async def customer_cards(tg: TigerGraphMCP, customer_id: str) -> list[dict]:
++    """Every card owned by this customer, with each card's ring-clustering
++    output (Task 8.5) attached. `Customer` has never been probed for
++    `primary_id_as_attribute` before this task (per the task's own
++    instruction to assume the gap); avoided entirely here the same way
++    `card_window` avoids it for `Card` -- seed from the known VERTEX<Customer>
++    parameter, no WHERE-clause primary-key filter at all."""
++    await _ensure_installed(tg, "customer_cards", CUSTOMER_CARDS_GSQL)
++    result = await tg.run_installed_query("customer_cards", {"input_customer": customer_id})
++    print_results = _print_results(result)
++    raw_cards = print_results[0]["cards"] if print_results else []
++    return _flatten_vertices(raw_cards, "Cards")
++
++
++# --------------------------------------------------------------------------
++# device_neighbors
++# --------------------------------------------------------------------------
++DEVICE_NEIGHBORS_GSQL = f"""
++USE GRAPH {GRAPH_NAME}
++CREATE OR REPLACE QUERY device_neighbors(VERTEX<Transaction> input_txn) FOR GRAPH {GRAPH_NAME} {{
++    SetAccum<VERTEX<DeviceProfile>> @@device;
++    SetAccum<VERTEX<Transaction>> @@sameDeviceTxns;
++
++    Start = {{input_txn}};
++    DevStep = SELECT d FROM Start-(FROM_DEVICE)->DeviceProfile:d
++              ACCUM @@device += d;
++
++    AllTxns = {{Transaction.*}};
++    SameDeviceTxns = SELECT t FROM AllTxns:t -(FROM_DEVICE)-> DeviceProfile:d2
++                      WHERE d2 IN @@device
++                      ACCUM @@sameDeviceTxns += t;
++
++    AllCards = {{Card.*}};
++    SharedCards = SELECT c FROM AllCards:c -(MADE)-> Transaction:t2
++                  WHERE t2 IN @@sameDeviceTxns
++                  LIMIT 300;
++
++    PRINT @@sameDeviceTxns.size() AS n_shared_transactions;
++    PRINT SharedCards[SharedCards.ring_cluster_id, SharedCards.cluster_prior_fraud_rate] AS shared_cards;
++}}
++INSTALL QUERY device_neighbors
++""".strip()
++
++
++async def device_neighbors(tg: TigerGraphMCP, transaction_id: str) -> list[dict]:
++    """Other Cards that share this transaction's device fingerprint.
++
++    The brief's draft chains `Transaction -(FROM_DEVICE)-> DeviceProfile
++    <-(FROM_DEVICE)- Transaction <-(MADE)- Card` in one FROM clause with a
++    `reverse_`-style implicit backward walk; that fails outright (both the
++    multi-hop chaining and the native `<-(EdgeName)-` backward arrow are
++    confirmed live parse errors on this server -- see the module docstring).
++    Rewritten as: get the one DeviceProfile the input transaction points to
++    (forward, trivial), then forward-seed-and-filter twice more (all
++    Transactions -> DeviceProfile, keep ones matching; all Cards -> those
++    Transactions, keep ones matching). Verified live against HHG-017's known
++    device fingerprint: 621 shared transactions / up to 300 (LIMIT-capped)
++    shared cards, matching Task 8's independently-confirmed 621/299 exactly
++    (299 < the 300 cap, so nothing was actually truncated for this fixture).
++    """
++    await _ensure_installed(tg, "device_neighbors", DEVICE_NEIGHBORS_GSQL)
++    result = await tg.run_installed_query("device_neighbors", {"input_txn": transaction_id})
++    print_results = _print_results(result)
++    raw_cards = print_results[1]["shared_cards"] if len(print_results) > 1 else []
++    return _flatten_vertices(raw_cards, "SharedCards")
++
++
++# --------------------------------------------------------------------------
++# region_neighbors
++# --------------------------------------------------------------------------
++REGION_NEIGHBORS_GSQL = f"""
++USE GRAPH {GRAPH_NAME}
++CREATE OR REPLACE QUERY region_neighbors(VERTEX<BillingRegion> input_region) FOR GRAPH {GRAPH_NAME} {{
++    AllTxns = {{Transaction.*}};
++    RegionTxns = SELECT t FROM AllTxns:t -(BILLED_IN)-> BillingRegion:b
++                 WHERE b == input_region
++                 LIMIT 500;
++    PRINT RegionTxns[RegionTxns.transaction_id, RegionTxns.ts, RegionTxns.TransactionAmt,
++                      RegionTxns.channel, RegionTxns.risk_score, RegionTxns.customer_id] AS transactions;
++}}
++INSTALL QUERY region_neighbors
++""".strip()
++
++
++async def region_neighbors(
++    tg: TigerGraphMCP,
++    addr1: str,
++    txn_ts: str | None = None,
++    window_days: float | None = None,
++) -> list[dict]:
++    """Other transactions billed in the same region as `addr1`.
++
++    `BillingRegion` was never explicitly probed for `primary_id_as_attribute`
++    before this task; avoided the same way as `card_window`/`customer_cards`
++    -- `addr1` is passed as a `VERTEX<BillingRegion>` query parameter
++    (GSQL resolves it from the primary-id string automatically, confirmed
++    live, same as `VERTEX<Card>`), never as a WHERE-clause attribute filter.
++    `BillingRegion` is the "one" side of `Transaction -(BILLED_IN)->
++    BillingRegion`, so reading its transactions needs the same
++    forward-seed-from-the-many-side-and-filter-the-target workaround as
++    `device_neighbors` (single accumulator-free `WHERE b == input_region`
++    here since there's only one known region, not a set).
++
++    Server-side `LIMIT 500` guards against the coarse `BillingRegion`
++    collisions Task 8.5 found (max 2,006 cards sharing one region) blowing
++    up the response; `txn_ts`/`window_days`, when both given, then filter
++    that (possibly LIMIT-truncated) set down to the actual time window in
++    Python, same string-timestamp-parsing approach as `card_window`. Known
++    limitation, documented rather than silently accepted: for a region with
++    more than 500 transactions total, the LIMIT is applied BEFORE the time
++    filter, so a genuinely-in-window transaction could be excluded if 500
++    other out-of-window ones for that region happen to sort earlier in
++    GSQL's arbitrary vertex-set order. Confirmed live that addr1 "204.0"
++    (this task's own fixture's region) already hits this exact cap.
++    """
++    await _ensure_installed(tg, "region_neighbors", REGION_NEIGHBORS_GSQL)
++    result = await tg.run_installed_query("region_neighbors", {"input_region": addr1})
++    print_results = _print_results(result)
++    raw_txns = print_results[0]["transactions"] if print_results else []
++    txns = _flatten_vertices(raw_txns, "RegionTxns")
++
++    if txn_ts is None or window_days is None:
++        return txns
++
++    anchor = _parse_ts(txn_ts)
++    if anchor is None:
++        return txns
++    window = timedelta(days=window_days)
++    filtered = []
++    for t in txns:
++        ts = _parse_ts(t.get("ts"))
++        if ts is not None and abs(ts - anchor) <= window:
++            filtered.append(t)
++    return filtered
++
++
++# --------------------------------------------------------------------------
++# closed_case_lookup
++# --------------------------------------------------------------------------
++CLOSED_CASE_BY_CARD_GSQL = f"""
++USE GRAPH {GRAPH_NAME}
++CREATE OR REPLACE QUERY closed_case_lookup_by_card(VERTEX<Card> input_card) FOR GRAPH {GRAPH_NAME} {{
++    SetAccum<VERTEX<ClosedCase>> @@cases;
++
++    AllCases1 = {{ClosedCase.*}};
++    OnCard = SELECT cc FROM AllCases1:cc -(ON_CARD)-> Card:c
++             WHERE c == input_card
++             ACCUM @@cases += cc;
++
++    AllCases2 = {{ClosedCase.*}};
++    Connected = SELECT cc FROM AllCases2:cc -(CONNECTED_TO)-> Card:c
++                WHERE c == input_card
++                ACCUM @@cases += cc;
++
++    Cases = {{@@cases}};
++    PRINT Cases[Cases.outcome, Cases.pattern, Cases.exposure_usd, Cases.analyst_notes] AS closed_cases;
++}}
++INSTALL QUERY closed_case_lookup_by_card
++""".strip()
++
++CLOSED_CASE_BY_DEVICE_GSQL = f"""
++USE GRAPH {GRAPH_NAME}
++CREATE OR REPLACE QUERY closed_case_lookup_by_device(VERTEX<DeviceProfile> input_device) FOR GRAPH {GRAPH_NAME} {{
++    SetAccum<VERTEX<Transaction>> @@deviceTxns;
++    AllTxns = {{Transaction.*}};
++    DeviceTxns = SELECT t FROM AllTxns:t -(FROM_DEVICE)-> DeviceProfile:d
++                 WHERE d == input_device
++                 ACCUM @@deviceTxns += t;
++
++    SetAccum<VERTEX<ClosedCase>> @@cases;
++    AllCases = {{ClosedCase.*}};
++    Involved = SELECT cc FROM AllCases:cc -(INVOLVES)-> Transaction:t2
++               WHERE t2 IN @@deviceTxns
++               ACCUM @@cases += cc;
++
++    Cases = {{@@cases}};
++    PRINT Cases[Cases.outcome, Cases.pattern, Cases.exposure_usd, Cases.analyst_notes] AS closed_cases;
++}}
++INSTALL QUERY closed_case_lookup_by_device
++""".strip()
++
++CLOSED_CASE_BY_REGION_GSQL = f"""
++USE GRAPH {GRAPH_NAME}
++CREATE OR REPLACE QUERY closed_case_lookup_by_region(VERTEX<BillingRegion> input_region) FOR GRAPH {GRAPH_NAME} {{
++    SetAccum<VERTEX<Transaction>> @@regionTxns;
++    AllTxns = {{Transaction.*}};
++    RegionTxns = SELECT t FROM AllTxns:t -(BILLED_IN)-> BillingRegion:b
++                 WHERE b == input_region
++                 ACCUM @@regionTxns += t;
++
++    SetAccum<VERTEX<ClosedCase>> @@cases;
++    AllCases = {{ClosedCase.*}};
++    Involved = SELECT cc FROM AllCases:cc -(INVOLVES)-> Transaction:t2
++               WHERE t2 IN @@regionTxns
++               ACCUM @@cases += cc;
++
++    Cases = {{@@cases}};
++    PRINT Cases[Cases.outcome, Cases.pattern, Cases.exposure_usd, Cases.analyst_notes] AS closed_cases;
++}}
++INSTALL QUERY closed_case_lookup_by_region
++""".strip()
++
++
++async def closed_case_lookup(
++    tg: TigerGraphMCP,
++    card_id: str | None = None,
++    device_id: str | None = None,
++    addr1: str | None = None,
++) -> list[dict]:
++    """Closed cases connected to a card (via ON_CARD or CONNECTED_TO), a
++    device fingerprint (via a shared-device Transaction set, then INVOLVES),
++    or a billing region (via a shared-region Transaction set, then
++    INVOLVES) -- any combination of the three may be supplied; results are
++    the union across whichever are given (duplicates possible if the same
++    case matches more than one criterion; not de-duplicated here since
++    Task 12's evidence-gathering step is expected to reason over each
++    signal separately).
++
++    `ClosedCase` (confirmed live in this task -- `Cases.case_id` throws
++    the same primary_id-not-attribute error as `Card`) and `DeviceProfile`/
++    `BillingRegion` (assumed per the task's instruction) all share the
++    `primary_id_as_attribute` gap; every branch here uses the same
++    forward-seed-from-ClosedCase(or Transaction)-and-filter-by-VERTEX-
++    membership pattern established by `device_neighbors`/`region_neighbors`,
++    never a WHERE-clause attribute filter on any of these three types.
++    Verified live against the known HHG-017/`C04570-K1` fixture (returns
++    exactly `CC-1383`, outcome `cleared`, matching the manual checkpoint
++    doc) and the case's own flagged device (returns several unrelated
++    `confirmed_fraud` cases -- expected: Task 8's checkpoint already
++    established this device fingerprint is a coarse category shared by 299
++    customers, not a meaningful ring signal for this specific card).
++    """
++    results: list[dict] = []
++    if card_id:
++        await _ensure_installed(tg, "closed_case_lookup_by_card", CLOSED_CASE_BY_CARD_GSQL)
++        result = await tg.run_installed_query("closed_case_lookup_by_card", {"input_card": card_id})
++        print_results = _print_results(result)
++        raw = print_results[0]["closed_cases"] if print_results else []
++        results.extend(_flatten_vertices(raw, "Cases"))
++    if device_id:
++        await _ensure_installed(tg, "closed_case_lookup_by_device", CLOSED_CASE_BY_DEVICE_GSQL)
++        result = await tg.run_installed_query("closed_case_lookup_by_device", {"input_device": device_id})
++        print_results = _print_results(result)
++        raw = print_results[0]["closed_cases"] if print_results else []
++        results.extend(_flatten_vertices(raw, "Cases"))
++    if addr1:
++        await _ensure_installed(tg, "closed_case_lookup_by_region", CLOSED_CASE_BY_REGION_GSQL)
++        result = await tg.run_installed_query("closed_case_lookup_by_region", {"input_region": addr1})
++        print_results = _print_results(result)
++        raw = print_results[0]["closed_cases"] if print_results else []
++        results.extend(_flatten_vertices(raw, "Cases"))
++    return results
++
++
++# --------------------------------------------------------------------------
++# ring_membership
++# --------------------------------------------------------------------------
++RING_MEMBERSHIP_GSQL = f"""
++USE GRAPH {GRAPH_NAME}
++CREATE OR REPLACE QUERY ring_membership(VERTEX<Card> input_card) FOR GRAPH {GRAPH_NAME} {{
++    Start = {{input_card}};
++    PRINT Start[Start.ring_cluster_id, Start.cluster_prior_fraud_rate] AS card;
++}}
++INSTALL QUERY ring_membership
++""".strip()
++
++
++async def ring_membership(tg: TigerGraphMCP, card_id: str) -> dict:
++    """O(1) lookup against the ring_cluster_id/cluster_prior_fraud_rate
++    attributes written by Task 8.5's connected-components pass -- this is
++    the graph-algorithm output, not a live traversal.
++
++    The brief's draft filters `WHERE card_id == "..."` (the exact
++    `primary_id_as_attribute` gap this whole task works around) even though,
++    unlike the other functions here, no filter is actually needed: the
++    caller already knows the one card they want, so this seeds directly
++    from a `VERTEX<Card>` parameter and prints its two attributes -- no
++    WHERE clause, no full-collection scan, no accumulator.
++
++    Confirmed live re: Task 2's tg_client.py envelope-wrapping note (the
++    brief flagged this as unverified and asked whoever implements it to
++    check the real shape by hand): `tg.run_installed_query(...)` returns
++    `{"success": ..., "data": {"result": [{"card": [{"v_id": ...,
++    "attributes": {"Start.ring_cluster_id": ..., "Start.cluster_prior_fraud_rate":
++    ...}}]}]}}` -- i.e. `result["data"]["result"][0]["card"]` is the row list,
++    matching `_print_results`/`_flatten_vertices` above exactly (no further
++    unwrapping needed beyond what those two helpers already do). Verified
++    against the known 24-member ring fixture from Task 8.5
++    (`C03528-K1` -> `ring_cluster_id: "RING-C00001-K1"`,
++    `cluster_prior_fraud_rate: 0.8469...`, matching task-8.5-report.md's
++    numbers exactly).
++    """
++    await _ensure_installed(tg, "ring_membership", RING_MEMBERSHIP_GSQL)
++    result = await tg.run_installed_query("ring_membership", {"input_card": card_id})
++    print_results = _print_results(result)
++    raw = print_results[0]["card"] if print_results else []
++    rows = _flatten_vertices(raw, "Start")
++    return rows[0] if rows else {}
++
++
++# --- Bounded agentic follow-up round (Task 12 step 2a) -------------------------
++# A small, fixed menu of the SAME query functions above, re-parameterized, exposed
++# to the LLM as real function-calling tools. The LLM may call at most one of these
++# after seeing the deterministic evidence pass; this is genuine tool selection, not
++# prose-parsing, but capped to one call so a rate-limited/small model can't loop.
++
++FOLLOWUP_TOOL_SCHEMAS: list[dict] = [
++    {
++        "type": "function",
++        "function": {
++            "name": "wider_region_check",
++            "description": "Check for other transactions in the same billing region over a wider window than the default pass.",
++            "parameters": {
++                "type": "object",
++                "properties": {"addr1": {"type": "string"}},
++                "required": ["addr1"],
++            },
++        },
++    },
++    {
++        "type": "function",
++        "function": {
++            "name": "closed_case_lookup_by_region",
++            "description": "Look up closed cases connected to a billing region rather than a specific card.",
++            "parameters": {
++                "type": "object",
++                "properties": {"addr1": {"type": "string"}},
++                "required": ["addr1"],
++            },
++        },
++    },
++    {
++        "type": "function",
++        "function": {
++            "name": "wider_card_window",
++            "description": "Re-run the card transaction window with a longer lookback (e.g. 7 days instead of 48 hours) when the default window looks incomplete.",
++            "parameters": {
++                "type": "object",
++                "properties": {"card_id": {"type": "string"}, "hours": {"type": "number"}},
++                "required": ["card_id", "hours"],
++            },
++        },
++    },
++]
++
++
++async def dispatch_followup_tool(tg: TigerGraphMCP, name: str, arguments: dict) -> list[dict] | dict:
++    if name == "wider_region_check":
++        # No time-window narrowing for the "wider" follow-up -- deliberately
++        # omits txn_ts/window_days so region_neighbors returns its full
++        # (LIMIT-capped) unfiltered set rather than the default pass's
++        # narrower time window.
++        return await region_neighbors(tg, arguments["addr1"])
++    if name == "closed_case_lookup_by_region":
++        return await closed_case_lookup(tg, addr1=arguments["addr1"])
++    if name == "wider_card_window":
++        return await card_window(tg, arguments["card_id"], hours=arguments.get("hours", 168))
++    raise ValueError(f"Unknown follow-up tool: {name}")
+diff --git a/src/graph/vector_search.py b/src/graph/vector_search.py
+new file mode 100644
+index 0000000..80e7f60
+--- /dev/null
++++ b/src/graph/vector_search.py
+@@ -0,0 +1,70 @@
++from __future__ import annotations
++
++from typing import Any
++
++from src.ingestion.embeddings import embed
++from src.tg_client import TigerGraphMCP
++
++
++def _unwrap_hits(search_result: Any) -> list[dict]:
++    """Unwrap `tg.search_top_k_similarity(...)`'s envelope down to a flat
++    list of `{"id", "source"/"section"/etc..., "distance"}` rows.
++
++    Confirmed live (this task): like `tg.gsql`/`tg.run_installed_query`,
++    `tg.search_top_k_similarity` returns the `{"success", "data", ...}`
++    envelope, not a bare list. The real shape, confirmed live against the
++    populated `KnowledgeDoc` index (660 vectors, per Task 9): `data["result"]`
++    is a two-element list -- `[{"v": [{"v_id", "v_type", "attributes": {...}},
++    ...]}, {"distances": {v_id: float, ...}}]` -- i.e. the hit vertices and
++    their distances arrive as two SEPARATE top-level entries, joined only by
++    `v_id`, not already paired together per-hit. This function joins them
++    itself so callers get one row per hit with its own distance attached.
++    """
++    if not isinstance(search_result, dict):
++        return []
++    rows = search_result.get("data", {}).get("result", []) or []
++    vertices: list[dict] = []
++    distances: dict[str, float] = {}
++    for entry in rows:
++        if "v" in entry:
++            vertices.extend(entry["v"])
++        if "distances" in entry:
++            distances.update(entry["distances"])
++
++    hits: list[dict] = []
++    for v in vertices:
++        row: dict[str, Any] = {"id": v.get("v_id"), "type": v.get("v_type")}
++        row.update(v.get("attributes", {}))
++        if v.get("v_id") in distances:
++            row["distance"] = distances[v["v_id"]]
++        hits.append(row)
++    return hits
++
++
++async def retrieve_knowledge(tg: TigerGraphMCP, query_text: str, top_k: int = 5) -> dict[str, list[dict]]:
++    """Semantic search over policy/pattern/regulatory knowledge (Task 9's
++    `KnowledgeDoc` index, 660 vectors) and prior investigations (`ClosedCase`,
++    5,565 vectors, and this run's own `FraudCase` writes).
++
++    Confirmed live: both `KnowledgeDoc` and `ClosedCase` searches return
++    real, relevant hits (e.g. querying "card testing small authorizations"
++    surfaces `pattern-card-testing`/`policy-r5`/`policy-r10` from
++    `KnowledgeDoc` with low, sensible distances). `FraudCase`'s vector index
++    exists (Task 4's schema) but is empty until Task 12/13 actually writes
++    an embedding when closing a case -- an empty `own_case_hits` list here
++    is the expected, correct result until that write path exists, not a bug
++    in this function.
++    """
++    query_vector = embed([query_text])[0]
++    knowledge_raw = await tg.search_top_k_similarity("KnowledgeDoc", "embedding", query_vector, top_k)
++    closed_case_raw = await tg.search_top_k_similarity("ClosedCase", "embedding", query_vector, top_k)
++    own_case_raw = await tg.search_top_k_similarity("FraudCase", "embedding", query_vector, top_k)
++
++    knowledge_hits = _unwrap_hits(knowledge_raw)
++    closed_case_hits = _unwrap_hits(closed_case_raw)
++    own_case_hits = _unwrap_hits(own_case_raw)
++
++    return {
++        "knowledge": knowledge_hits,
++        "similar_cases": closed_case_hits + own_case_hits,
++    }
+diff --git a/tests/test_graph_queries.py b/tests/test_graph_queries.py
+new file mode 100644
+index 0000000..7859816
+--- /dev/null
++++ b/tests/test_graph_queries.py
+@@ -0,0 +1,175 @@
++import pytest
++
++from src.graph.queries import (
++    card_window,
++    closed_case_lookup,
++    customer_cards,
++    device_neighbors,
++    dispatch_followup_tool,
++    region_neighbors,
++    ring_membership,
++)
++from src.graph.vector_search import retrieve_knowledge
++from src.tg_client import TigerGraphMCP
++
++# Known-good live fixtures (from Task 8's manual checkpoint on HHG-017 and
++# Task 8.5's ring spot check -- see docs/manual-case-checkpoint.md and
++# task-8.5-report.md):
++KNOWN_CARD = "C04570-K1"
++KNOWN_CUSTOMER = "C04570"
++KNOWN_TXN = "3450629"  # HHG-017's flagged transaction, on KNOWN_CARD
++KNOWN_PRIOR_CASE = "CC-1383"  # cleared closed case on KNOWN_CARD
++KNOWN_REGION = "204.0"  # billing region shared by KNOWN_TXN and several others
++KNOWN_DEVICE = "Dec9ef04aa023"  # HHG-017's device fingerprint (299-customer collision)
++KNOWN_RING_CARD = "C03528-K1"  # 24-member ring per Task 8.5's spot check
++
++
++@pytest.mark.asyncio
++async def test_card_window_returns_known_transaction():
++    # NOTE: `hours` windows around the card's OWN most recent transaction
++    # (see card_window's docstring -- the interface has no reference
++    # timestamp to window around otherwise). C04570-K1's most recent
++    # transaction is 2016-12-25, well after the KNOWN_TXN flagged
++    # transaction (2016-11-11) -- confirmed live, this card has real
++    # activity after the case's flagged transaction. So a *small* window
++    # (e.g. 24h) legitimately does NOT include KNOWN_TXN; use a window wide
++    # enough to span from 2016-12-25 back through 2016-11-11 instead of
++    # assuming the flagged transaction is always the most recent one.
++    async with TigerGraphMCP() as tg:
++        result = await card_window(tg, KNOWN_CARD, hours=24 * 60)
++        assert result
++        txn_ids = {t["id"] for t in result}
++        assert KNOWN_TXN in txn_ids
++        assert all("ts" in t and "TransactionAmt" in t for t in result)
++
++
++@pytest.mark.asyncio
++async def test_card_window_small_window_narrows_results():
++    async with TigerGraphMCP() as tg:
++        full_history = await card_window(tg, KNOWN_CARD, hours=100000)
++        narrow = await card_window(tg, KNOWN_CARD, hours=1)
++        assert len(narrow) < len(full_history)
++        assert len(narrow) >= 1  # the card's own latest transaction always qualifies
++
++
++@pytest.mark.asyncio
++async def test_card_window_full_history_has_59_transactions():
++    async with TigerGraphMCP() as tg:
++        # hours=100000 -- wide enough to not exclude anything -- confirms
++        # the underlying MADE traversal itself returns the full,
++        # independently-verified 59-transaction history for this card
++        # (Task 8's manual checkpoint), separate from the Python-side
++        # windowing logic tested above.
++        result = await card_window(tg, KNOWN_CARD, hours=100000)
++        assert len(result) == 59
++
++
++@pytest.mark.asyncio
++async def test_customer_cards_returns_known_card():
++    async with TigerGraphMCP() as tg:
++        result = await customer_cards(tg, KNOWN_CUSTOMER)
++        assert result
++        assert any(c["id"] == KNOWN_CARD for c in result)
++
++
++@pytest.mark.asyncio
++async def test_device_neighbors_matches_known_collision_count():
++    async with TigerGraphMCP() as tg:
++        result = await device_neighbors(tg, KNOWN_TXN)
++        assert result
++        # Task 8's checkpoint found 299 distinct customers/cards sharing
++        # this device; device_neighbors LIMITs shared_cards at 300.
++        assert len(result) <= 300
++        assert any(c["id"] == KNOWN_CARD for c in result)
++
++
++@pytest.mark.asyncio
++async def test_region_neighbors_returns_transactions_for_known_region():
++    async with TigerGraphMCP() as tg:
++        result = await region_neighbors(tg, KNOWN_REGION)
++        assert result
++        assert all("ts" in t and "TransactionAmt" in t for t in result)
++
++
++@pytest.mark.asyncio
++async def test_region_neighbors_time_window_narrows_results():
++    async with TigerGraphMCP() as tg:
++        unfiltered = await region_neighbors(tg, KNOWN_REGION)
++        windowed = await region_neighbors(
++            tg, KNOWN_REGION, txn_ts="2016-11-11 23:46:24", window_days=1
++        )
++        assert len(windowed) <= len(unfiltered)
++
++
++@pytest.mark.asyncio
++async def test_closed_case_lookup_by_card_returns_known_prior_case():
++    async with TigerGraphMCP() as tg:
++        result = await closed_case_lookup(tg, card_id=KNOWN_CARD)
++        assert result
++        case_ids = {c["id"] for c in result}
++        assert KNOWN_PRIOR_CASE in case_ids
++
++
++@pytest.mark.asyncio
++async def test_closed_case_lookup_by_device_returns_cases():
++    async with TigerGraphMCP() as tg:
++        result = await closed_case_lookup(tg, device_id=KNOWN_DEVICE)
++        assert result
++
++
++@pytest.mark.asyncio
++async def test_closed_case_lookup_by_region_returns_cases():
++    async with TigerGraphMCP() as tg:
++        result = await closed_case_lookup(tg, addr1=KNOWN_REGION)
++        assert result is not None
++
++
++@pytest.mark.asyncio
++async def test_closed_case_lookup_with_no_args_returns_empty():
++    async with TigerGraphMCP() as tg:
++        result = await closed_case_lookup(tg)
++        assert result == []
++
++
++@pytest.mark.asyncio
++async def test_ring_membership_returns_cluster_from_known_ring():
++    async with TigerGraphMCP() as tg:
++        result = await ring_membership(tg, KNOWN_RING_CARD)
++        assert result.get("ring_cluster_id") == "RING-C00001-K1"
++        assert result.get("cluster_prior_fraud_rate") is not None
++
++
++@pytest.mark.asyncio
++async def test_ring_membership_singleton_card_has_own_ring():
++    async with TigerGraphMCP() as tg:
++        result = await ring_membership(tg, KNOWN_CARD)
++        assert result.get("ring_cluster_id")
++
++
++@pytest.mark.asyncio
++async def test_retrieve_knowledge_returns_policy_and_case_hits():
++    async with TigerGraphMCP() as tg:
++        result = await retrieve_knowledge(tg, "card testing small authorizations", top_k=3)
++        assert "knowledge" in result and "similar_cases" in result
++        assert len(result["knowledge"]) > 0
++        # FraudCase's index is confirmed empty until Task 12/13 writes to
++        # it; similar_cases is dominated by ClosedCase hits, not required
++        # to be non-empty from FraudCase specifically.
++        assert len(result["similar_cases"]) > 0
++
++
++@pytest.mark.asyncio
++async def test_dispatch_followup_tool_routes_to_correct_function():
++    async with TigerGraphMCP() as tg:
++        result = await dispatch_followup_tool(
++            tg, "wider_card_window", {"card_id": KNOWN_CARD, "hours": 100000}
++        )
++        assert result is not None
++        assert len(result) == 59  # same full-history count as card_window's own test
++
++
++@pytest.mark.asyncio
++async def test_dispatch_followup_tool_unknown_name_raises():
++    async with TigerGraphMCP() as tg:
++        with pytest.raises(ValueError, match="Unknown follow-up tool"):
++            await dispatch_followup_tool(tg, "not_a_real_tool", {})

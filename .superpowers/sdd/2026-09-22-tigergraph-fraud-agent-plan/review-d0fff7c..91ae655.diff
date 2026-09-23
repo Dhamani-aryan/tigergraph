@@ -1,0 +1,4390 @@
+# Review package: d0fff7c..91ae655
+
+## Commits
+91ae655 feat: environment setup and MCP tool schema discovery
+
+## Files changed
+ .env.example                   |   10 +
+ .gitignore                     |    1 +
+ docs/tigergraph-mcp-tools.json | 4200 ++++++++++++++++++++++++++++++++++++++++
+ requirements.txt               |   14 +
+ scripts/discover_mcp_tools.py  |  101 +
+ 5 files changed, 4326 insertions(+)
+
+## Diff
+diff --git a/.env.example b/.env.example
+new file mode 100644
+index 0000000..adf58d8
+--- /dev/null
++++ b/.env.example
+@@ -0,0 +1,10 @@
++TG_HOST=https://your-workspace.i.tgcloud.io
++TG_GRAPHNAME=FraudInvestigation
++TG_USERNAME=tigergraph
++TG_PASSWORD=changeme
++TG_RESTPP_PORT=9000
++TG_GS_PORT=14240
++
++LLM_BACKEND=groq
++GROQ_API_KEY=your-groq-key-here
++GROQ_MODEL=openai/gpt-oss-120b
+diff --git a/.gitignore b/.gitignore
+index 4dff9f1..0f90d7d 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -9,20 +9,21 @@ data/raw/
+ # Python
+ __pycache__/
+ *.pyc
+ .venv/
+ venv/
+ *.egg-info/
+ 
+ # Env / secrets
+ .env
+ .env.*
++!.env.example
+ 
+ # OS
+ .DS_Store
+ Thumbs.db
+ 
+ # Generated / scratch
+ data/processed/
+ data/vectors/
+ *.log
+ 
+diff --git a/docs/tigergraph-mcp-tools.json b/docs/tigergraph-mcp-tools.json
+new file mode 100644
+index 0000000..56b3697
+--- /dev/null
++++ b/docs/tigergraph-mcp-tools.json
+@@ -0,0 +1,4200 @@
++[
++  {
++    "name": "tigergraph__list_connections",
++    "description": "List all available TigerGraph connection profiles. Profiles are configured via environment variables: the default profile uses TG_HOST, TG_USERNAME, etc., while named profiles use <PROFILE>_TG_HOST, <PROFILE>_TG_USERNAME, etc.",
++    "inputSchema": {
++      "properties": {},
++      "type": "object",
++      "description": "Input schema for listing available connection profiles.",
++      "title": "ListConnectionsToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__show_connection",
++    "description": "Show non-sensitive connection details for a specific profile (host, username, graph name, ports). Never reveals passwords or tokens.",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name to inspect. If not provided, shows the active profile (from TG_PROFILE env var or 'default').",
++          "title": "Profile"
++        }
++      },
++      "type": "object",
++      "description": "Input schema for showing connection details.",
++      "title": "ShowConnectionToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__authenticate",
++    "description": "Register TigerGraph credentials for the current MCP session.\n\nRe-points one of the session's connections at a TigerGraph instance. Omit ``profile`` to replace the default profile's connection, or name a profile to replace only that one, leaving the session's other profiles untouched. Stdio mode uses env-var profiles instead and does not need this tool.\n\nEither ``api_token``/``jwt_token`` OR ``username`` + ``password`` must be supplied. The credentials live only in the session's in-memory connection pool and are dropped on disconnect.",
++    "inputSchema": {
++      "properties": {
++        "host": {
++          "description": "TigerGraph host URL, e.g. https://acme.tgcloud.io.",
++          "title": "Host",
++          "type": "string"
++        },
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Profile whose connection these credentials replace. Omit, or pass 'default', to replace the default profile's connection. Only this profile is affected; other profiles in the session keep theirs.",
++          "title": "Profile"
++        },
++        "graphname": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Default graph for this session.",
++          "title": "Graphname"
++        },
++        "username": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "TigerGraph username (password auth).",
++          "title": "Username"
++        },
++        "password": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "TigerGraph password (password auth).",
++          "title": "Password"
++        },
++        "secret": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "TigerGraph GSQL secret (alternative to password auth).",
++          "title": "Secret"
++        },
++        "api_token": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "TigerGraph REST++ API token (token auth).",
++          "title": "Api Token"
++        },
++        "jwt_token": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "TigerGraph JWT token (token auth).",
++          "title": "Jwt Token"
++        },
++        "restpp_port": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "REST++ port (default 9000).",
++          "title": "Restpp Port"
++        },
++        "gs_port": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "GSQL Server port (default 14240).",
++          "title": "Gs Port"
++        },
++        "ssl_port": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "SSL port (default 443).",
++          "title": "Ssl Port"
++        },
++        "tg_cloud": {
++          "anyOf": [
++            {
++              "type": "boolean"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "True if connecting to TigerGraph Cloud.",
++          "title": "Tg Cloud"
++        },
++        "cert_path": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Path to a CA bundle for TLS verification.",
++          "title": "Cert Path"
++        }
++      },
++      "required": [
++        "host"
++      ],
++      "type": "object",
++      "description": "Input schema for registering session credentials.",
++      "title": "AuthenticateToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__get_global_schema",
++    "description": "Get the complete global schema including all global vertex types, edge types, graphs, and their member types. Runs GSQL 'LS' command.\n\n**Use When:**\n  \u2022 You need to see all graphs and their schemas at once\n  \u2022 Understanding the complete database structure\n  \u2022 Finding all available vertex and edge types across all graphs\n  \u2022 Database-level schema exploration\n\n**Quick Start:**\n```json\n{}\n```\n(No parameters needed)\n\n**Tips:**\n  \u2022 Returns output from GSQL 'LS' command\n  \u2022 Shows all graphs in the database\n  \u2022 For single graph details, use 'show_graph_details' instead\n  \u2022 Useful for database administrators\n\n**Related Tools:** list_graphs, show_graph_details, get_graph_schema",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        }
++      },
++      "type": "object",
++      "description": "Input schema for getting the global schema (all global vertex/edge types, graphs, etc.).",
++      "title": "GetGlobalSchemaToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__list_graphs",
++    "description": "List all graph names in the TigerGraph database. Returns only graph names \u2014 no schema, query, or job details.\n\n**Use When:**\n  \u2022 Discovering what graphs exist in the database\n  \u2022 First step when connecting to a new TigerGraph instance\n  \u2022 Verifying a graph was created or dropped successfully\n\n**Quick Start:**\n```json\n{}\n```\n(No parameters needed)\n\n**Next Steps:**\n  \u2022 Use 'show_graph_details' to see everything under a graph (schema, queries, jobs)\n  \u2022 Use 'get_graph_schema' to get just the schema (vertex/edge types)\n\n**Related Tools:** show_graph_details, get_graph_schema, create_graph",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        }
++      },
++      "type": "object",
++      "description": "Input schema for listing all graph names in the database.",
++      "title": "ListGraphsToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__create_graph",
++    "description": "Create a new graph in the TigerGraph database with its schema (vertex types and edge types). Each graph has its own independent schema.\n\n**Use When:**\n  \u2022 Creating a new graph from scratch\n  \u2022 Setting up a graph with specific vertex and edge types\n  \u2022 Initializing a new project or data model\n  \u2022 Defining the structure before loading data\n\n**Quick Start:**\n```json\n{\n  \"graph_name\": \"SocialNetwork\",\n  \"vertex_types\": [\n    {\n      \"name\": \"Person\",\n      \"primary_id\": \"id\",\n      \"primary_id_type\": \"STRING\",\n      \"attributes\": [\n        {\"name\": \"name\", \"type\": \"STRING\"},\n        {\"name\": \"age\", \"type\": \"INT\"}\n      ]\n    }\n  ],\n  \"edge_types\": [\n    {\n      \"name\": \"FOLLOWS\",\n      \"from_vertex\": \"Person\",\n      \"to_vertex\": \"Person\",\n      \"directed\": true,\n      \"attributes\": [\n        {\"name\": \"since\", \"type\": \"STRING\"}\n      ]\n    }\n  ]\n}\n```\n\n**Common Workflow:**\n1. Use 'list_graphs' to check if graph name is available\n2. Design your vertex types and edge types\n3. Call 'create_graph' with the schema\n4. Use 'show_graph_details' to verify it was created correctly\n5. Start loading data with 'add_node' and 'add_edge'\n\n**Vertex Primary Key Options:**\n  \u2022 Default: auto-generates ``PRIMARY_ID id STRING`` with ``primary_id_as_attribute``\n  \u2022 Explicit PRIMARY_ID: set ``primary_id`` (string) and ``primary_id_type`` on vertex type\n  \u2022 PRIMARY KEY mode: set ``primary_key: true`` on one attribute (not GraphStudio compatible)\n  \u2022 Composite key: set ``primary_id`` to a list of attribute names, e.g. ``[\"title\", \"year\"]``\n    All listed attributes must exist in the attribute list (not GraphStudio compatible)\n  \u2022 The key is always queryable as a regular attribute\n\n**Tips:**\n  \u2022 Define all vertex types before edge types\n  \u2022 Edge types reference vertex types by name\n  \u2022 Set 'directed': false on edge types for undirected edges (default: directed)\n  \u2022 Consider using 'get_workflow' for step-by-step guidance\n\n**Related Tools:** list_graphs, show_graph_details, drop_graph",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "description": "Name of the new graph to create.",
++          "title": "Graph Name",
++          "type": "string"
++        },
++        "vertex_types": {
++          "description": "List of vertex type definitions for this graph.",
++          "items": {
++            "additionalProperties": true,
++            "type": "object"
++          },
++          "title": "Vertex Types",
++          "type": "array"
++        },
++        "edge_types": {
++          "description": "List of edge type definitions for this graph.",
++          "items": {
++            "additionalProperties": true,
++            "type": "object"
++          },
++          "title": "Edge Types",
++          "type": "array"
++        }
++      },
++      "required": [
++        "graph_name",
++        "vertex_types"
++      ],
++      "type": "object",
++      "description": "Input schema for creating a new graph with its schema.",
++      "title": "CreateGraphToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__drop_graph",
++    "description": "Drop (delete) a graph and its schema from the TigerGraph database. **This permanently removes the graph, its schema, and all data.**\n\n**Use When:**\n  \u2022 Removing a graph that's no longer needed\n  \u2022 Cleaning up test graphs\n  \u2022 Starting fresh with a new schema\n\n**Quick Start:**\n```json\n{\n  \"graph_name\": \"TestGraph\"\n}\n```\n\n**Warning: DANGER:**\n  \u2022 This deletes EVERYTHING: schema, vertices, edges, queries, loading jobs\n  \u2022 Operation is PERMANENT and cannot be undone\n  \u2022 Double-check the graph_name before executing\n  \u2022 Consider using 'clear_graph_data' if you only want to remove data\n\n**Tips:**\n  \u2022 Use 'list_graphs' first to confirm the graph name\n  \u2022 For production graphs, always backup first\n  \u2022 To keep schema but clear data, use 'clear_graph_data'\n\n**Related Tools:** create_graph, clear_graph_data, list_graphs",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "description": "Name of the graph to drop.",
++          "title": "Graph Name",
++          "type": "string"
++        }
++      },
++      "required": [
++        "graph_name"
++      ],
++      "type": "object",
++      "description": "Input schema for dropping a graph from the database.",
++      "title": "DropGraphToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__clear_graph_data",
++    "description": "Clear all data (vertices and edges) from a specific graph while keeping its schema structure intact. **This is a destructive operation that removes all graph data.**\n\n**Use When:**\n  \u2022 Resetting a graph to empty state\n  \u2022 Clearing test data before loading production data\n  \u2022 Starting data reload with same schema\n\n**Quick Start:**\n```json\n{\n  \"graph_name\": \"MyGraph\",\n  \"confirm\": true\n}\n```\n\n**WARNING:**\n  \u2022 Deletes ALL vertices and edges in the graph\n  \u2022 Operation is PERMANENT and cannot be undone\n  \u2022 Must set 'confirm': true to execute\n  \u2022 Schema (vertex/edge types) remains intact\n\n**Tips:**\n  \u2022 Preserves schema, only clears data\n  \u2022 To delete everything including schema, use 'drop_graph'\n  \u2022 Always backup important data first\n  \u2022 Can specify 'vertex_type' to clear only specific type\n\n**Related Tools:** drop_graph, get_vertex_count, delete_nodes",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "vertex_type": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Type of vertices to clear. If not provided, clears all data.",
++          "title": "Vertex Type"
++        },
++        "confirm": {
++          "default": false,
++          "description": "Must be True to confirm the deletion. This is a destructive operation.",
++          "title": "Confirm",
++          "type": "boolean"
++        }
++      },
++      "type": "object",
++      "description": "Input schema for clearing all data from a graph (keeps schema structure).",
++      "title": "ClearGraphDataToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__get_graph_schema",
++    "description": "Get the schema of a specific graph \u2014 vertex types, edge types, and their attributes \u2014 as structured JSON. Returns schema only, not queries or jobs.\n\n**Use When:**\n  \u2022 You need to know vertex/edge types and their attributes\n  \u2022 Building or validating queries against the schema\n  \u2022 Programmatic schema inspection or comparison\n\n**Quick Start:**\n```json\n{\n  \"graph_name\": \"SocialNetwork\"\n}\n```\n\n**Tips:**\n  \u2022 Returns structured JSON (vertex types, edge types, attributes)\n  \u2022 For a full listing including queries and jobs, use 'show_graph_details'\n  \u2022 For just graph names, use 'list_graphs'\n\n**Related Tools:** show_graph_details (full listing), list_graphs (names only)",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        }
++      },
++      "type": "object",
++      "description": "Input schema for getting a specific graph's schema (raw JSON).",
++      "title": "GetGraphSchemaToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__show_graph_details",
++    "description": "Show details of a specific graph. By default shows everything (schema, queries, loading jobs, data sources). Use 'detail_type' to show only a specific category.\n\n**Use When:**\n  \u2022 You need a full picture of a graph (schema + queries + jobs)\n  \u2022 Starting work with a graph (call this first!)\n  \u2022 Checking which queries or loading jobs are installed\n  \u2022 Debugging schema or job issues\n\n**Quick Start:**\n```json\n{ \"graph_name\": \"SocialNetwork\" }\n```\n(Shows everything under the graph)\n\n**Filter by category:**\n```json\n{ \"graph_name\": \"SocialNetwork\", \"detail_type\": \"query\" }\n```\nOptions: 'schema', 'query', 'loading_job', 'data_source'\n\n**Tips:**\n  \u2022 No detail_type \u2192 shows all (GSQL ``LS`` output)\n  \u2022 For structured JSON schema, use 'get_graph_schema' instead\n  \u2022 For just graph names, use 'list_graphs'\n  \u2022 For vector attributes, use 'list_vector_attributes' instead\n\n**Related Tools:** get_graph_schema (schema JSON), list_graphs (names only), list_vector_attributes (vector attribute details)",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "detail_type": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Which details to show. Options: 'schema' (vertex/edge types), 'query' (installed queries), 'loading_job' (loading jobs), 'data_source' (data sources). If not provided, shows everything (equivalent to GSQL LS).",
++          "title": "Detail Type"
++        }
++      },
++      "type": "object",
++      "description": "Input schema for showing details of a graph (schema, queries, jobs).",
++      "title": "ShowGraphDetailsToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__update_schema",
++    "description": "Apply incremental schema changes: add/drop vertex types, edge types, or individual attributes. Supports both local (graph-scoped) and global schema changes.\n\n**Use When:**\n  - Adding new vertex or edge types to an existing graph (local)\n  - Creating global vertex/edge types shared across graphs (global)\n  - Dropping vertex or edge types that are no longer needed\n  - Adding or removing attributes on existing vertex types\n\n**Local schema change (add a vertex type to a graph):**\n```json\n{\n  \"graph_name\": \"MyGraph\",\n  \"add_vertex_types\": [{\"name\": \"Product\", \"attributes\": [{\"name\": \"price\", \"type\": \"FLOAT\"}]}]\n}\n```\n\n**Global schema change (omit graph_name):**\n```json\n{\n  \"add_vertex_types\": [{\"name\": \"SharedVertex\", \"attributes\": [{\"name\": \"val\", \"type\": \"INT\"}]}]\n}\n```\n\n**Tips:**\n  - Drop edges referencing a vertex type before dropping the vertex type\n  - Adding attributes with defaults avoids null values on existing data\n  - Use 'get_graph_schema' to inspect the current schema first\n  - Omit 'graph_name' to apply changes at the global level\n\n**Related Tools:** create_graph, get_graph_schema, show_graph_details",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. If not provided, uses TG_PROFILE env var or 'default'.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph to modify. If not provided, runs a global schema change.",
++          "title": "Graph Name"
++        },
++        "add_vertex_types": {
++          "description": "Vertex type definitions to add (same format as create_graph).",
++          "items": {
++            "additionalProperties": true,
++            "type": "object"
++          },
++          "title": "Add Vertex Types",
++          "type": "array"
++        },
++        "drop_vertex_types": {
++          "description": "Names of vertex types to drop.",
++          "items": {
++            "type": "string"
++          },
++          "title": "Drop Vertex Types",
++          "type": "array"
++        },
++        "add_vertex_attributes": {
++          "additionalProperties": {
++            "items": {
++              "additionalProperties": true,
++              "type": "object"
++            },
++            "type": "array"
++          },
++          "description": "Map of vertex type name to list of attributes to add. E.g. {\"Person\": [{\"name\": \"score\", \"type\": \"FLOAT\"}]}",
++          "title": "Add Vertex Attributes",
++          "type": "object"
++        },
++        "drop_vertex_attributes": {
++          "additionalProperties": {
++            "items": {
++              "type": "string"
++            },
++            "type": "array"
++          },
++          "description": "Map of vertex type name to list of attribute names to drop. E.g. {\"Person\": [\"old_attr\"]}",
++          "title": "Drop Vertex Attributes",
++          "type": "object"
++        },
++        "add_edge_types": {
++          "description": "Edge type definitions to add (same format as create_graph).",
++          "items": {
++            "additionalProperties": true,
++            "type": "object"
++          },
++          "title": "Add Edge Types",
++          "type": "array"
++        },
++        "drop_edge_types": {
++          "description": "Names of edge types to drop.",
++          "items": {
++            "type": "string"
++          },
++          "title": "Drop Edge Types",
++          "type": "array"
++        }
++      },
++      "type": "object",
++      "description": "Input schema for incremental schema changes (local or global).",
++      "title": "UpdateSchemaToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__validate_schema_names",
++    "description": "Validate vertex type names, edge type names, attribute names, and the graph name against GSQL reserved keywords and naming conflict rules.\n\n**Use When:**\n  - Before calling 'create_graph' to catch naming problems early\n  - Checking if user-supplied names conflict with GSQL keywords\n  - Validating that vertex/edge type names don't collide with their attribute names\n\n**Quick Start:**\n```json\n{\n  \"graph_name\": \"MyGraph\",\n  \"vertex_types\": [\n    {\"name\": \"SELECT\", \"attributes\": [{\"name\": \"count\", \"type\": \"INT\"}]}\n  ]\n}\n```\n(Returns warnings for 'SELECT' and 'count' as reserved keywords)\n\n**Related Tools:** create_graph, get_graph_schema",
++    "inputSchema": {
++      "properties": {
++        "vertex_types": {
++          "description": "Vertex type definitions to validate (same format as create_graph).",
++          "items": {
++            "additionalProperties": true,
++            "type": "object"
++          },
++          "title": "Vertex Types",
++          "type": "array"
++        },
++        "edge_types": {
++          "description": "Edge type definitions to validate (same format as create_graph).",
++          "items": {
++            "additionalProperties": true,
++            "type": "object"
++          },
++          "title": "Edge Types",
++          "type": "array"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Graph name to validate.",
++          "title": "Graph Name"
++        }
++      },
++      "type": "object",
++      "description": "Input schema for validating schema names against GSQL reserved keywords.",
++      "title": "ValidateSchemaNamesToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__add_node",
++    "description": "Add a single node (vertex) to a TigerGraph graph. This performs an upsert operation - creates a new vertex if it doesn't exist, or updates attributes if it does.\n\n**Use When:**\n  \u2022 Creating a single new entity (user, product, document, etc.)\n  \u2022 Updating an existing vertex's attributes\n  \u2022 You have individual entities to add (not batch loading)\n\n**Quick Start:**\n```json\n{\n  \"vertex_type\": \"Person\",\n  \"vertex_id\": \"user123\",\n  \"attributes\": {\"name\": \"Alice\", \"age\": 30}\n}\n```\n\n**Common Workflow:**\n1. Call 'show_graph_details' to understand vertex types and attributes\n2. Use 'add_node' to create individual vertices\n3. Call 'get_node' to verify the vertex was created\n4. Use 'add_edge' to connect this vertex to others\n\n**Tips:**\n  \u2022 For multiple vertices: Use 'add_nodes' instead (more efficient)\n  \u2022 Primary key is required (usually the 'id' attribute)\n  \u2022 Attribute names must match the schema exactly (case-sensitive)\n  \u2022 This is an upsert: existing vertices are updated, not duplicated\n\n**More Examples:**\n```json\n// Add a product\n{\n  \"vertex_type\": \"Product\",\n  \"vertex_id\": \"prod456\",\n  \"attributes\": {\"name\": \"Laptop\", \"price\": 999.99, \"category\": \"Electronics\"}\n}\n\n// Add a document with minimal attributes\n{\n  \"vertex_type\": \"Document\",\n  \"vertex_id\": \"doc789\",\n  \"attributes\": {\"title\": \"Report Q4 2024\"}\n}\n```\n\n**Related Tools:**\n  \u2022 add_nodes - Batch insert multiple vertices\n  \u2022 get_node - Retrieve a vertex by ID\n  \u2022 delete_node - Remove a vertex\n  \u2022 has_node - Check if vertex exists",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses the default connection.\nTip: Use 'list_graphs' to see available graphs.",
++          "title": "Graph Name"
++        },
++        "vertex_type": {
++          "description": "Type of the vertex (must exist in graph schema).\nExample: 'Person', 'Product', 'Company'\nTip: Use 'show_graph_details' to see available vertex types.",
++          "title": "Vertex Type",
++          "type": "string"
++        },
++        "vertex_id": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "integer"
++            }
++          ],
++          "description": "ID of the vertex (primary key value).\nFormat: String or integer depending on schema.\nExample: 'user123', 'product_456', or 12345\nNote: Must be unique within the vertex type.",
++          "title": "Vertex Id"
++        },
++        "attributes": {
++          "anyOf": [
++            {
++              "additionalProperties": true,
++              "type": "object"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "description": "Vertex attributes as key-value pairs.\nKeys must match the vertex type schema.\nValues should match the expected data types.\nExample: {'name': 'Alice', 'age': 30, 'email': 'alice@example.com'}\nTip: Use 'show_graph_details' to see required attributes and types.",
++          "examples": [
++            {
++              "age": 30,
++              "city": "San Francisco",
++              "name": "Alice"
++            },
++            {
++              "content": "...",
++              "title": "Document 1"
++            },
++            {
++              "category": "Electronics",
++              "in_stock": true,
++              "price": 99.99
++            }
++          ],
++          "title": "Attributes"
++        }
++      },
++      "required": [
++        "vertex_type",
++        "vertex_id"
++      ],
++      "type": "object",
++      "description": "Input schema for adding a node.",
++      "title": "AddNodeToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__add_nodes",
++    "description": "Add multiple nodes (vertices) to a TigerGraph graph in a single batch operation. This is significantly more efficient than calling 'add_node' multiple times.\n\n**Use When:**\n  \u2022 Loading multiple vertices of the same type\n  \u2022 Importing data from CSV, JSON, or database\n  \u2022 Initial data population\n  \u2022 Bulk updates to existing vertices\n\n**Quick Start:**\n```json\n{\n  \"vertex_type\": \"Person\",\n  \"vertices\": [\n    {\"id\": \"user1\", \"name\": \"Alice\", \"age\": 30},\n    {\"id\": \"user2\", \"name\": \"Bob\", \"age\": 25}\n  ]\n}\n```\n\n**Common Workflow:**\n1. Call 'show_graph_details' to understand the schema\n2. Prepare your data with primary keys and attributes\n3. Use 'add_nodes' to load vertices in batches\n4. Call 'get_vertex_count' to verify loading\n5. Use 'add_edges' to create relationships\n\n**Tips:**\n  \u2022 Set 'vertex_id' to match your schema's primary key name (default: 'id')\n  \u2022 For SARGraph: vertex_id='ACCOUNT_ID' for Account vertices\n  \u2022 All vertices must be the same type\n  \u2022 For very large datasets (>10K vertices), consider using loading jobs\n  \u2022 Batch size: 1000-5000 vertices per call is optimal\n\n**Warning: Common Mistakes:**\n  \u2022 Missing primary key in one or more vertices\n  \u2022 Using wrong vertex_id name (check schema with show_graph_details)\n  \u2022 Mixing different vertex types in one call\n  \u2022 Attribute name typos (must match schema exactly)\n  \u2022 Wrong data types (e.g., string instead of int)",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "vertex_type": {
++          "description": "Type of the vertices (all vertices must be the same type).\nExample: 'Person', 'Product'\nTip: Use 'show_graph_details' to see available types.",
++          "title": "Vertex Type",
++          "type": "string"
++        },
++        "vertex_id": {
++          "default": "id",
++          "description": "Name of the primary key field in the vertex dictionaries.\nThis tells the tool which field contains the vertex ID.\nDefault: 'id'. Set to match your schema's primary key name.\nExamples: 'id', 'ACCOUNT_ID', 'TX_ID'",
++          "title": "Vertex Id",
++          "type": "string"
++        },
++        "vertices": {
++          "description": "List of vertices to add. Each vertex must contain the primary key field (specified by 'vertex_id' parameter) and other attributes matching the schema.\n\nExample with default vertex_id='id':\n```json\n[\n  {\"id\": \"user1\", \"name\": \"Alice\", \"age\": 30},\n  {\"id\": \"user2\", \"name\": \"Bob\", \"age\": 25}\n]\n```\n\nExample with vertex_id='ACCOUNT_ID':\n```json\n[\n  {\"ACCOUNT_ID\": 1001, \"COUNTRY\": \"US\", \"ACCOUNT_TYPE\": \"savings\"},\n  {\"ACCOUNT_ID\": 1002, \"COUNTRY\": \"UK\", \"ACCOUNT_TYPE\": \"checking\"}\n]\n```\n\nNote: All vertices will be processed in a single batch operation for efficiency.",
++          "items": {
++            "additionalProperties": true,
++            "type": "object"
++          },
++          "minItems": 1,
++          "title": "Vertices",
++          "type": "array"
++        }
++      },
++      "required": [
++        "vertex_type",
++        "vertices"
++      ],
++      "type": "object",
++      "description": "Input schema for adding multiple nodes.",
++      "title": "AddNodesToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__get_node",
++    "description": "Get a single node (vertex) from a TigerGraph graph by its type and ID.\n\n**Use When:**\n  \u2022 Retrieving a specific entity by its ID\n  \u2022 Verifying a vertex was created successfully\n  \u2022 Checking current attribute values\n  \u2022 Fetching details before updating\n\n**Quick Start:**\n```json\n{\n  \"vertex_type\": \"Person\",\n  \"vertex_id\": \"user123\"\n}\n```\n\n**Related Tools:**\n  \u2022 get_nodes - Get multiple vertices\n  \u2022 has_node - Check if vertex exists\n  \u2022 get_node_edges - Get edges connected to vertex",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph.",
++          "title": "Graph Name"
++        },
++        "vertex_type": {
++          "description": "Type of the vertex to retrieve.",
++          "title": "Vertex Type",
++          "type": "string"
++        },
++        "vertex_id": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "integer"
++            }
++          ],
++          "description": "ID of the vertex to retrieve.",
++          "title": "Vertex Id"
++        }
++      },
++      "required": [
++        "vertex_type",
++        "vertex_id"
++      ],
++      "type": "object",
++      "description": "Input schema for getting a node.",
++      "title": "GetNodeToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__get_nodes",
++    "description": "**Purpose**: Retrieve multiple vertices (nodes) from the graph with optional filtering and sorting.\n\n**When to Use**:\n- List vertices of a specific type\n- Search for vertices matching certain criteria\n- Browse graph data with pagination\n- Find vertices based on attribute values\n\n**Key Features**:\n- WHERE clause for filtering\n- Sorting by attributes (ascending/descending)\n- Limit results for pagination\n- Returns complete vertex data including all attributes\n\n**Common Workflows**:\n1. List all vertices: `get_nodes(vertex_type='Person', limit=10)`\n2. Filter by attribute: `get_nodes(vertex_type='Person', where='age > 25')`\n3. Sort results: `get_nodes(vertex_type='Person', sort='-created_at', limit=20)`\n\n**Tips**:\n- Use limit to avoid retrieving too many vertices\n- WHERE clause syntax follows TigerGraph conventions\n- Sort with '-' prefix for descending order\n- Combine where, sort, and limit for precise queries\n\n**Related Tools**:\n- get_node: Get a single specific vertex\n- get_vertex_count: Count vertices before retrieving\n- run_query: For complex multi-hop queries",
++    "inputSchema": {
++      "properties": {
++        "vertex_type": {
++          "description": "The type of vertices to retrieve",
++          "title": "Vertex Type",
++          "type": "string"
++        },
++        "where": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Optional filter condition. Use TigerGraph WHERE syntax.\nExamples:\n- 'age > 25'\n- 'name == \"John\"'\n- 'active == true'",
++          "title": "Where"
++        },
++        "limit": {
++          "anyOf": [
++            {
++              "type": "integer"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": 100,
++          "description": "Maximum number of vertices to return (default: 100)",
++          "title": "Limit"
++        },
++        "sort": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Sort results by attribute. Use '-' prefix for descending (e.g., '-age')",
++          "title": "Sort"
++        },
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph to query (uses default if not specified)",
++          "title": "Graph Name"
++        }
++      },
++      "required": [
++        "vertex_type"
++      ],
++      "type": "object",
++      "title": "GetNodesToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__delete_node",
++    "description": "**Purpose**: Delete a single vertex (node) from the graph by its ID.\n\n**When to Use**:\n- Remove a specific vertex from the graph\n- Clean up obsolete data\n- Delete test data\n- Remove entities based on business logic\n\n**Important Notes**:\n- Warning: This operation is permanent and cannot be undone\n- Connected edges will also be deleted (CASCADE behavior)\n- Verify the vertex exists before deletion if needed\n\n**Common Workflows**:\n1. Safe delete: `has_node()` \u2192 `delete_node()` \u2192 verify with `get_node()`\n2. Bulk delete: Use `delete_nodes()` with WHERE clause instead\n\n**Tips**:\n- Use has_node() first to verify existence\n- Consider the impact on connected edges\n- For multiple deletions, use delete_nodes() for better performance\n\n**Related Tools**:\n- delete_nodes: Delete multiple vertices at once\n- has_node: Check if vertex exists before deletion\n- get_node: Verify deletion completed",
++    "inputSchema": {
++      "properties": {
++        "vertex_type": {
++          "description": "The type of the vertex to delete",
++          "title": "Vertex Type",
++          "type": "string"
++        },
++        "vertex_id": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "integer"
++            }
++          ],
++          "description": "The unique identifier of the vertex to delete",
++          "title": "Vertex Id"
++        },
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph (uses default if not specified)",
++          "title": "Graph Name"
++        }
++      },
++      "required": [
++        "vertex_type",
++        "vertex_id"
++      ],
++      "type": "object",
++      "title": "DeleteNodeToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__delete_nodes",
++    "description": "**Purpose**: Delete multiple vertices (nodes) from the graph in a single operation.\n\n**When to Use**:\n- Bulk deletion of vertices matching criteria\n- Delete specific set of vertices by IDs\n- Clear all vertices of a type\n- Data cleanup operations\n\n**Important Notes**:\n- Warning: This operation is permanent and cannot be undone\n- Warning: Omitting WHERE will delete ALL vertices of the specified type\n- Connected edges will also be deleted (CASCADE behavior)\n- More efficient than multiple delete_node() calls\n\n**Usage Modes**:\n1. By WHERE clause: `delete_nodes(vertex_type='Person', where='age > 70')`\n2. By ID list: `delete_nodes(vertex_type='Person', vertex_ids=['id1', 'id2'])`\n3. Delete all: `delete_nodes(vertex_type='TempData')` (no where/ids)\n\n**Safety Tips**:\n- ALWAYS test WHERE clause with get_nodes() first\n- Use get_vertex_count() to verify expected deletion count\n- Consider backing up data before bulk deletions\n\n**Related Tools**:\n- delete_node: Delete a single vertex\n- get_nodes: Preview vertices before deletion\n- get_vertex_count: Check deletion impact",
++    "inputSchema": {
++      "properties": {
++        "vertex_type": {
++          "description": "The type of vertices to delete",
++          "title": "Vertex Type",
++          "type": "string"
++        },
++        "where": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Filter condition to select vertices to delete. Use TigerGraph WHERE syntax.\nExamples:\n- 'age > 70'\n- 'status == \"inactive\"'\n- 'created_date < \"2020-01-01\"'\n\nWarning: If omitted, ALL vertices of this type will be deleted!",
++          "title": "Where"
++        },
++        "vertex_ids": {
++          "anyOf": [
++            {
++              "items": {
++                "anyOf": [
++                  {
++                    "type": "string"
++                  },
++                  {
++                    "type": "integer"
++                  }
++                ]
++              },
++              "type": "array"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Optional list of specific vertex IDs to delete (alternative to WHERE clause)",
++          "title": "Vertex Ids"
++        },
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph (uses default if not specified)",
++          "title": "Graph Name"
++        }
++      },
++      "required": [
++        "vertex_type"
++      ],
++      "type": "object",
++      "title": "DeleteNodesToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__has_node",
++    "description": "**Purpose**: Check if a vertex (node) exists in the graph without retrieving its full data.\n\n**When to Use**:\n- Verify a vertex exists before operations\n- Validation in data pipelines\n- Conditional logic based on vertex existence\n- Lightweight existence checks (faster than get_node)\n\n**Key Features**:\n- Returns simple boolean result (exists: true/false)\n- More efficient than get_node() for existence checks\n- No data transfer overhead\n\n**Common Workflows**:\n1. Safe operations: `has_node()` \u2192 if true, proceed with get_node()/delete_node()\n2. Validation: Check required vertices exist before adding edges\n3. Conditional creation: If not exists, create with add_node()\n\n**Tips**:\n- Use this instead of get_node() when you only need existence confirmation\n- Combine with add_node() for upsert logic\n- Faster than catching errors from get_node()\n\n**Related Tools**:\n- get_node: Retrieve full vertex data if it exists\n- add_node: Create vertex if it doesn't exist\n- delete_node: Remove vertex after confirming existence",
++    "inputSchema": {
++      "properties": {
++        "vertex_type": {
++          "description": "The type of the vertex to check",
++          "title": "Vertex Type",
++          "type": "string"
++        },
++        "vertex_id": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "integer"
++            }
++          ],
++          "description": "The unique identifier of the vertex",
++          "title": "Vertex Id"
++        },
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph (uses default if not specified)",
++          "title": "Graph Name"
++        }
++      },
++      "required": [
++        "vertex_type",
++        "vertex_id"
++      ],
++      "type": "object",
++      "title": "HasNodeToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__get_node_edges",
++    "description": "**Purpose**: Retrieve all edges connected to a specific vertex (node).\n\n**When to Use**:\n- Explore connections from a vertex\n- Find relationships of a specific type\n- Analyze node connectivity patterns\n- Get edge attributes and target vertices\n\n**What You Get**:\n- Edge type and ID\n- Edge attributes\n- Target vertex information\n- Edge direction (outgoing from the specified vertex)\n\n**Common Workflows**:\n1. Explore all connections: `get_node_edges(vertex_type='Person', vertex_id='123')`\n2. Specific relationship type: `get_node_edges(..., edge_type='FRIEND_OF')`\n3. Degree analysis: Count returned edges to get outgoing degree\n\n**Tips**:\n- Returns OUTGOING edges only (edges starting from this vertex)\n- Use get_node_degree() for quick connection count\n- Use get_neighbors() to get target vertices without edge details\n- Combine with pagination (limit) for highly connected vertices\n\n**Note**: This returns edges where the specified vertex is the SOURCE.\nFor incoming edges, use a reverse traversal query or get_neighbors().\n\n**Related Tools**:\n- get_node_degree: Count connections without retrieving edges\n- get_neighbors: Get connected vertices\n- get_edges: Query edges by type across the graph",
++    "inputSchema": {
++      "properties": {
++        "vertex_type": {
++          "description": "The type of the source vertex",
++          "title": "Vertex Type",
++          "type": "string"
++        },
++        "vertex_id": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "integer"
++            }
++          ],
++          "description": "The unique identifier of the source vertex",
++          "title": "Vertex Id"
++        },
++        "edge_type": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Optional: Filter by specific edge type. If omitted, returns all edge types.",
++          "title": "Edge Type"
++        },
++        "limit": {
++          "anyOf": [
++            {
++              "type": "integer"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": 100,
++          "description": "Maximum number of edges to return (default: 100)",
++          "title": "Limit"
++        },
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph (uses default if not specified)",
++          "title": "Graph Name"
++        }
++      },
++      "required": [
++        "vertex_type",
++        "vertex_id"
++      ],
++      "type": "object",
++      "title": "GetNodeEdgesToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__add_edge",
++    "description": "Add a single edge (relationship) to a TigerGraph graph connecting two vertices.\n\n**Use When:**\n  \u2022 Creating a relationship between two entities\n  \u2022 Connecting vertices in the graph\n  \u2022 Building graph structure\n  \u2022 Adding individual relationships\n\n**Quick Start:**\n```json\n{\n  \"source_vertex_type\": \"Person\",\n  \"source_vertex_id\": \"user1\",\n  \"edge_type\": \"FOLLOWS\",\n  \"target_vertex_type\": \"Person\",\n  \"target_vertex_id\": \"user2\",\n  \"attributes\": {\"since\": \"2024-01-15\"}\n}\n```\n\n**Common Workflow:**\n1. Ensure both source and target vertices exist (use 'add_node')\n2. Call 'add_edge' to create relationship\n3. Optionally add edge attributes (like timestamps)\n4. Verify with 'get_neighbors' or 'get_node_edges'\n\n**Tips:**\n  \u2022 Both vertices must exist before adding edge\n  \u2022 Edge type must match schema definition\n  \u2022 For multiple edges, use 'add_edges' (more efficient)\n  \u2022 Edge attributes are optional\n\n**Related Tools:** add_edges, add_node, get_neighbors, delete_edge",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "source_vertex_type": {
++          "description": "Type of the source vertex.",
++          "title": "Source Vertex Type",
++          "type": "string"
++        },
++        "source_vertex_id": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "integer"
++            }
++          ],
++          "description": "ID of the source vertex.",
++          "title": "Source Vertex Id"
++        },
++        "edge_type": {
++          "description": "Type of the edge.",
++          "title": "Edge Type",
++          "type": "string"
++        },
++        "target_vertex_type": {
++          "description": "Type of the target vertex.",
++          "title": "Target Vertex Type",
++          "type": "string"
++        },
++        "target_vertex_id": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "integer"
++            }
++          ],
++          "description": "ID of the target vertex.",
++          "title": "Target Vertex Id"
++        },
++        "attributes": {
++          "anyOf": [
++            {
++              "additionalProperties": true,
++              "type": "object"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "description": "Edge attributes. Example: {'weight': 0.5, 'date': '2023-01-01'}",
++          "title": "Attributes"
++        }
++      },
++      "required": [
++        "source_vertex_type",
++        "source_vertex_id",
++        "edge_type",
++        "target_vertex_type",
++        "target_vertex_id"
++      ],
++      "type": "object",
++      "description": "Input schema for adding an edge.",
++      "title": "AddEdgeToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__add_edges",
++    "description": "Add multiple edges (relationships) to a TigerGraph graph in a single batch operation. More efficient than calling 'add_edge' multiple times.\n\n**Use When:**\n  \u2022 Loading multiple relationships\n  \u2022 Building graph connections in bulk\n  \u2022 Importing relationship data from files\n  \u2022 Initial graph construction\n\n**Quick Start:**\n```json\n{\n  \"edge_type\": \"FOLLOWS\",\n  \"edges\": [\n    {\"from_type\": \"Person\", \"from_id\": \"u1\", \"to_type\": \"Person\", \"to_id\": \"u2\"},\n    {\"from_type\": \"Person\", \"from_id\": \"u2\", \"to_type\": \"Person\", \"to_id\": \"u3\"}\n  ]\n}\n```\n\n**Common Workflow:**\n1. Add all vertices first with 'add_nodes'\n2. Use 'add_edges' to create relationships\n3. Verify with 'get_edge_count'\n\n**Tips:**\n  \u2022 All edges in one call must be same edge type\n  \u2022 All referenced vertices must exist\n  \u2022 Batch size: 1000-5000 edges per call is optimal\n  \u2022 Much faster than individual 'add_edge' calls\n\n**Related Tools:** add_edge, add_nodes, get_edge_count",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "edge_type": {
++          "description": "Type of the edges.",
++          "title": "Edge Type",
++          "type": "string"
++        },
++        "edges": {
++          "description": "List of edges. Each edge is a dict with source and target info. Must specify 'source_id' (or 'source_vertex_id') and 'target_id' (or 'target_vertex_id'). Can also optionally specify 'source_type' and 'target_type' per edge if different from defaults, though batch edges usually share types. All edges in one batch MUST have the same source/target types due to API limitations. Example: [{'source_id': 'u1', 'target_id': 'p1', 'date': '2023'}]",
++          "items": {
++            "additionalProperties": true,
++            "type": "object"
++          },
++          "title": "Edges",
++          "type": "array"
++        }
++      },
++      "required": [
++        "edge_type",
++        "edges"
++      ],
++      "type": "object",
++      "description": "Input schema for adding multiple edges.",
++      "title": "AddEdgesToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__get_edge",
++    "description": "Get a single edge (relationship) from a TigerGraph graph by specifying source, target, and edge type.\n\n**Use When:**\n  \u2022 Retrieving a specific relationship\n  \u2022 Checking edge attributes\n  \u2022 Verifying edge was created\n\n**Quick Start:**\n```json\n{\n  \"source_vertex_type\": \"Person\",\n  \"source_vertex_id\": \"user1\",\n  \"edge_type\": \"FOLLOWS\",\n  \"target_vertex_type\": \"Person\",\n  \"target_vertex_id\": \"user2\"\n}\n```\n\n**Tips:**\n  \u2022 Requires full edge specification (source, target, type)\n  \u2022 Returns edge attributes if any\n  \u2022 Use 'get_neighbors' for simpler neighbor queries\n\n**Related Tools:** get_edges, has_edge, get_neighbors",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "source_vertex_type": {
++          "description": "Type of the source vertex.",
++          "title": "Source Vertex Type",
++          "type": "string"
++        },
++        "source_vertex_id": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "integer"
++            }
++          ],
++          "description": "ID of the source vertex.",
++          "title": "Source Vertex Id"
++        },
++        "edge_type": {
++          "description": "Type of the edge.",
++          "title": "Edge Type",
++          "type": "string"
++        },
++        "target_vertex_type": {
++          "description": "Type of the target vertex.",
++          "title": "Target Vertex Type",
++          "type": "string"
++        },
++        "target_vertex_id": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "integer"
++            }
++          ],
++          "description": "ID of the target vertex.",
++          "title": "Target Vertex Id"
++        }
++      },
++      "required": [
++        "source_vertex_type",
++        "source_vertex_id",
++        "edge_type",
++        "target_vertex_type",
++        "target_vertex_id"
++      ],
++      "type": "object",
++      "description": "Input schema for getting an edge.",
++      "title": "GetEdgeToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__get_edges",
++    "description": "Get multiple edges (relationships) from a TigerGraph graph, optionally filtered by type.\n\n**Use When:**\n  \u2022 Retrieving multiple edges\n  \u2022 Exploring graph relationships\n  \u2022 Data export and analysis\n\n**Quick Start:**\n```json\n{\n  \"source_vertex_type\": \"Person\",\n  \"source_vertex_id\": \"user1\",\n  \"edge_type\": \"FOLLOWS\"\n}\n```\n\n**Tips:**\n  \u2022 Can filter by edge type\n  \u2022 Returns all edges from a source vertex\n  \u2022 Use 'get_neighbors' for simpler use cases\n\n**Related Tools:** get_edge, get_neighbors, get_edge_count",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "source_vertex_type": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Type of the source vertex. If not provided, gets all types.",
++          "title": "Source Vertex Type"
++        },
++        "source_vertex_id": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "integer"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "ID of the source vertex. If not provided, gets all edges.",
++          "title": "Source Vertex Id"
++        },
++        "edge_type": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Type of the edge. If not provided, gets all types.",
++          "title": "Edge Type"
++        },
++        "limit": {
++          "anyOf": [
++            {
++              "type": "integer"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Maximum number of edges to return.",
++          "title": "Limit"
++        }
++      },
++      "type": "object",
++      "description": "Input schema for getting multiple edges.",
++      "title": "GetEdgesToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__delete_edge",
++    "description": "Delete a single edge (relationship) from a TigerGraph graph.\n\n**Use When:**\n  \u2022 Removing a specific relationship\n  \u2022 Disconnecting two vertices\n  \u2022 Graph maintenance\n\n**Quick Start:**\n```json\n{\n  \"source_vertex_type\": \"Person\",\n  \"source_vertex_id\": \"user1\",\n  \"edge_type\": \"FOLLOWS\",\n  \"target_vertex_type\": \"Person\",\n  \"target_vertex_id\": \"user2\"\n}\n```\n\n**Warning:**\n  \u2022 Operation is permanent\n  \u2022 Does not delete the vertices, only the edge\n\n**Related Tools:** delete_edges, add_edge, has_edge",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "source_vertex_type": {
++          "description": "Type of the source vertex.",
++          "title": "Source Vertex Type",
++          "type": "string"
++        },
++        "source_vertex_id": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "integer"
++            }
++          ],
++          "description": "ID of the source vertex.",
++          "title": "Source Vertex Id"
++        },
++        "edge_type": {
++          "description": "Type of the edge.",
++          "title": "Edge Type",
++          "type": "string"
++        },
++        "target_vertex_type": {
++          "description": "Type of the target vertex.",
++          "title": "Target Vertex Type",
++          "type": "string"
++        },
++        "target_vertex_id": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "integer"
++            }
++          ],
++          "description": "ID of the target vertex.",
++          "title": "Target Vertex Id"
++        }
++      },
++      "required": [
++        "source_vertex_type",
++        "source_vertex_id",
++        "edge_type",
++        "target_vertex_type",
++        "target_vertex_id"
++      ],
++      "type": "object",
++      "description": "Input schema for deleting an edge.",
++      "title": "DeleteEdgeToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__delete_edges",
++    "description": "Delete multiple edges (relationships) from a TigerGraph graph.\n\n**Use When:**\n  \u2022 Removing multiple relationships\n  \u2022 Bulk edge deletion\n  \u2022 Graph restructuring\n\n**Quick Start:**\n```json\n{\n  \"edge_type\": \"FOLLOWS\",\n  \"edges\": [\n    {\"from_type\": \"Person\", \"from_id\": \"u1\", \"to_type\": \"Person\", \"to_id\": \"u2\"},\n    {\"from_type\": \"Person\", \"from_id\": \"u2\", \"to_type\": \"Person\", \"to_id\": \"u3\"}\n  ]\n}\n```\n\n**Warning:**\n  \u2022 Operation is permanent and cannot be undone\n  \u2022 Does not delete vertices\n\n**Related Tools:** delete_edge, add_edges",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "edge_type": {
++          "description": "Type of the edges.",
++          "title": "Edge Type",
++          "type": "string"
++        },
++        "edges": {
++          "description": "List of edges with source and target vertex IDs.",
++          "items": {
++            "additionalProperties": true,
++            "type": "object"
++          },
++          "title": "Edges",
++          "type": "array"
++        }
++      },
++      "required": [
++        "edge_type",
++        "edges"
++      ],
++      "type": "object",
++      "description": "Input schema for deleting multiple edges.",
++      "title": "DeleteEdgesToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__has_edge",
++    "description": "Check if an edge (relationship) exists between two vertices without retrieving its data.\n\n**Use When:**\n  \u2022 Verifying relationship existence\n  \u2022 Validation logic\n  \u2022 More efficient than get_edge when you only need existence check\n\n**Quick Start:**\n```json\n{\n  \"source_vertex_type\": \"Person\",\n  \"source_vertex_id\": \"user1\",\n  \"edge_type\": \"FOLLOWS\",\n  \"target_vertex_type\": \"Person\",\n  \"target_vertex_id\": \"user2\"\n}\n```\n\n**Tips:**\n  \u2022 Returns boolean (true/false)\n  \u2022 Faster than get_edge when you don't need the data\n  \u2022 Use before add_edge to avoid duplicates\n\n**Related Tools:** get_edge, add_edge",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "source_vertex_type": {
++          "description": "Type of the source vertex.",
++          "title": "Source Vertex Type",
++          "type": "string"
++        },
++        "source_vertex_id": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "integer"
++            }
++          ],
++          "description": "ID of the source vertex.",
++          "title": "Source Vertex Id"
++        },
++        "edge_type": {
++          "description": "Type of the edge.",
++          "title": "Edge Type",
++          "type": "string"
++        },
++        "target_vertex_type": {
++          "description": "Type of the target vertex.",
++          "title": "Target Vertex Type",
++          "type": "string"
++        },
++        "target_vertex_id": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "integer"
++            }
++          ],
++          "description": "ID of the target vertex.",
++          "title": "Target Vertex Id"
++        }
++      },
++      "required": [
++        "source_vertex_type",
++        "source_vertex_id",
++        "edge_type",
++        "target_vertex_type",
++        "target_vertex_id"
++      ],
++      "type": "object",
++      "description": "Input schema for checking if an edge exists.",
++      "title": "HasEdgeToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__run_query",
++    "description": "Run an interpreted query on a TigerGraph graph. Supports both GSQL and openCypher query languages. Use this for ad-hoc queries without needing to install them first.\n\n**Use When:**\n  \u2022 Running one-time or ad-hoc queries\n  \u2022 Testing queries before installation\n  \u2022 Simple data retrieval operations\n  \u2022 Prototyping and exploration\n\n**Quick Start (GSQL):**\n```json\n{\n  \"query_text\": \"INTERPRET QUERY () FOR GRAPH MyGraph { SELECT v FROM Person:v LIMIT 5; PRINT v; }\"\n}\n```\n\n**Quick Start (Cypher):**\n```json\n{\n  \"query_text\": \"INTERPRET OPENCYPHER QUERY () FOR GRAPH MyGraph { MATCH (n:Person) RETURN n LIMIT 5 }\"\n}\n```\n\n**Common Workflow:**\n1. Call 'show_graph_details' to understand the schema\n2. Write your query using vertex/edge types from schema\n3. Run with 'run_query' to test\n4. For repeated use, install with 'install_query'\n\n**Tips:**\n  \u2022 Query type auto-detected (GSQL vs Cypher)\n  \u2022 For frequent queries, use 'install_query' + 'run_installed_query' for better performance\n  \u2022 Always include 'FOR GRAPH' clause\n  \u2022 Use LIMIT to avoid retrieving too much data\n\n**Warning: Syntax Notes:**\n  \u2022 GSQL: `INTERPRET QUERY () FOR GRAPH <name> { <statements> }`\n  \u2022 Cypher: `INTERPRET OPENCYPHER QUERY () FOR GRAPH <name> { <cypher> }`\n\n**Related Tools:** run_installed_query, install_query, get_neighbors",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "query_text": {
++          "description": "Query text to interpret and run. Supports both GSQL and openCypher queries. For GSQL: use 'INTERPRET QUERY () FOR GRAPH <graph> { <gsql_statements> }'. For openCypher: use 'INTERPRET OPENCYPHER QUERY () FOR GRAPH <graph> { <cypher_statements> }'. The query type is auto-detected based on the INTERPRET keyword used. Example (GSQL): `INTERPRET QUERY () FOR GRAPH MyGraph { SELECT v FROM Person:v }`Example (Cypher): `INTERPRET OPENCYPHER QUERY () FOR GRAPH MyGraph { MATCH (n) RETURN n LIMIT 5 }`",
++          "title": "Query Text",
++          "type": "string"
++        }
++      },
++      "required": [
++        "query_text"
++      ],
++      "type": "object",
++      "description": "Input schema for running an interpreted query.",
++      "title": "RunQueryToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__run_installed_query",
++    "description": "Run an installed GSQL query on a TigerGraph graph with parameters. Faster than interpreted queries for repeated execution.\n\n**Use When:**\n  \u2022 Running pre-installed, compiled queries\n  \u2022 Queries that are executed frequently\n  \u2022 Performance-critical operations\n  \u2022 Parameterized queries with different inputs\n\n**Quick Start:**\n```json\n{\n  \"query_name\": \"getPersonFriends\",\n  \"params\": {\"personId\": \"user123\", \"maxHops\": 2}\n}\n```\n\n**Common Workflow:**\n1. Install query once with 'install_query'\n2. Run multiple times with 'run_installed_query' and different params\n3. Much faster than 'run_query' for repeated use\n\n**Tips:**\n  \u2022 Queries must be installed first with 'install_query'\n  \u2022 Use 'is_query_installed' to check if query exists\n  \u2022 Provide params as dictionary matching query signature\n  \u2022 Faster than interpreted queries\n\n**Related Tools:** install_query, is_query_installed, show_query",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "query_name": {
++          "description": "Name of the installed query.",
++          "title": "Query Name",
++          "type": "string"
++        },
++        "params": {
++          "anyOf": [
++            {
++              "additionalProperties": true,
++              "type": "object"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "description": "Query parameters.",
++          "title": "Params"
++        }
++      },
++      "required": [
++        "query_name"
++      ],
++      "type": "object",
++      "description": "Input schema for running an installed query.",
++      "title": "RunInstalledQueryToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__install_query",
++    "description": "Install a GSQL query on a TigerGraph graph, compiling it for faster repeated execution.\n\n**Use When:**\n  \u2022 You have a query you'll run multiple times\n  \u2022 You want better query performance\n  \u2022 Creating reusable query logic\n  \u2022 Building query libraries\n\n**Quick Start:**\n```json\n{\n  \"query_text\": \"CREATE QUERY getPersonFriends(VERTEX<Person> p) FOR GRAPH MyGraph { ... }\"\n}\n```\n\n**Common Workflow:**\n1. Write and test query with 'run_query' first\n2. Once working, install with 'install_query'\n3. Run with 'run_installed_query' (faster)\n\n**Tips:**\n  \u2022 Query text should start with 'CREATE QUERY'\n  \u2022 Installation compiles the query for better performance\n  \u2022 Can define parameters in query signature\n  \u2022 Use 'show_query' to view installed query text\n\n**Related Tools:** run_installed_query, drop_query, show_query",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "query_text": {
++          "description": "GSQL query text to install.",
++          "title": "Query Text",
++          "type": "string"
++        }
++      },
++      "required": [
++        "query_text"
++      ],
++      "type": "object",
++      "description": "Input schema for installing a query.",
++      "title": "InstallQueryToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__drop_query",
++    "description": "Drop (delete) an installed query from TigerGraph.\n\n**Use When:**\n  \u2022 Removing queries no longer needed\n  \u2022 Cleaning up test queries\n  \u2022 Before re-installing a modified query\n\n**Quick Start:**\n```json\n{\n  \"query_name\": \"oldQuery\"\n}\n```\n\n**Warning:**\n  \u2022 Permanently deletes the installed query\n  \u2022 Cannot be undone\n  \u2022 Any code calling this query will fail\n\n**Tips:**\n  \u2022 Use 'show_query' first to review before dropping\n  \u2022 Cannot drop queries being used by other queries\n\n**Related Tools:** install_query, show_query, is_query_installed",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "query_name": {
++          "description": "Name of the query to drop.",
++          "title": "Query Name",
++          "type": "string"
++        }
++      },
++      "required": [
++        "query_name"
++      ],
++      "type": "object",
++      "description": "Input schema for dropping a query.",
++      "title": "DropQueryToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__show_query",
++    "description": "Show the GSQL text of an installed query.\n\n**Use When:**\n  \u2022 Reviewing what an installed query does\n  \u2022 Debugging query behavior\n  \u2022 Understanding existing queries\n  \u2022 Documenting installed queries\n\n**Quick Start:**\n```json\n{\n  \"query_name\": \"getPersonFriends\"\n}\n```\n\n**Tips:**\n  \u2022 Returns the full GSQL query text\n  \u2022 Query must be installed first\n  \u2022 Use 'is_query_installed' to check existence\n\n**Related Tools:** install_query, get_query_metadata, is_query_installed",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "query_name": {
++          "description": "Name of the query to show.",
++          "title": "Query Name",
++          "type": "string"
++        }
++      },
++      "required": [
++        "query_name"
++      ],
++      "type": "object",
++      "description": "Input schema for showing a query.",
++      "title": "ShowQueryToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__get_query_metadata",
++    "description": "Get metadata about an installed query including parameters, return type, and other details.\n\n**Use When:**\n  \u2022 Understanding query parameters and signature\n  \u2022 Discovering what queries are available\n  \u2022 Building query documentation\n  \u2022 Programmatic query discovery\n\n**Quick Start:**\n```json\n{\n  \"query_name\": \"getPersonFriends\"\n}\n```\n\n**Tips:**\n  \u2022 Shows query parameters, types, and metadata\n  \u2022 Helps understand how to call the query\n  \u2022 Use 'show_query' to see the actual query text\n\n**Related Tools:** show_query, is_query_installed, run_installed_query",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "query_name": {
++          "description": "Name of the query.",
++          "title": "Query Name",
++          "type": "string"
++        }
++      },
++      "required": [
++        "query_name"
++      ],
++      "type": "object",
++      "description": "Input schema for getting query metadata.",
++      "title": "GetQueryMetadataToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__update_query_description",
++    "description": "Set a human-readable description for an installed query and, optionally, descriptions for each of its parameters. Requires TigerGraph 4.0+.\n\n**Use When:**\n  \u2022 Documenting what an installed query does and what its parameters mean\n  \u2022 Making queries self-describing for agents and other consumers\n\n**Quick Start:**\n```json\n{\n  \"query_name\": \"getPersonFriends\",\n  \"query_description\": \"Return the friends of a given person.\",\n  \"parameter_descriptions\": {\"personId\": \"ID of the person to look up\"}\n}\n```\n\n**Tips:**\n  \u2022 Query must be installed first\n  \u2022 Omit 'parameter_descriptions' to set only the query-level description\n  \u2022 Read it back with 'get_query_description'\n\n**Related Tools:** get_query_description, get_query_metadata, show_query",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "query_name": {
++          "description": "Name of the installed query to describe.",
++          "title": "Query Name",
++          "type": "string"
++        },
++        "query_description": {
++          "description": "Human-readable description of what the query does.",
++          "title": "Query Description",
++          "type": "string"
++        },
++        "parameter_descriptions": {
++          "anyOf": [
++            {
++              "additionalProperties": {
++                "type": "string"
++              },
++              "type": "object"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "description": "Per-parameter descriptions, keyed by parameter name (e.g. {\"personId\": \"The id of the person to look up\"}).",
++          "title": "Parameter Descriptions"
++        }
++      },
++      "required": [
++        "query_name",
++        "query_description"
++      ],
++      "type": "object",
++      "description": "Input schema for setting a query's description and parameter descriptions.",
++      "title": "UpdateQueryDescriptionToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__get_query_description",
++    "description": "Get the description and parameter descriptions of one or more installed queries. Requires TigerGraph 4.0+.\n\n**Use When:**\n  \u2022 Discovering what a query does and what each parameter means\n  \u2022 Building query documentation\n  \u2022 Understanding a query's parameters together with their descriptions\n\n**Quick Start:**\n```json\n{\n  \"query_name\": \"getPersonFriends\"\n}\n```\n\n**Tips:**\n  \u2022 Pass 'all' (the default) to read descriptions for every query\n  \u2022 Pair with 'get_query_metadata' to combine parameter types and descriptions\n  \u2022 Set descriptions with 'update_query_description'\n\n**Related Tools:** update_query_description, get_query_metadata, show_query",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "query_name": {
++          "default": "all",
++          "description": "Name of the query to read. Pass 'all' (default) to read descriptions for every query.",
++          "title": "Query Name",
++          "type": "string"
++        }
++      },
++      "type": "object",
++      "description": "Input schema for reading a query's description and parameter descriptions.",
++      "title": "GetQueryDescriptionToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__is_query_installed",
++    "description": "Check if a query is installed in TigerGraph without running it.\n\n**Use When:**\n  \u2022 Verifying query installation\n  \u2022 Before trying to run an installed query\n  \u2022 Conditional query logic\n\n**Quick Start:**\n```json\n{\n  \"query_name\": \"getPersonFriends\"\n}\n```\n\n**Tips:**\n  \u2022 Returns true/false\n  \u2022 Faster than trying to run and catching errors\n  \u2022 Use before 'run_installed_query'\n\n**Related Tools:** install_query, run_installed_query, show_query",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "query_name": {
++          "description": "Name of the query to check.",
++          "title": "Query Name",
++          "type": "string"
++        }
++      },
++      "required": [
++        "query_name"
++      ],
++      "type": "object",
++      "description": "Input schema for checking if a query is installed.",
++      "title": "IsQueryInstalledToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__get_neighbors",
++    "description": "Get neighbor vertices connected to a source vertex via edges. Useful for 1-hop graph traversal to find connected entities.\n\n**Use When:**\n  \u2022 Finding vertices directly connected to a vertex\n  \u2022 1-hop traversal (immediate neighbors)\n  \u2022 Discovering relationships\n  \u2022 Building recommendation lists\n\n**Quick Start:**\n```json\n{\n  \"vertex_type\": \"Person\",\n  \"vertex_id\": \"user123\",\n  \"edge_type\": \"FOLLOWS\"\n}\n```\n\n**Common Workflow:**\n1. Have a source vertex ID\n2. Call 'get_neighbors' with vertex info\n3. Optionally filter by edge type\n4. Receive list of connected vertices\n\n**Tips:**\n  \u2022 Simpler than writing a query for 1-hop traversal\n  \u2022 Can filter by edge type (e.g., only 'FOLLOWS' edges)\n  \u2022 Can specify target vertex type\n  \u2022 For multi-hop traversal, use 'run_query' instead\n\n**Examples:**\n  \u2022 Find friends: edge_type='FRIENDS'\n  \u2022 Find purchases: edge_type='PURCHASED', target_vertex_type='Product'\n  \u2022 Find all connections: omit edge_type\n\n**Related Tools:** get_node_edges, run_query, add_edge",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "vertex_type": {
++          "description": "Type of the source vertex (e.g., 'Person', 'Product').",
++          "title": "Vertex Type",
++          "type": "string"
++        },
++        "vertex_id": {
++          "description": "ID of the source vertex.",
++          "title": "Vertex Id",
++          "type": "string"
++        },
++        "edge_type": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Type of edges to traverse (e.g., 'purchased', 'friend_of'). If not provided, traverses all edge types.",
++          "title": "Edge Type"
++        },
++        "target_vertex_type": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Type of target vertices to return. If not provided, returns all types.",
++          "title": "Target Vertex Type"
++        },
++        "limit": {
++          "anyOf": [
++            {
++              "type": "integer"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Maximum number of neighbors to return.",
++          "title": "Limit"
++        }
++      },
++      "required": [
++        "vertex_type",
++        "vertex_id"
++      ],
++      "type": "object",
++      "description": "Input schema for getting neighbors of a node.",
++      "title": "GetNeighborsToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__create_loading_job",
++    "description": "Create a loading job from structured configuration. \nThe job defines how to load data from files into vertices and edges.\nEach file config specifies: file alias, separator, header, EOL, and mappings.\nNode mappings define which columns map to vertex attributes.\nEdge mappings define source/target columns and edge attributes.\nOptionally run the job immediately and drop it after execution.",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "job_name": {
++          "description": "Name for the loading job.",
++          "title": "Job Name",
++          "type": "string"
++        },
++        "files": {
++          "description": "List of file configurations. Each file must have a 'file_alias' and 'node_mappings' and/or 'edge_mappings'. Example: [{'file_alias': 'f1', 'node_mappings': [...]}]",
++          "items": {
++            "$ref": "#/$defs/FileConfig"
++          },
++          "title": "Files",
++          "type": "array"
++        },
++        "run_job": {
++          "default": false,
++          "description": "If True, run the loading job immediately after creation.",
++          "title": "Run Job",
++          "type": "boolean"
++        },
++        "drop_after_run": {
++          "default": false,
++          "description": "If True, drop the job after running (only applies if run_job=True).",
++          "title": "Drop After Run",
++          "type": "boolean"
++        }
++      },
++      "required": [
++        "job_name",
++        "files"
++      ],
++      "type": "object",
++      "$defs": {
++        "EdgeMapping": {
++          "description": "Mapping configuration for loading edges.",
++          "properties": {
++            "edge_type": {
++              "description": "Target edge type name.",
++              "title": "Edge Type",
++              "type": "string"
++            },
++            "source_column": {
++              "anyOf": [
++                {
++                  "type": "string"
++                },
++                {
++                  "type": "integer"
++                }
++              ],
++              "description": "Column for source vertex ID (string for header name, int for column index).",
++              "title": "Source Column"
++            },
++            "target_column": {
++              "anyOf": [
++                {
++                  "type": "string"
++                },
++                {
++                  "type": "integer"
++                }
++              ],
++              "description": "Column for target vertex ID (string for header name, int for column index).",
++              "title": "Target Column"
++            },
++            "attribute_mappings": {
++              "anyOf": [
++                {
++                  "additionalProperties": {
++                    "anyOf": [
++                      {
++                        "type": "string"
++                      },
++                      {
++                        "type": "integer"
++                      }
++                    ]
++                  },
++                  "type": "object"
++                },
++                {
++                  "type": "null"
++                }
++              ],
++              "description": "Map of attribute name to column. Optional for edges without attributes.",
++              "title": "Attribute Mappings"
++            }
++          },
++          "required": [
++            "edge_type",
++            "source_column",
++            "target_column"
++          ],
++          "title": "EdgeMapping",
++          "type": "object"
++        },
++        "FileConfig": {
++          "description": "Configuration for a single data file in a loading job.",
++          "properties": {
++            "file_alias": {
++              "description": "Alias for the file (used in DEFINE FILENAME).",
++              "title": "File Alias",
++              "type": "string"
++            },
++            "file_path": {
++              "anyOf": [
++                {
++                  "type": "string"
++                },
++                {
++                  "type": "null"
++                }
++              ],
++              "default": null,
++              "description": "Path to the file. If not provided, data will be passed at runtime. To read from a data source instead, use 'data_source' and 'query'.",
++              "title": "File Path"
++            },
++            "data_source": {
++              "anyOf": [
++                {
++                  "type": "string"
++                },
++                {
++                  "type": "null"
++                }
++              ],
++              "default": null,
++              "description": "Name of a data source to read from instead of a file, e.g. a Snowflake data source created with create_data_source. Requires 'query'.",
++              "title": "Data Source"
++            },
++            "query": {
++              "anyOf": [
++                {
++                  "type": "string"
++                },
++                {
++                  "type": "null"
++                }
++              ],
++              "default": null,
++              "description": "SQL query executed against 'data_source', e.g. 'SELECT id, name FROM mydb.myschema.Person'. Columns are referenced by position in this SELECT list, so list them explicitly rather than using SELECT * when the mapping must stay stable.",
++              "title": "Query"
++            },
++            "separator": {
++              "default": ",",
++              "description": "Field separator character.",
++              "title": "Separator",
++              "type": "string"
++            },
++            "header": {
++              "default": "true",
++              "description": "Whether the file has a header row ('true' or 'false').",
++              "title": "Header",
++              "type": "string"
++            },
++            "eol": {
++              "default": "\\n",
++              "description": "End-of-line character.",
++              "title": "Eol",
++              "type": "string"
++            },
++            "quote": {
++              "anyOf": [
++                {
++                  "type": "string"
++                },
++                {
++                  "type": "null"
++                }
++              ],
++              "default": null,
++              "description": "Quote character for CSV (e.g., 'DOUBLE' for double quotes).",
++              "title": "Quote"
++            },
++            "node_mappings": {
++              "description": "List of vertex loading mappings. Example: [{'vertex_type': 'Person', 'attribute_mappings': {'id': 0, 'name': 1}}]",
++              "items": {
++                "$ref": "#/$defs/NodeMapping"
++              },
++              "title": "Node Mappings",
++              "type": "array"
++            },
++            "edge_mappings": {
++              "description": "List of edge loading mappings.",
++              "items": {
++                "$ref": "#/$defs/EdgeMapping"
++              },
++              "title": "Edge Mappings",
++              "type": "array"
++            }
++          },
++          "required": [
++            "file_alias"
++          ],
++          "title": "FileConfig",
++          "type": "object"
++        },
++        "NodeMapping": {
++          "description": "Mapping configuration for loading vertices.",
++          "properties": {
++            "vertex_type": {
++              "description": "Target vertex type name.",
++              "title": "Vertex Type",
++              "type": "string"
++            },
++            "attribute_mappings": {
++              "additionalProperties": {
++                "anyOf": [
++                  {
++                    "type": "string"
++                  },
++                  {
++                    "type": "integer"
++                  }
++                ]
++              },
++              "description": "Map of attribute name to column index (int) or header name (string). Must include the primary key. Example: {'id': 0, 'name': 1} or {'id': 'user_id', 'name': 'user_name'}",
++              "title": "Attribute Mappings",
++              "type": "object"
++            }
++          },
++          "required": [
++            "vertex_type",
++            "attribute_mappings"
++          ],
++          "title": "NodeMapping",
++          "type": "object"
++        }
++      },
++      "description": "Input schema for creating a loading job.",
++      "title": "CreateLoadingJobToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__run_loading_job_with_file",
++    "description": "Execute a loading job with a data file. The file is uploaded to TigerGraph and loaded according to the specified loading job definition.",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "file_path": {
++          "description": "Absolute path to the data file to load. Example: '/home/user/data/persons.csv'",
++          "title": "File Path",
++          "type": "string"
++        },
++        "file_tag": {
++          "description": "The name of file variable in the loading job (DEFINE FILENAME <fileTag>).",
++          "title": "File Tag",
++          "type": "string"
++        },
++        "job_name": {
++          "description": "The name of the loading job to run.",
++          "title": "Job Name",
++          "type": "string"
++        },
++        "separator": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Data value separator. Default is comma. For JSON data, don't specify.",
++          "title": "Separator"
++        },
++        "eol": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "End-of-line character. Default is '\\n'. Supports '\\r\\n'.",
++          "title": "Eol"
++        },
++        "timeout": {
++          "default": 16000,
++          "description": "Timeout in milliseconds. Set to 0 for system-wide timeout.",
++          "title": "Timeout",
++          "type": "integer"
++        },
++        "size_limit": {
++          "default": 128000000,
++          "description": "Maximum size for input file in bytes (default 128MB).",
++          "title": "Size Limit",
++          "type": "integer"
++        }
++      },
++      "required": [
++        "file_path",
++        "file_tag",
++        "job_name"
++      ],
++      "type": "object",
++      "description": "Input schema for running a loading job with a file.",
++      "title": "RunLoadingJobWithFileToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__run_loading_job_with_data",
++    "description": "Execute a loading job with inline data string. The data is posted to TigerGraph and loaded according to the specified loading job definition.",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "data": {
++          "description": "The data string to load (CSV, JSON, etc.). Example: 'user1,Alice\\nuser2,Bob'",
++          "title": "Data",
++          "type": "string"
++        },
++        "file_tag": {
++          "description": "The name of file variable in the loading job (DEFINE FILENAME <fileTag>).",
++          "title": "File Tag",
++          "type": "string"
++        },
++        "job_name": {
++          "description": "The name of the loading job to run.",
++          "title": "Job Name",
++          "type": "string"
++        },
++        "separator": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Data value separator. Default is comma. For JSON data, don't specify.",
++          "title": "Separator"
++        },
++        "eol": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "End-of-line character. Default is '\\n'. Supports '\\r\\n'.",
++          "title": "Eol"
++        },
++        "timeout": {
++          "default": 16000,
++          "description": "Timeout in milliseconds. Set to 0 for system-wide timeout.",
++          "title": "Timeout",
++          "type": "integer"
++        },
++        "size_limit": {
++          "default": 128000000,
++          "description": "Maximum size for input data in bytes (default 128MB).",
++          "title": "Size Limit",
++          "type": "integer"
++        }
++      },
++      "required": [
++        "data",
++        "file_tag",
++        "job_name"
++      ],
++      "type": "object",
++      "description": "Input schema for running a loading job with inline data.",
++      "title": "RunLoadingJobWithDataToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__get_loading_jobs",
++    "description": "Get a list of all loading jobs defined for the current graph.",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        }
++      },
++      "type": "object",
++      "description": "Input schema for listing loading jobs.",
++      "title": "GetLoadingJobsToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__get_loading_job_status",
++    "description": "Get the status of a specific loading job by its job ID.",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "job_id": {
++          "description": "The ID of the loading job to check status.",
++          "title": "Job Id",
++          "type": "string"
++        }
++      },
++      "required": [
++        "job_id"
++      ],
++      "type": "object",
++      "description": "Input schema for getting loading job status.",
++      "title": "GetLoadingJobStatusToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__drop_loading_job",
++    "description": "Drop (delete) a loading job from the graph.",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "job_name": {
++          "description": "The name of the loading job to drop.",
++          "title": "Job Name",
++          "type": "string"
++        }
++      },
++      "required": [
++        "job_name"
++      ],
++      "type": "object",
++      "description": "Input schema for dropping a loading job.",
++      "title": "DropLoadingJobToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__get_vertex_count",
++    "description": "Get the count of vertices in a TigerGraph graph.",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "vertex_type": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Type of vertices to count. If not provided, counts all types.",
++          "title": "Vertex Type"
++        }
++      },
++      "type": "object",
++      "description": "Input schema for getting vertex count.",
++      "title": "GetVertexCountToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__get_edge_count",
++    "description": "Get the count of edges in a TigerGraph graph.",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "edge_type": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Type of edges to count. If not provided, counts all types.",
++          "title": "Edge Type"
++        }
++      },
++      "type": "object",
++      "description": "Input schema for getting edge count.",
++      "title": "GetEdgeCountToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__get_node_degree",
++    "description": "Get the degree (number of connected edges) of a node in a TigerGraph graph.",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "vertex_type": {
++          "description": "Type of the vertex.",
++          "title": "Vertex Type",
++          "type": "string"
++        },
++        "vertex_id": {
++          "description": "ID of the vertex.",
++          "title": "Vertex Id",
++          "type": "string"
++        },
++        "edge_type": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Type of edges to count. If not provided, counts all edge types.",
++          "title": "Edge Type"
++        },
++        "direction": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": "both",
++          "description": "Direction of edges: 'outgoing', 'incoming', or 'both'.",
++          "title": "Direction"
++        }
++      },
++      "required": [
++        "vertex_type",
++        "vertex_id"
++      ],
++      "type": "object",
++      "description": "Input schema for getting node degree.",
++      "title": "GetNodeDegreeToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__gsql",
++    "description": "Execute a GSQL command on TigerGraph. Use this for administrative tasks (e.g., creating users, granting roles) or schema modifications (e.g., CREATE VERTEX). Do NOT use this for running data queries (SELECT statements) - use run_query instead. Example: `CREATE USER alice WITH PASSWORD 'password'` or `LS`.",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "command": {
++          "description": "GSQL command to execute.",
++          "title": "Command",
++          "type": "string"
++        }
++      },
++      "required": [
++        "command"
++      ],
++      "type": "object",
++      "description": "Input schema for running GSQL command.",
++      "title": "GSQLToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__generate_gsql",
++    "description": "Generate a GSQL query from a natural language description using an LLM. Use this tool when you need to create a GSQL query but are unsure of the exact syntax. The generated query can then be executed using the gsql tool. For best results, provide the graph_name so the schema can be used to generate accurate queries. Configure the LLM via env vars: LLM_MODEL (e.g., 'gpt-4o' or 'openai:gpt-4o') and optionally LLM_PROVIDER.",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "query_description": {
++          "description": "A natural language description of what data you want to retrieve. Examples: 'Find all users who purchased more than 5 items', 'Count vertices by type', 'Find shortest path between two nodes'",
++          "title": "Query Description",
++          "type": "string"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If provided, the schema will be fetched to generate more accurate GSQL.",
++          "title": "Graph Name"
++        }
++      },
++      "required": [
++        "query_description"
++      ],
++      "type": "object",
++      "description": "Input schema for generating GSQL from natural language.",
++      "title": "GenerateGSQLToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__generate_cypher",
++    "description": "Generate an openCypher query from a natural language description using an LLM. Use this tool when you prefer Cypher syntax over GSQL. The generated query will be wrapped in TigerGraph's INTERPRET OPENCYPHER QUERY format. graph_name is required as the query needs to specify the target graph. Configure the LLM via env vars: LLM_MODEL (e.g., 'gpt-4o' or 'openai:gpt-4o') and optionally LLM_PROVIDER.",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "query_description": {
++          "description": "A natural language description of what data you want to retrieve. Examples: 'Find all users who purchased more than 5 items', 'Find friends of friends', 'Match patterns in the graph'",
++          "title": "Query Description",
++          "type": "string"
++        },
++        "graph_name": {
++          "description": "Name of the graph. Required for Cypher queries as they need to be wrapped in INTERPRET OPENCYPHER QUERY for the specific graph.",
++          "title": "Graph Name",
++          "type": "string"
++        }
++      },
++      "required": [
++        "query_description",
++        "graph_name"
++      ],
++      "type": "object",
++      "description": "Input schema for generating Cypher from natural language.",
++      "title": "GenerateCypherToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__add_vector_attribute",
++    "description": "Add a vector attribute to an existing vertex type. Creates a schema change job to ALTER VERTEX with ADD VECTOR ATTRIBUTE.",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "vertex_type": {
++          "description": "Name of the vertex type to add the vector attribute to.",
++          "title": "Vertex Type",
++          "type": "string"
++        },
++        "vector_name": {
++          "description": "Name of the vector attribute.",
++          "title": "Vector Name",
++          "type": "string"
++        },
++        "dimension": {
++          "description": "Dimension (length) of the vector. Max 4096 for Community, 32768 for Enterprise.",
++          "title": "Dimension",
++          "type": "integer"
++        },
++        "metric": {
++          "default": "COSINE",
++          "description": "Similarity metric: 'COSINE', 'L2' (Euclidean), or 'IP' (inner product).",
++          "title": "Metric",
++          "type": "string"
++        }
++      },
++      "required": [
++        "vertex_type",
++        "vector_name",
++        "dimension"
++      ],
++      "type": "object",
++      "description": "Input schema for adding a vector attribute to a vertex type.",
++      "title": "VectorAddAttributeToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__drop_vector_attribute",
++    "description": "Drop a vector attribute from a vertex type. Creates a schema change job to ALTER VERTEX with DROP VECTOR ATTRIBUTE.",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "vertex_type": {
++          "description": "Name of the vertex type.",
++          "title": "Vertex Type",
++          "type": "string"
++        },
++        "vector_name": {
++          "description": "Name of the vector attribute to drop.",
++          "title": "Vector Name",
++          "type": "string"
++        }
++      },
++      "required": [
++        "vertex_type",
++        "vector_name"
++      ],
++      "type": "object",
++      "description": "Input schema for dropping a vector attribute from a vertex type.",
++      "title": "VectorDropAttributeToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__list_vector_attributes",
++    "description": "Get vector attribute information (name, dimension, metric) for vertex types in a graph. Parses the output of the GSQL 'LS' command. Optionally filter by vertex type.\n\n**Related Tools:** add_vector_attribute, drop_vector_attribute, get_vector_index_status",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "vertex_type": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Filter by vertex type. If not provided, returns vector attributes for all vertex types.",
++          "title": "Vertex Type"
++        }
++      },
++      "type": "object",
++      "description": "Input schema for listing vector attributes in a graph.",
++      "title": "VectorListAttributesToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__get_vector_index_status",
++    "description": "Check the rebuild status of vector indexes. Returns 'Ready_for_query' when complete or 'Rebuild_processing' if still building.",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "vertex_type": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Vertex type to check. If not provided, checks all.",
++          "title": "Vertex Type"
++        },
++        "vector_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Vector attribute name. If not provided, checks all.",
++          "title": "Vector Name"
++        }
++      },
++      "type": "object",
++      "description": "Input schema for checking vector index status.",
++      "title": "VectorIndexStatusToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__upsert_vectors",
++    "description": "Upsert multiple vertices with vector data using the REST Upsert API. Vectors must be provided inline as lists of floats (i.e., already in memory). To bulk-load vectors from a local file, use 'load_vectors_from_csv' or 'load_vectors_from_json' instead.",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "vertex_type": {
++          "description": "Type of the vertices.",
++          "title": "Vertex Type",
++          "type": "string"
++        },
++        "vector_attribute": {
++          "description": "Name of the vector attribute.",
++          "title": "Vector Attribute",
++          "type": "string"
++        },
++        "vectors": {
++          "description": "List of vectors to upsert, each with vertex_id, vector, and optional attributes.",
++          "items": {
++            "$ref": "#/$defs/VectorData"
++          },
++          "title": "Vectors",
++          "type": "array"
++        }
++      },
++      "required": [
++        "vertex_type",
++        "vector_attribute",
++        "vectors"
++      ],
++      "type": "object",
++      "$defs": {
++        "VectorData": {
++          "description": "Schema for a single vector upsert operation.",
++          "properties": {
++            "vertex_id": {
++              "anyOf": [
++                {
++                  "type": "string"
++                },
++                {
++                  "type": "integer"
++                }
++              ],
++              "description": "ID of the vertex.",
++              "title": "Vertex Id"
++            },
++            "vector": {
++              "description": "Vector data as a list of floats.",
++              "items": {
++                "type": "number"
++              },
++              "title": "Vector",
++              "type": "array"
++            },
++            "attributes": {
++              "anyOf": [
++                {
++                  "additionalProperties": true,
++                  "type": "object"
++                },
++                {
++                  "type": "null"
++                }
++              ],
++              "description": "Additional vertex attributes.",
++              "title": "Attributes"
++            }
++          },
++          "required": [
++            "vertex_id",
++            "vector"
++          ],
++          "title": "VectorData",
++          "type": "object"
++        }
++      },
++      "description": "Input schema for upserting multiple vectors via REST API.",
++      "title": "VectorUpsertToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__load_vectors_from_csv",
++    "description": "Bulk-load vectors from a CSV/delimited file into a vertex type's vector attribute. Creates a GSQL loading job, runs it with the file, then drops the job.\n\n**File format:** Each row has a vertex ID and a vector. Fields are separated by ``field_separator`` (default ``|``). Vector elements are separated by ``element_separator`` (default ``,``).\n\n**Example file** (field_separator='|', element_separator=','):\n```\nvertex1|0.1,0.2,0.3\nvertex2|0.4,0.5,0.6\n```\n\n**Prerequisites:**\n  1. Vertex type must already exist\n  2. Vector attribute must already be added (use 'add_vector_attribute')\n  3. File must exist on the local machine (it is uploaded to TigerGraph via REST)\n\n**Related Tools:** add_vector_attribute, load_vectors_from_json (JSON Lines alternative), upsert_vectors (REST API for in-memory data), get_vector_index_status (check indexing after load)",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "vertex_type": {
++          "description": "Target vertex type that has the vector attribute.",
++          "title": "Vertex Type",
++          "type": "string"
++        },
++        "vector_attribute": {
++          "description": "Name of the vector attribute to load into.",
++          "title": "Vector Attribute",
++          "type": "string"
++        },
++        "file_path": {
++          "description": "Absolute path to the CSV/delimited data file on the local machine (uploaded to TigerGraph via REST). Each row has a vertex ID and a vector column.",
++          "title": "File Path",
++          "type": "string"
++        },
++        "id_column": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "integer"
++            }
++          ],
++          "default": 0,
++          "description": "Column for vertex ID: integer index (0-based) or header name. Default: 0 (first column).",
++          "title": "Id Column"
++        },
++        "vector_column": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "integer"
++            }
++          ],
++          "default": 1,
++          "description": "Column containing the vector data: integer index (0-based) or header name. Default: 1 (second column).",
++          "title": "Vector Column"
++        },
++        "element_separator": {
++          "default": ",",
++          "description": "Separator between vector elements within the vector column. Default: ','.",
++          "title": "Element Separator",
++          "type": "string"
++        },
++        "field_separator": {
++          "default": "|",
++          "description": "Separator between fields (columns) in the file. Default: '|'.",
++          "title": "Field Separator",
++          "type": "string"
++        },
++        "header": {
++          "default": false,
++          "description": "Whether the file has a header row. Default: false.",
++          "title": "Header",
++          "type": "boolean"
++        }
++      },
++      "required": [
++        "vertex_type",
++        "vector_attribute",
++        "file_path"
++      ],
++      "type": "object",
++      "description": "Input schema for bulk-loading vectors from a CSV/delimited file via a GSQL loading job.",
++      "title": "VectorLoadFromCsvToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__load_vectors_from_json",
++    "description": "Bulk-load vectors from a JSON Lines (.jsonl) file into a vertex type's vector attribute. Creates a GSQL loading job with JSON_FILE=\"true\", runs it with the file, then drops the job.\n\n**File format:** Each line is a JSON object with an ID field and a vector field. The vector is stored as a comma-separated string (not a JSON array).\n\n**Example file** (id_key='id', vector_key='embedding'):\n```\n{\"id\": \"vertex1\", \"embedding\": \"0.1,0.2,0.3\"}\n{\"id\": \"vertex2\", \"embedding\": \"0.4,0.5,0.6\"}\n```\n\n**Prerequisites:**\n  1. Vertex type must already exist\n  2. Vector attribute must already be added (use 'add_vector_attribute')\n  3. File must exist on the local machine (it is uploaded to TigerGraph via REST)\n\n**Related Tools:** add_vector_attribute, load_vectors_from_csv (CSV alternative), upsert_vectors (REST API for in-memory data), get_vector_index_status (check indexing after load)",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "vertex_type": {
++          "description": "Target vertex type that has the vector attribute.",
++          "title": "Vertex Type",
++          "type": "string"
++        },
++        "vector_attribute": {
++          "description": "Name of the vector attribute to load into.",
++          "title": "Vector Attribute",
++          "type": "string"
++        },
++        "file_path": {
++          "description": "Absolute path to the JSON Lines (.jsonl) file on the local machine (uploaded to TigerGraph via REST). Each line is a JSON object with an ID field and a vector field.",
++          "title": "File Path",
++          "type": "string"
++        },
++        "id_key": {
++          "default": "id",
++          "description": "JSON key for the vertex ID. Default: 'id'.",
++          "title": "Id Key",
++          "type": "string"
++        },
++        "vector_key": {
++          "default": "vector",
++          "description": "JSON key for the vector data (stored as a comma-separated string). Default: 'vector'.",
++          "title": "Vector Key",
++          "type": "string"
++        },
++        "element_separator": {
++          "default": ",",
++          "description": "Separator between vector elements within the vector string value. Default: ','.",
++          "title": "Element Separator",
++          "type": "string"
++        }
++      },
++      "required": [
++        "vertex_type",
++        "vector_attribute",
++        "file_path"
++      ],
++      "type": "object",
++      "description": "Input schema for bulk-loading vectors from a JSON Lines file via a GSQL loading job.",
++      "title": "VectorLoadFromJsonToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__search_top_k_similarity",
++    "description": "Perform vector similarity search using TigerGraph's vectorSearch() function. Returns top-K most similar vertices with distance scores.\n\n**IMPORTANT:** The ``query_vector`` dimensions MUST match the dimension defined in the vector attribute (e.g., if the attribute was created with DIMENSION=1536, the query vector must have exactly 1536 elements). A dimension mismatch will cause the search to fail or return incorrect results.\n\nUse ``list_vector_attributes`` to check the expected dimension before searching.\n\n**Related Tools:** list_vector_attributes (check dimension), fetch_vector (retrieve vector values), get_vector_index_status (check index readiness)",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "vertex_type": {
++          "description": "Type of vertices to search.",
++          "title": "Vertex Type",
++          "type": "string"
++        },
++        "vector_attribute": {
++          "description": "Name of the vector attribute to search.",
++          "title": "Vector Attribute",
++          "type": "string"
++        },
++        "query_vector": {
++          "description": "Query vector for similarity search.",
++          "items": {
++            "type": "number"
++          },
++          "title": "Query Vector",
++          "type": "array"
++        },
++        "top_k": {
++          "default": 10,
++          "description": "Number of top similar results to return.",
++          "title": "Top K",
++          "type": "integer"
++        },
++        "ef": {
++          "anyOf": [
++            {
++              "type": "integer"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Exploration factor for HNSW algorithm. Higher = more accurate but slower.",
++          "title": "Ef"
++        },
++        "return_vectors": {
++          "default": false,
++          "description": "Whether to return the vector values (can be large).",
++          "title": "Return Vectors",
++          "type": "boolean"
++        }
++      },
++      "required": [
++        "vertex_type",
++        "vector_attribute",
++        "query_vector"
++      ],
++      "type": "object",
++      "description": "Input schema for vector similarity search using vectorSearch() function.",
++      "title": "VectorSearchToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__fetch_vector",
++    "description": "Fetch vertices with their vector data using GSQL PRINT WITH VECTOR. Note: Vector attributes cannot be fetched via REST API.",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        },
++        "vertex_type": {
++          "description": "Type of the vertex.",
++          "title": "Vertex Type",
++          "type": "string"
++        },
++        "vertex_ids": {
++          "description": "List of vertex IDs to fetch.",
++          "items": {
++            "anyOf": [
++              {
++                "type": "string"
++              },
++              {
++                "type": "integer"
++              }
++            ]
++          },
++          "title": "Vertex Ids",
++          "type": "array"
++        },
++        "vector_attribute": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Specific vector attribute to fetch. If not provided, fetches all vectors.",
++          "title": "Vector Attribute"
++        }
++      },
++      "required": [
++        "vertex_type",
++        "vertex_ids"
++      ],
++      "type": "object",
++      "description": "Input schema for fetching vertices with their vector data using GSQL.",
++      "title": "VectorFetchToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__create_data_source",
++    "description": "Create a new data source for loading data from object storage (S3, GCS, Azure Blob), a data warehouse (Snowflake, BigQuery, PostgreSQL), an Iceberg catalog, or Kafka. Call 'get_data_source_types' first if unsure which keys a type needs; if the server rejects the request, the response includes the keys that type requires.",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "data_source_name": {
++          "description": "Name of the data source.",
++          "title": "Data Source Name",
++          "type": "string"
++        },
++        "data_source_type": {
++          "description": "Type of data source, normally one of: 's3' (Amazon S3), 'gcs' (Google Cloud Storage), 'abs' (Azure Blob Storage), 'kafka' (External Kafka), 'kafka_v2' (External Kafka (v2 connector)), 'mirrormaker' (Kafka MirrorMaker), 'iceberg' (Apache Iceberg), 'snowflake' (Snowflake), 'bigquery' (Google BigQuery), 'postgresql' (PostgreSQL). 'azure_blob' is accepted as an alias for 'abs'. Any other value is passed to TigerGraph unchanged, which decides whether it is valid. Call 'get_data_source_types' for the configuration keys each type needs.",
++          "title": "Data Source Type",
++          "type": "string"
++        },
++        "config": {
++          "additionalProperties": true,
++          "description": "Configuration for the data source, without the 'type' key. Key names are type-specific: Snowflake takes 'connection.url', 'connection.user', and 'connection.password'; S3 takes 'access.key' and 'secret.key'. Call 'get_data_source_types' for each type's required keys and an example.",
++          "title": "Config",
++          "type": "object"
++        }
++      },
++      "required": [
++        "data_source_name",
++        "data_source_type",
++        "config"
++      ],
++      "type": "object",
++      "description": "Input schema for creating a data source.",
++      "title": "CreateDataSourceToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__update_data_source",
++    "description": "Update an existing data source configuration.",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "data_source_name": {
++          "description": "Name of the data source to update.",
++          "title": "Data Source Name",
++          "type": "string"
++        },
++        "config": {
++          "additionalProperties": true,
++          "description": "Updated configuration for the data source.",
++          "title": "Config",
++          "type": "object"
++        },
++        "data_source_type": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Type of the data source. Optional; when given, the configuration is validated against that type before the update is sent.",
++          "title": "Data Source Type"
++        }
++      },
++      "required": [
++        "data_source_name",
++        "config"
++      ],
++      "type": "object",
++      "description": "Input schema for updating a data source.",
++      "title": "UpdateDataSourceToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__get_data_source",
++    "description": "Get information about a specific data source.",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "data_source_name": {
++          "description": "Name of the data source.",
++          "title": "Data Source Name",
++          "type": "string"
++        }
++      },
++      "required": [
++        "data_source_name"
++      ],
++      "type": "object",
++      "description": "Input schema for getting a data source.",
++      "title": "GetDataSourceToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__drop_data_source",
++    "description": "Drop (delete) a data source.",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "data_source_name": {
++          "description": "Name of the data source to drop.",
++          "title": "Data Source Name",
++          "type": "string"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph. If not provided, uses default connection.",
++          "title": "Graph Name"
++        }
++      },
++      "required": [
++        "data_source_name"
++      ],
++      "type": "object",
++      "description": "Input schema for dropping a data source.",
++      "title": "DropDataSourceToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__get_all_data_sources",
++    "description": "Get information about all data sources.",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        }
++      },
++      "type": "object",
++      "description": "Input schema for getting all data sources.",
++      "title": "GetAllDataSourcesToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__drop_all_data_sources",
++    "description": "Drop all data sources. WARNING: This is a destructive operation.",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "confirm": {
++          "default": false,
++          "description": "Must be True to confirm dropping all data sources.",
++          "title": "Confirm",
++          "type": "boolean"
++        }
++      },
++      "type": "object",
++      "description": "Input schema for dropping all data sources.",
++      "title": "DropAllDataSourcesToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__get_data_source_types",
++    "description": "List the data source types supported by 'create_data_source', with the required and optional configuration keys and an example config for each. Answers locally without contacting TigerGraph.",
++    "inputSchema": {
++      "properties": {
++        "family": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Optional filter: 'object_store', 'warehouse', 'stream', or 'filesystem'. Omit to list every type.",
++          "title": "Family"
++        }
++      },
++      "type": "object",
++      "description": "Input schema for listing supported data source types.",
++      "title": "GetDataSourceTypesToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__preview_sample_data",
++    "description": "Preview sample data from a file in a data source.",
++    "inputSchema": {
++      "properties": {
++        "profile": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Connection profile name. Omit to use the active default profile. Use 'list_connections' to see available profiles.",
++          "title": "Profile"
++        },
++        "data_source_name": {
++          "description": "Name of the data source.",
++          "title": "Data Source Name",
++          "type": "string"
++        },
++        "file_path": {
++          "description": "For an object store source, the path to the file within the data source (e.g. 's3a://bucket/data.csv'). For a warehouse source such as Snowflake, the SQL query to sample instead (e.g. 'SELECT * FROM <db>.<schema>.<table>').",
++          "title": "File Path",
++          "type": "string"
++        },
++        "num_rows": {
++          "default": 10,
++          "description": "Number of sample rows to preview.",
++          "title": "Num Rows",
++          "type": "integer"
++        },
++        "graph_name": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Name of the graph context. If not provided, uses default connection.",
++          "title": "Graph Name"
++        }
++      },
++      "required": [
++        "data_source_name",
++        "file_path"
++      ],
++      "type": "object",
++      "description": "Input schema for previewing sample data.",
++      "title": "PreviewSampleDataToolInput"
++    }
++  },
++  {
++    "name": "tigergraph__discover_tools",
++    "description": "Discover which TigerGraph tools are relevant for your task.\n\n**Use this tool when:**\n  - You're unsure which tool to use for your goal\n  - You want to explore available capabilities\n  - You need suggestions for accomplishing a task\n\n**Returns:**\n  - List of recommended tools with descriptions\n  - Use cases and complexity ratings\n  - Prerequisites and related tools\n  - Example parameters\n\n**Example:**\n  task_description: 'I want to add multiple users to the graph'",
++    "inputSchema": {
++      "properties": {
++        "task_description": {
++          "description": "Describe what you want to accomplish in natural language.\nExamples:\n  - 'add multiple users to the graph'\n  - 'find similar documents using embeddings'\n  - 'understand the graph structure'\n  - 'load data from a CSV file'",
++          "title": "Task Description",
++          "type": "string"
++        },
++        "category": {
++          "anyOf": [
++            {
++              "type": "string"
++            },
++            {
++              "type": "null"
++            }
++          ],
++          "default": null,
++          "description": "Filter by category: 'schema', 'data', 'query', 'vector', 'loading', 'utility'.\nLeave empty to search all categories.",
++          "title": "Category"
++        },
++        "limit": {
++          "default": 5,
++          "description": "Maximum number of tools to return (default: 5)",
++          "title": "Limit",
++          "type": "integer"
++        }
++      },
++      "required": [
++        "task_description"
++      ],
++      "type": "object",
++      "description": "Input for discovering relevant tools.",
++      "title": "ToolDiscoveryInput"
++    }
++  },
++  {
++    "name": "tigergraph__get_workflow",
++    "description": "Get a step-by-step workflow template for common TigerGraph tasks.\n\n**Use this tool when:**\n  - You need to complete a complex multi-step task\n  - You want to follow best practices\n  - You're new to TigerGraph and need guidance\n\n**Returns:**\n  - Ordered list of tools to use\n  - Example parameters for each step\n  - Explanations of what each step accomplishes\n\n**Available workflows:** create_graph, load_data, query_data, vector_search, graph_analysis, setup_connection",
++    "inputSchema": {
++      "properties": {
++        "workflow_type": {
++          "description": "Type of workflow to retrieve:\n  - 'create_graph': Set up a new graph with schema\n  - 'load_data': Import data into an existing graph\n  - 'query_data': Query and analyze graph data\n  - 'vector_search': Set up and use vector similarity search\n  - 'graph_analysis': Analyze graph structure and statistics\n  - 'setup_connection': Initial connection setup and verification",
++          "title": "Workflow Type",
++          "type": "string"
++        }
++      },
++      "required": [
++        "workflow_type"
++      ],
++      "type": "object",
++      "description": "Input for getting workflow templates.",
++      "title": "GetWorkflowInput"
++    }
++  },
++  {
++    "name": "tigergraph__get_tool_info",
++    "description": "Get detailed information about a specific TigerGraph tool.\n\n**Use this tool when:**\n  - You want to understand a tool's capabilities\n  - You need examples of how to use a tool\n  - You want to know prerequisites or related tools\n\n**Returns:**\n  - Detailed tool description\n  - Use cases and examples\n  - Prerequisites and related tools\n  - Common next steps",
++    "inputSchema": {
++      "properties": {
++        "tool_name": {
++          "description": "Name of the tool to get information about.\nExample: 'tigergraph__add_node' or 'tigergraph__search_top_k_similarity'",
++          "title": "Tool Name",
++          "type": "string"
++        }
++      },
++      "required": [
++        "tool_name"
++      ],
++      "type": "object",
++      "description": "Input for getting detailed information about a specific tool.",
++      "title": "GetToolInfoInput"
++    }
++  }
++]
+\ No newline at end of file
+diff --git a/requirements.txt b/requirements.txt
+new file mode 100644
+index 0000000..c064853
+--- /dev/null
++++ b/requirements.txt
+@@ -0,0 +1,14 @@
++tigergraph-mcp
++mcp>=1.2.0
++python-dotenv
++langgraph>=0.2.0
++openai>=1.40.0
++ollama
++pydantic>=2.0
++pandas
++pypdf
++requests
++streamlit
++pytest
++pytest-asyncio
++tenacity
+diff --git a/scripts/discover_mcp_tools.py b/scripts/discover_mcp_tools.py
+new file mode 100644
+index 0000000..9758a25
+--- /dev/null
++++ b/scripts/discover_mcp_tools.py
+@@ -0,0 +1,101 @@
++# Findings from running this script against the live TigerGraph Savanna workspace
++# (Task 1, Step 7). Full schemas are in docs/tigergraph-mcp-tools.json (69 tools
++# total). Confirmed exact input parameter names for the tools Tasks 2, 3, 8-11
++# will call — use these names, not the plausible guesses in the plan text:
++#
++# tigergraph__gsql
++#   - command (required, str): GSQL command to execute.
++#   - graph_name (optional, str): defaults to the active connection's graph.
++#   - profile (optional, str): connection profile name.
++#
++# tigergraph__create_graph
++#   - graph_name (required, str)
++#   - vertex_types (required, list): vertex type definitions for this graph.
++#   - edge_types (optional, list): edge type definitions for this graph.
++#   - profile (optional, str)
++#
++# tigergraph__create_loading_job
++#   - job_name (required, str)
++#   - files (required, list): each item needs 'file_alias' and
++#     'node_mappings' and/or 'edge_mappings', e.g.
++#     [{"file_alias": "f1", "node_mappings": [...]}]
++#   - run_job (optional, bool): run immediately after creation.
++#   - drop_after_run (optional, bool): only applies if run_job=True.
++#   - graph_name (optional, str), profile (optional, str)
++#
++# tigergraph__upsert_vectors
++#   - vertex_type (required, str)
++#   - vector_attribute (required, str)
++#   - vectors (required, list): each with vertex_id, vector, optional attributes.
++#   - graph_name (optional, str), profile (optional, str)
++#
++# tigergraph__search_top_k_similarity
++#   - vertex_type (required, str)
++#   - vector_attribute (required, str)
++#   - query_vector (required, list[float])
++#   - top_k (optional, int)
++#   - ef (optional, int): HNSW exploration factor, higher = more accurate/slower.
++#   - return_vectors (optional, bool): can be large, defaults False-ish.
++#   - graph_name (optional, str), profile (optional, str)
++#
++# tigergraph__run_installed_query
++#   - query_name (required, str)
++#   - params (optional, dict): query parameters.
++#   - graph_name (optional, str), profile (optional, str)
++#
++# tigergraph__install_query
++#   - query_text (required, str): GSQL query text to install.
++#   - graph_name (optional, str), profile (optional, str)
++#
++# Connectivity note: TG_RESTPP_PORT=TG_GS_PORT=443 (Savanna workspace routes
++# everything through HTTPS on the workspace hostname) is CONFIRMED correct —
++# the server authenticated (token obtained), returned a real TigerGraph
++# version, and gsql/show_graph_details calls returned genuine GSQL-engine
++# responses ("Graph 'FraudInvestigation' does not exist." / a permission
++# message), not a network/TLS/port error. The 'FraudInvestigation' graph does
++# not exist yet on the server (expected — Task 2 creates it), and this
++# Savanna user lacks the global READ_SCHEMA privilege needed for
++# list_graphs/get_global_schema (expected for a scoped workspace user;
++# graph-scoped operations like gsql/create_graph are unaffected).
++
++import asyncio
++import json
++from pathlib import Path
++
++from dotenv import dotenv_values
++from mcp import ClientSession, StdioServerParameters
++from mcp.client.stdio import get_default_environment, stdio_client
++
++
++async def main() -> None:
++    env_dict = dotenv_values(Path(".env").resolve())
++    server_params = StdioServerParameters(
++        command="tigergraph-mcp",
++        args=["-vv"],
++        env={**get_default_environment(), **env_dict},
++    )
++    async with stdio_client(server_params) as (read, write):
++        async with ClientSession(read, write) as session:
++            await session.initialize()
++            tools = await session.list_tools()
++            dumped = [
++                {
++                    "name": t.name,
++                    "description": t.description,
++                    "inputSchema": t.input_schema,
++                }
++                for t in tools.tools
++            ]
++            out_path = Path("docs/tigergraph-mcp-tools.json")
++            out_path.write_text(json.dumps(dumped, indent=2))
++            print(f"Wrote {len(dumped)} tool schemas to {out_path}")
++
++            # Sanity check: confirm the server can actually reach the TG instance.
++            result = await session.call_tool("tigergraph__list_graphs", arguments={})
++            for content in result.content:
++                if hasattr(content, "text"):
++                    print("list_graphs ->", content.text)
++
++
++if __name__ == "__main__":
++    asyncio.run(main())

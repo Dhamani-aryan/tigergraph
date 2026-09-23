@@ -1,0 +1,127 @@
+# Review package: 6ab44a0..bad147b
+
+## Commits
+bad147b fix: surface tool-call failures instead of swallowing them
+
+## Files changed
+ src/tg_client.py        | 43 ++++++++++++++++++++++++++++++++++++++++++-
+ tests/test_tg_client.py |  7 +++++++
+ 2 files changed, 49 insertions(+), 1 deletion(-)
+
+## Diff
+diff --git a/src/tg_client.py b/src/tg_client.py
+index acd1096..5f3f1d5 100644
+--- a/src/tg_client.py
++++ b/src/tg_client.py
+@@ -1,23 +1,46 @@
+ from __future__ import annotations
+ 
+ import json
++import re
+ import shutil
+ import sys
+ from contextlib import AsyncExitStack
+ from pathlib import Path
+ from typing import Any
+ 
+ from dotenv import dotenv_values
+ from mcp import ClientSession, StdioServerParameters
+ from mcp.client.stdio import get_default_environment, stdio_client
+ 
++_JSON_FENCE_RE = re.compile(r"```json\s*(.*?)\s*```", re.DOTALL)
++
++
++def _extract_json_envelope(text: str) -> dict[str, Any] | None:
++    """Best-effort extraction of the tigergraph-mcp JSON result envelope.
++
++    Every observed tigergraph-mcp tool response (success or failure) wraps
++    its structured result in a ```json ... ``` fenced block containing keys
++    like "success", "operation", "data"/"error"/"error_code" -- usually
++    followed by a human-readable markdown rendering of the same data. Try
++    the fenced block first, then fall back to parsing the whole text as
++    JSON, so callers can inspect `success`/`error` regardless of whether the
++    tool call failed.
++    """
++    match = _JSON_FENCE_RE.search(text)
++    candidate = match.group(1) if match else text
++    try:
++        parsed = json.loads(candidate)
++    except json.JSONDecodeError:
++        return None
++    return parsed if isinstance(parsed, dict) else None
++
+ 
+ def _resolve_tigergraph_mcp_command() -> str:
+     """Resolve the tigergraph-mcp executable to an absolute path.
+ 
+     On Windows, the mcp library locates the "command" via shutil.which
+     against the *current process's* real PATH -- not the custom `env` dict
+     passed to StdioServerParameters (that dict only becomes the child
+     process's environment after it has already been found). If the venv
+     hosting tigergraph-mcp isn't activated (its Scripts dir isn't on PATH),
+     that lookup silently returns the bare string back and Windows'
+@@ -63,23 +86,41 @@ class TigerGraphMCP:
+ 
+     async def __aexit__(self, *exc_info: object) -> None:
+         if self._stack is not None:
+             await self._stack.aclose()
+         self.session = None
+ 
+     async def call(self, tool_name: str, arguments: dict[str, Any]) -> Any:
+         assert self.session is not None, "use 'async with TigerGraphMCP() as tg:'"
+         result = await self.session.call_tool(tool_name, arguments=arguments)
+         texts = [c.text for c in result.content if hasattr(c, "text")]
++        joined = "\n".join(texts)
++        envelope = _extract_json_envelope(joined) if joined else None
++
++        # The tigergraph-mcp server does NOT reliably set the MCP protocol's
++        # `is_error` flag on failures (observed False even for a rejected
++        # GSQL command and a 404 on a missing installed query) -- it instead
++        # reports failure inside the JSON envelope via `"success": false`.
++        # Check both so a real server failure is never silently swallowed as
++        # a successful result, which matters most for tasks that batch many
++        # sequential calls without inspecting each one individually.
++        tool_failed = result.is_error or (envelope is not None and envelope.get("success") is False)
++        if tool_failed:
++            error_detail = envelope.get("error") or envelope.get("summary") if envelope else None
++            raise RuntimeError(
++                f"TigerGraph MCP tool '{tool_name}' failed: {error_detail or joined or '<no error text returned>'}"
++            )
++
+         if not texts:
+             return None
+-        joined = "\n".join(texts)
++        if envelope is not None:
++            return envelope
+         try:
+             return json.loads(joined)
+         except json.JSONDecodeError:
+             return joined
+ 
+     async def gsql(self, command: str) -> Any:
+         return await self.call("tigergraph__gsql", {"command": command})
+ 
+     async def upsert_vectors(
+         self, vertex_type: str, vector_attribute: str, vectors: list[dict[str, Any]]
+diff --git a/tests/test_tg_client.py b/tests/test_tg_client.py
+index 08b639f..126a376 100644
+--- a/tests/test_tg_client.py
++++ b/tests/test_tg_client.py
+@@ -1,10 +1,17 @@
+ import pytest
+ 
+ from src.tg_client import TigerGraphMCP
+ 
+ 
+ @pytest.mark.asyncio
+ async def test_gsql_show_returns_something():
+     async with TigerGraphMCP() as tg:
+         result = await tg.gsql("HELP")
+         assert result is not None
++
++
++@pytest.mark.asyncio
++async def test_gsql_invalid_command_raises():
++    async with TigerGraphMCP() as tg:
++        with pytest.raises(RuntimeError, match="tigergraph__gsql"):
++            await tg.gsql("NOT VALID GSQL AT ALL")

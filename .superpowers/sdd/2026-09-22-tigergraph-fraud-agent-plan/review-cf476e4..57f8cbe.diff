@@ -1,0 +1,121 @@
+# Review package: cf476e4..57f8cbe
+
+## Commits
+57f8cbe feat: SAR narrative generation, wired into the case runner
+
+## Files changed
+ src/agent/sar_writer.py  | 25 +++++++++++++++++++++++++
+ src/run/run_case.py      |  7 ++++++-
+ tests/test_sar_writer.py | 20 ++++++++++++++++++++
+ 3 files changed, 51 insertions(+), 1 deletion(-)
+
+## Diff
+diff --git a/src/agent/sar_writer.py b/src/agent/sar_writer.py
+new file mode 100644
+index 0000000..b732598
+--- /dev/null
++++ b/src/agent/sar_writer.py
+@@ -0,0 +1,25 @@
++from __future__ import annotations
++
++from pydantic import BaseModel
++
++from src.agent.llm import generate_structured
++
++
++class SARNarrativeOutput(BaseModel):
++    narrative: str
++
++
++async def write_sar_narrative(case_row: dict, case_summary: dict) -> str:
++    prompt = (
++        "Write a suspicious activity report narrative, six to twelve sentences, covering "
++        "who (customer, cards, merchants, devices), what happened, when (dates), where "
++        "(locations, channels), how it was carried out, and why it is suspicious. Base it "
++        "only on these facts -- do not invent details:\n\n"
++        f"Customer: {case_row['customer_id']}, Card: {case_row['card_id']}\n"
++        f"Pattern: {case_summary['pattern']}\n"
++        f"Fraud probability: {case_summary['fraud_probability']}\n"
++        f"Evidence claims: {case_summary['evidence_claims']}\n"
++        f"Trigger: {case_row.get('trigger_text', '')}\n"
++    )
++    result = await generate_structured(prompt, SARNarrativeOutput)
++    return result.narrative
+diff --git a/src/run/run_case.py b/src/run/run_case.py
+index 45b6015..862bc63 100644
+--- a/src/run/run_case.py
++++ b/src/run/run_case.py
+@@ -1,16 +1,17 @@
+ from __future__ import annotations
+ 
+ import time
+ 
+ from src.agent.graph_flow import _flagged_amount, build_graph
+ from src.agent.llm import token_tracker
++from src.agent.sar_writer import write_sar_narrative
+ from src.agent.schemas import (
+     ActionEntry,
+     AnswerFile,
+     CaseRecord,
+     Evidence,
+     EvidenceRequestRecord,
+     NextBestActionSet,
+     SAR,
+ )
+ from src.tg_client import TigerGraphMCP
+@@ -74,24 +75,28 @@ async def run_single_case(tg: TigerGraphMCP, case_row: dict) -> AnswerFile:
+ 
+     next_best_actions = NextBestActionSet(
+         initial=initial_actions,
+         final=final_actions,
+         what_changed=(
+             "nothing" if initial_actions == final_actions
+             else "Simulated evidence response changed the recommended actions."
+         ),
+     )
+ 
++    narrative = ""
++    if sar_info["sar_file"]:
++        narrative = await write_sar_narrative(case_row, assessment)
++
+     sar = SAR(
+         file=sar_info["sar_file"],
+         reason=sar_info["sar_reason"],
+-        narrative="",  # filled by a follow-up LLM call if sar_info["sar_file"] is True
++        narrative=narrative,
+         subjects=[case_row["customer_id"], case_row["card_id"]] if sar_info["sar_file"] else [],
+         total_amount_usd=case_record.exposure_usd if sar_info["sar_file"] else 0.0,
+         activity_dates=[] if not sar_info["sar_file"] else [str(case_row["opened_at"])[:10]] * 2,
+     )
+ 
+     return AnswerFile(
+         case_id=case_row["case_id"],
+         case=case_record,
+         evidence_requests=evidence_requests,
+         next_best_actions=next_best_actions,
+diff --git a/tests/test_sar_writer.py b/tests/test_sar_writer.py
+new file mode 100644
+index 0000000..f205af1
+--- /dev/null
++++ b/tests/test_sar_writer.py
+@@ -0,0 +1,20 @@
++import pytest
++
++from src.agent.sar_writer import write_sar_narrative
++
++
++@pytest.mark.asyncio
++async def test_narrative_mentions_key_facts():
++    case_row = {
++        "customer_id": "C04570",
++        "card_id": "C04570-K1",
++        "trigger_text": "Real-time model scored transaction 3450629 ($100.09, online) at 0.57.",
++    }
++    case_summary = {
++        "pattern": "card_testing",
++        "fraud_probability": 0.86,
++        "evidence_claims": ["Three small authorizations then a larger purchase"],
++    }
++    narrative = await write_sar_narrative(case_row, case_summary)
++    assert len(narrative) > 100
++    assert "C04570" in narrative or "card" in narrative.lower()

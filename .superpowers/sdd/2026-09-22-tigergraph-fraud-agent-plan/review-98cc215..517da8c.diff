@@ -1,0 +1,109 @@
+# Review package: 98cc215..517da8c
+
+## Commits
+517da8c fix: implement Sec 3a's general CREATE_CASE trigger (fraud_probability >= 0.30)
+
+## Files changed
+ src/policy/engine.py        | 27 +++++++++++++++++++++++++++
+ tests/test_policy_engine.py | 26 ++++++++++++++++++++++++++
+ 2 files changed, 53 insertions(+)
+
+## Diff
+diff --git a/src/policy/engine.py b/src/policy/engine.py
+index 55d1d89..34501a7 100644
+--- a/src/policy/engine.py
++++ b/src/policy/engine.py
+@@ -114,15 +114,42 @@ def apply_policy(f: Findings) -> PolicyResult:
+             actions.append(
+                 ActionRec(action="VERIFY_WITH_CUSTOMER", route="auto", reason="R1")
+             )
+ 
+     return _finish(f, actions, sar_file, sar_reason)
+ 
+ 
+ def _finish(
+     f: Findings, actions: list[ActionRec], sar_file: bool, sar_reason: str
+ ) -> PolicyResult:
++    # Sec 3a: "Open one [CREATE_CASE] whenever fraud probability reaches 0.30, whenever
++    # you request evidence, or whenever a customer disputes a charge." This is a general
++    # trigger, independent of which specific rule (if any) fired above -- so it's applied
++    # here, at the single choke point every non-early-return path funnels through (R2's
++    # `denies` branch, R4's `no_reply` branch, and the general R5/R6/R9/R1/R8 fallthrough),
++    # rather than duplicated per-branch. R2/R6/R7/R9 already open their own case when they
++    # fire, so the guard below is a no-op there; this only fills the gap for paths that
++    # previously never opened one (e.g. R4's no_reply, or a bare moderate-probability
++    # VERIFY_WITH_CUSTOMER with no other rule triggered).
++    #
++    # R3 (`confirmed_legitimate`) and R7 (`disputes_recurring`) deliberately bypass this
++    # function entirely (they return their own PolicyResult directly) and so never pick up
++    # this trigger: R3 is a closed-as-legitimate verdict where opening a fraud case would be
++    # wrong regardless of the pre-confirmation probability, and R7 already opens its own case
++    # per its own rule text.
++    #
++    # The second half of Sec 3a's trigger -- "whenever you request evidence" -- is not
++    # implementable here: `Findings` has no field recording that an evidence request
++    # (VERIFY_WITH_CUSTOMER / STEP_UP_AUTH / an analyst request) was made independent of the
++    # probability that prompted it, so there's no signal to gate on beyond the actions this
++    # function already sees. In every path reachable today, requesting evidence coincides
++    # with a probability that is either >=0.30 (already covered below) or handled by an
++    # early-return branch (R3/R7) that intentionally opts out. If `Findings` ever grows an
++    # explicit "evidence requested" flag, this is where it should be checked too.
++    if f.fraud_probability >= 0.30 and not any(a.action == "CREATE_CASE" for a in actions):
++        actions.append(ActionRec(action="CREATE_CASE", route="auto", reason="Sec 3a"))
++
+     # R10: BLOCK_ALL_CARDS only with >=2 confirmed-fraud cards or confirmed compromised
+     # credentials -- this engine only ever sees single-card findings, so it never emits
+     # BLOCK_ALL_CARDS; a caller investigating multiple cards for one customer would need
+     # to call apply_policy per card and apply R10 at a level above this function.
+     return PolicyResult(actions=actions, sar_file=sar_file, sar_reason=sar_reason)
+diff --git a/tests/test_policy_engine.py b/tests/test_policy_engine.py
+index 65a945c..bfa9a0a 100644
+--- a/tests/test_policy_engine.py
++++ b/tests/test_policy_engine.py
+@@ -123,20 +123,46 @@ def test_approval_routes_match_policy_table():
+         exposure_usd=3000.0, customer_response="denies",
+     )
+     result = apply_policy(findings)
+     routes = {a.action: a.route for a in result.actions}
+     assert routes["BLOCK_CARD"] == "L2"  # exposure > $2,500
+     assert routes["CREATE_CASE"] == "auto"
+     if "FILE_REPORT" in routes:
+         assert routes["FILE_REPORT"] == "L2"
+ 
+ 
++def test_sec3a_case_opens_on_probability_alone_with_no_other_triggering_rule():
++    """Reviewer's counterexample: no shared signal, no customer response, not card_testing
++    or undocumented, low exposure -- so R1/R2/R4/R5/R6/R7/R8/R9 all stay silent on
++    CREATE_CASE, but Sec 3a says a case opens once fraud_probability reaches 0.30 on its
++    own. Before the fix, this produced VERIFY_WITH_CUSTOMER with no CREATE_CASE at all."""
++    findings = Findings(
++        pattern="account_takeover", fraud_probability=0.6, single_signal=False
++    )
++    result = apply_policy(findings)
++    assert "CREATE_CASE" in _actions(result)
++    create_case = next(a for a in result.actions if a.action == "CREATE_CASE")
++    assert create_case.route == "auto"
++
++
++def test_r4_no_reply_also_opens_case_above_probability_threshold():
++    """R4's no_reply branch never emitted CREATE_CASE, even though no_reply is itself the
++    response to a requested verification -- one of Sec 3a's three case-opening triggers.
++    The probability-based half of Sec 3a should still open a case here."""
++    findings = Findings(
++        pattern="card_not_present_fraud", fraud_probability=0.6, single_signal=True,
++        exposure_usd=600.0, customer_response="no_reply",
++    )
++    result = apply_policy(findings)
++    assert "CREATE_CASE" in _actions(result)
++
++
+ def test_worked_example_from_readme():
+     """README example: HHG-017, card testing, prob 0.72 -> denies -> prob 0.86."""
+     initial = Findings(pattern="card_testing", fraud_probability=0.72, single_signal=True)
+     initial_result = apply_policy(initial)
+     assert "VERIFY_WITH_CUSTOMER" in _actions(initial_result)
+     assert "DECLINE_TRANSACTION" in _actions(initial_result)
+ 
+     final = Findings(
+         pattern="card_testing", fraud_probability=0.86, single_signal=False,
+         shared_device=True, exposure_usd=268.43, customer_response="denies",
