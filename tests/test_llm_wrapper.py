@@ -69,6 +69,64 @@ def test_simulator_anomalous_amount_denies():
     assert "did not make" in response
 
 
+@pytest.mark.asyncio
+async def test_generate_structured_prompt_states_exact_schema_field_names(monkeypatch):
+    """Task 12 review: Groq's response_format={"type": "json_object"} only guarantees
+    syntactically valid JSON, not correct field names -- on a live re-run the model
+    consistently emitted `fraud_pattern` instead of the schema's real `pattern` field,
+    exhausting all retries, because the prompt never stated the literal expected keys
+    anywhere. This asserts the fix without any live LLM call: the schema's own field
+    names are embedded in the very FIRST prompt sent to the model, not only in a
+    post-failure retry message."""
+    import src.agent.llm as llm_module
+
+    captured: list[list[dict]] = []
+
+    async def _fake_chat_raw(messages, schema):
+        captured.append(messages)
+        return '{"pattern": "card_testing"}'
+
+    monkeypatch.setattr(llm_module, "_chat_raw", _fake_chat_raw)
+
+    class _PatternSchema(BaseModel):
+        pattern: str
+
+    result = await llm_module.generate_structured("Classify the pattern.", _PatternSchema)
+    assert result.pattern == "card_testing"
+    assert len(captured) == 1  # succeeded on the first attempt, no retry needed
+    first_user_prompt = captured[0][-1]["content"]
+    assert '"pattern"' in first_user_prompt  # the literal required key, not just prose
+    assert '"properties"' in first_user_prompt  # the rendered JSON schema, not just a key list
+
+
+@pytest.mark.asyncio
+async def test_generate_structured_recovers_from_wrong_key_name_via_retry(monkeypatch):
+    """Deterministically reproduces the review's exact failure shape (model emits
+    `fraud_pattern` instead of `pattern` on the first attempt) without a live LLM
+    call, and confirms the retry loop's improved feedback (which now states the
+    exact required field names, not just a generic "not valid JSON") lets a
+    self-correcting model recover within the existing retry budget."""
+    import src.agent.llm as llm_module
+
+    responses = iter(
+        [
+            '{"fraud_pattern": "card_testing"}',  # wrong key, same shape the live run hit
+            '{"pattern": "card_testing"}',  # corrected on retry
+        ]
+    )
+
+    async def _fake_chat_raw(messages, schema):
+        return next(responses)
+
+    monkeypatch.setattr(llm_module, "_chat_raw", _fake_chat_raw)
+
+    class _PatternSchema(BaseModel):
+        pattern: str
+
+    result = await llm_module.generate_structured("Classify the pattern.", _PatternSchema, max_retries=2)
+    assert result.pattern == "card_testing"
+
+
 def test_simulator_typical_amount_confirms():
     response = simulate_evidence_response(
         "customer_validation",

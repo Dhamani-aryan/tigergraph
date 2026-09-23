@@ -74,10 +74,33 @@ def _groq_chat(messages: list[dict], **kwargs) -> "openai.types.chat.ChatComplet
 async def generate_structured(
     prompt: str, schema: type[BaseModel], max_retries: int = 2
 ) -> BaseModel:
+    """Task 12 review finding (confirmed live, reproducibly): Groq's
+    `response_format={"type": "json_object"}` only guarantees syntactically valid
+    JSON, not that the model uses the schema's actual field names. With only prose
+    describing the desired content ("classify the fraud pattern...") and no literal
+    key names anywhere in the prompt, the model inferred a plausible-but-wrong key
+    (`fraud_pattern` instead of `AssessmentOutput`'s real `pattern` field) and
+    repeated the exact same mistake across all `max_retries` attempts -- the old
+    generic "that wasn't valid JSON, try again" retry message never told it WHICH
+    key was wrong, so a consistent misread wasn't self-correcting. This is a
+    real, non-negligible failure mode for Task 13's batch run (one independent
+    reviewer re-run of the exact same test hit it, even though the original run
+    didn't). Fix: state the schema's own `model_json_schema()` explicitly in the
+    very first prompt (not just the retry-correction message), so the model has
+    concrete key-name guidance before it ever guesses wrong, and repeat the exact
+    required field names on every retry too.
+    """
     last_error: Exception | None = None
+    schema_json = json.dumps(schema.model_json_schema())
+    field_names = list(schema.model_fields)
+    schema_prompt = (
+        f"{prompt}\n\n"
+        f"Respond with a single JSON object that matches EXACTLY this JSON schema "
+        f"(use these exact field names -- {field_names} -- and no others):\n{schema_json}"
+    )
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT},
-        {"role": "user", "content": prompt},
+        {"role": "user", "content": schema_prompt},
     ]
     for attempt in range(max_retries + 1):
         raw = await _chat_raw(messages, schema)
@@ -89,7 +112,10 @@ async def generate_structured(
             messages.append(
                 {
                     "role": "user",
-                    "content": f"That was not valid JSON matching the schema ({exc}). Try again, JSON only.",
+                    "content": (
+                        f"That was not valid JSON matching the schema ({exc}). "
+                        f"Use exactly these field names: {field_names}. Try again, JSON only."
+                    ),
                 }
             )
     raise RuntimeError(

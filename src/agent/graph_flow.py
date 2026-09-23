@@ -47,6 +47,22 @@ CLUSTER_FRAUD_RATE_COORDINATED_THRESHOLD = 0.95
 # dropped -- worth doing with more time (blog post "what we'd improve").
 CLUSTER_MIN_SIZE_FOR_COORDINATED = 3  # not currently wired into any check, see note above
 
+# Task 12 review finding (confirmed live against HHG-017/C04570-K1's own flagged
+# transaction): `device_neighbors` can return a large, generic-fingerprint collision
+# (299 distinct cards here -- a common Windows/Chrome/1920x1080 profile, per Task 8's
+# manual checkpoint) that is noise, not a real ring signal -- the exact same failure
+# mode `coordinated`'s 0.5->0.95 threshold above exists to filter out for the sibling
+# `shared_region` signal, but `shared_device` had no analogous guard at all (a bare
+# `bool(neighbors)`), so it counted a 299-way collision as identically strong evidence
+# to a real 2-3 card ring. Mirrors Task 8.5's own `SHARES_ORIGIN` edge-building
+# precedent, which already caps/excludes buckets over 20 members from contributing an
+# edge at all ("cap=20", task-8.5-report.md) -- reused verbatim here rather than
+# inventing a new number, since this dataset's genuine small-scale device sharing and
+# its large fingerprint-collision noise are separated by orders of magnitude (a real
+# ring: single digits to low tens; this dataset's known collisions: hundreds), so the
+# exact cutoff between ~20 and ~300 isn't sensitive for this data.
+DEVICE_NEIGHBORS_COLLISION_CAP = 20
+
 # case_pack.csv has no `flagged_amount` column -- the README's case table only
 # shows dollar amounts inside `trigger_text` prose (e.g. "$77.07"). This regex
 # pulls the first dollar amount out of that prose. Confirmed against every
@@ -183,6 +199,15 @@ async def gather_evidence_node(tg: TigerGraphMCP, state: InvestigationState) -> 
         cluster_rate >= CLUSTER_FRAUD_RATE_COORDINATED_THRESHOLD and bool(ring.get("ring_cluster_id"))
     )
 
+    # Distinct-card count, not raw row count (device_neighbors' own SharedCards
+    # SELECT could in principle repeat a card, though it hasn't been observed to in
+    # practice) -- gated the same way `coordinated` gates shared_region, so a
+    # large collision (this dataset's confirmed 299-card fingerprint-collision
+    # false positive) doesn't count as identically strong evidence to a real,
+    # small-scale shared device.
+    distinct_neighbor_cards = len({n.get("id") for n in neighbors if n.get("id")})
+    device_signal_is_meaningful = 0 < distinct_neighbor_cards <= DEVICE_NEIGHBORS_COLLISION_CAP
+
     return {
         **state,
         "card_id": card_id,
@@ -191,8 +216,11 @@ async def gather_evidence_node(tg: TigerGraphMCP, state: InvestigationState) -> 
         # shared_device/shared_region now come from the graph-algorithm cluster output
         # (Task 8.5) as well as the live neighbor check -- either signal is enough to
         # flag a shared origin, since the cluster catches multi-hop chains a single
-        # device_neighbors lookup would miss.
-        "shared_device": bool(neighbors) or coordinated,
+        # device_neighbors lookup would miss. Both signals are now gated against the
+        # same class of false positive (a large, generic collision that isn't a real
+        # ring) -- device_signal_is_meaningful for shared_device, coordinated's own
+        # cluster_prior_fraud_rate threshold for shared_region.
+        "shared_device": device_signal_is_meaningful or coordinated,
         "shared_region": coordinated,
         "shared_email": False,
         "single_signal": row.get("trigger_type") == "risk_score" and not evidence[3]["data"] and not coordinated,
