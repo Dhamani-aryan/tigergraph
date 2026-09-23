@@ -126,17 +126,30 @@ def _grounded_similar_cases(final_state: dict, llm_ids: list[str]) -> list[str]:
     actually came back from a real lookup -- an LLM can invent a
     plausible-looking case ID. Filters to IDs that appear in either of the
     TWO sources this case's own evidence draws closed cases from:
-    `closed_cases` (the graph-traversal lookup by card/device/region) and
-    `knowledge.similar_cases` (retrieve_knowledge's vector search over
-    ClosedCase, which is where `assess_node`'s prompt actually points the
-    LLM for "closed case narratives clearly match" -- checking only the
-    first source, as an earlier version of this function did, would zero
-    out every legitimate vector-retrieved match)."""
+    `closed_cases` (the graph-traversal lookup by card/device/region, always
+    real ClosedCase ids) and `knowledge.similar_cases` (retrieve_knowledge's
+    vector search, which searches ClosedCase AND FraudCase together and
+    returns both in one list -- see vector_search.py's own_case_hits).
+
+    Bug fix (found live on HHG-001's actual batch output, caught by
+    validate_outputs.py before it was fixed here): the README field is
+    explicitly "Closed-case IDs from closed_cases_history.csv" only -- a
+    FraudCase id (this pipeline's own writes, format "CASE-HHG-XXX") must
+    NEVER be accepted here, including a case citing ITS OWN prior write of
+    the same case_id (observed live: "CASE-HHG-001" cited as a "similar
+    prior case" for HHG-001 itself, from a stale FraudCase vector entry).
+    `retrieve_knowledge`'s hits already carry `type` (ClosedCase/FraudCase,
+    via vector_search.py's `_unwrap_hits`), so this filters on that rather
+    than trusting every id in `similar_cases` alike.
+    """
     evidence = final_state.get("evidence") or []
     closed = next((e["data"] for e in evidence if e["type"] == "closed_cases"), []) or []
     knowledge = next((e["data"] for e in evidence if e["type"] == "knowledge"), {}) or {}
     real_ids = {c.get("id") for c in closed if c.get("id")}
-    real_ids |= {c.get("id") for c in (knowledge.get("similar_cases") or []) if c.get("id")}
+    real_ids |= {
+        c.get("id") for c in (knowledge.get("similar_cases") or [])
+        if c.get("id") and c.get("type") == "ClosedCase"
+    }
     return [cid for cid in llm_ids if cid in real_ids]
 
 

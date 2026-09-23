@@ -21,10 +21,35 @@ def test_grounded_similar_cases_keeps_ids_from_vector_search_evidence():
     final_state = {
         "evidence": [
             {"type": "closed_cases", "data": []},
-            {"type": "knowledge", "data": {"knowledge": [], "similar_cases": [{"id": "CC-0141"}]}},
+            {"type": "knowledge", "data": {
+                "knowledge": [], "similar_cases": [{"id": "CC-0141", "type": "ClosedCase"}],
+            }},
         ],
     }
     assert _grounded_similar_cases(final_state, ["CC-0141", "CC-9999"]) == ["CC-0141"]
+
+
+def test_grounded_similar_cases_rejects_self_cited_fraudcase_id():
+    # Regression test: caught live on HHG-001's actual batch output --
+    # retrieve_knowledge's "similar_cases" mixes ClosedCase AND FraudCase
+    # vector hits together, and an earlier version of the grounding filter
+    # accepted either. "CASE-HHG-001" is a FraudCase id (this pipeline's own
+    # write), not a closed_cases_history.csv id, and must never be accepted
+    # here even though it's a real graph vertex the vector search actually
+    # returned.
+    final_state = {
+        "evidence": [
+            {"type": "closed_cases", "data": []},
+            {"type": "knowledge", "data": {
+                "knowledge": [],
+                "similar_cases": [
+                    {"id": "CASE-HHG-001", "type": "FraudCase"},
+                    {"id": "CC-1066", "type": "ClosedCase"},
+                ],
+            }},
+        ],
+    }
+    assert _grounded_similar_cases(final_state, ["CASE-HHG-001", "CC-1066"]) == ["CC-1066"]
 
 
 def test_grounded_similar_cases_drops_ids_not_seen_in_any_evidence():
