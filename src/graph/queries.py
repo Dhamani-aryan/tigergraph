@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -84,6 +85,36 @@ GRAPH_NAME = "FraudInvestigation"
 #    in the JSON response (present automatically, confirmed live, regardless
 #    of `primary_id_as_attribute`) is used instead wherever a primary id is
 #    needed in the returned data.
+#
+# --------------------------------------------------------------------------
+# Two findings from task-10-review.md's fix round (investigated, not code
+# changes to the queries themselves)
+# --------------------------------------------------------------------------
+#
+# 6. **A live "deprecated parameter format" warning on every VERTEX<T> call
+#    cannot actually be fixed from this file.** pyTigerGraph's client warns
+#    that plain string values for VERTEX<T> params (`{"input_card": "..."}`)
+#    are deprecated in favor of a 1-tuple (`{"input_card": ("...",)}`), and
+#    recommends the 1-tuple form. Tried both a Python tuple AND a Python list
+#    for every VERTEX param, live, before assuming this was a one-line fix:
+#    the warning fires identically either way. Root cause: `tg.run_installed_
+#    query` goes through the tigergraph-mcp MCP server over JSON-RPC (see
+#    `tg_client.py`), and JSON has no tuple type distinct from an array --
+#    whatever Python object is sent here is serialized to a JSON array and
+#    reconstructed as a plain `list` on the MCP server's side, where
+#    pyTigerGraph's own `isinstance(value, tuple)` check (inside the
+#    tigergraph-mcp server process, not this codebase) always sees a `list`,
+#    never a `tuple`, no matter what this file sends. Fixing this for real
+#    would require a change to the tigergraph-mcp server's own tool
+#    implementation, out of this task's (and this repo's) scope. Confirmed
+#    live this is harmless today: the deprecated path still returns correct,
+#    verified-accurate results (falls back to a GET-based request) for every
+#    query in this file.
+#
+# 7. **A real, reproducible concurrency race** in `CREATE OR REPLACE QUERY
+#    ... INSTALL QUERY ...` when two processes install the same query name
+#    concurrently -- see `_run_installed_query`'s docstring for the confirmed
+#    failure mode and the retry mitigation applied to every call site below.
 
 _INSTALLED_QUERIES: set[str] = set()
 
@@ -113,6 +144,37 @@ async def _ensure_installed(tg: TigerGraphMCP, query_name: str, create_and_insta
     if "Query installation finished." not in text or "Successfully created queries" not in text:
         raise RuntimeError(f"Failed to install GSQL query '{query_name}': {text}")
     _INSTALLED_QUERIES.add(query_name)
+
+
+async def _run_installed_query(tg: TigerGraphMCP, query_name: str, params: dict[str, Any]) -> Any:
+    """Thin wrapper around `tg.run_installed_query` that retries once on a
+    specific, live-reproduced concurrency race: `_ensure_installed` has no
+    cross-process locking around `CREATE OR REPLACE QUERY ... INSTALL QUERY
+    ...`, so two processes with cold `_INSTALLED_QUERIES` caches racing on
+    the SAME query name (e.g. two Task 12 workers, or a test run overlapping
+    a manual probe) can leave that query's REST endpoint transiently
+    *disabled* -- confirmed live (task-10-review.md): a concurrent install
+    of `card_window` from a second process produced
+    `REST-1005: Query endpoint '/query/FraudInvestigation/card_window' is
+    disabled, please make sure all its sub-queries are installed and enabled
+    with same signature.` on `run_installed_query`, and a bare retry moments
+    later (once the racing install finished) succeeded cleanly with no other
+    change. This does not eliminate the race at its source (that would need
+    a real cross-process install lock, e.g. a dedicated coordination vertex
+    or an external mutex -- out of scope for this fix, and not needed if
+    Task 12 pre-warms all 8 queries once before spawning any parallel
+    workers, which the module-level docstring above already recommends);
+    it turns the one confirmed failure mode into a short, self-healing
+    retry instead of a hard, unhandled RuntimeError reaching Task 12's
+    evidence-gathering node.
+    """
+    try:
+        return await tg.run_installed_query(query_name, params)
+    except RuntimeError as e:
+        if "is disabled" in str(e) or "REST-1005" in str(e):
+            await asyncio.sleep(3)
+            return await tg.run_installed_query(query_name, params)
+        raise
 
 
 def _print_results(run_result: dict[str, Any]) -> list[dict[str, Any]]:
@@ -174,26 +236,51 @@ INSTALL QUERY card_window
 """.strip()
 
 
-async def card_window(tg: TigerGraphMCP, card_id: str, hours: float = 2.0) -> list[dict]:
-    """The card's transactions, windowed to the `hours` immediately before
-    its most recent transaction.
+async def card_window(
+    tg: TigerGraphMCP,
+    card_id: str,
+    hours: float = 2.0,
+    reference_txn_id: str | None = None,
+) -> list[dict]:
+    """The card's transactions, windowed to `hours` around an anchor point.
 
-    Design note: the interface (and the brief's draft) takes only
-    `(card_id, hours)` -- no reference timestamp -- so there is no
-    caller-supplied anchor to window around. `card_window`'s GSQL therefore
-    returns the card's FULL transaction history (a single VERTEX<Card>-
-    parameterized forward MADE traversal, confirmed live: exactly 59 rows
-    for C04570-K1, matching Task 8's independently-verified count), and the
-    `hours` window is applied in Python, anchored on the card's own most
-    recent transaction timestamp (the natural anchor when no specific
-    flagged transaction is passed in) -- not in GSQL, since `ts` is a plain
-    STRING attribute (no `primary_id_as_attribute`-style gap here, but also
-    no DATETIME type to do arithmetic on server-side without extra parsing
-    ceremony this task doesn't need at this data scale, typically dozens of
-    rows per card).
+    **Fixed after live task-10-review.md finding (Important, live-demonstrated
+    defect):** the original version (no `reference_txn_id` parameter) always
+    anchored on the card's own MOST RECENT transaction. Task 12's actual
+    planned caller (`gather_evidence_node`) calls `card_window(tg, card_id,
+    hours=48)` unconditionally, on every case, as the very first piece of
+    evidence -- with no reference timestamp, because the interface didn't
+    expose one. Live-reproduced against this project's own canonical fixture
+    (HHG-017 / `C04570-K1`): with the old "anchor on latest" behavior,
+    `card_window(tg, "C04570-K1", hours=48)` returns 2 transactions, both from
+    2016-12-25, and SILENTLY EXCLUDES the actual flagged transaction
+    (`3450629`, 2016-11-11 23:46:24) -- because this card has ~44 days of
+    routine activity after the flagged one. The failure is silent and
+    plausible-looking (two real transactions, no error), and would recur for
+    every case where the flagged transaction isn't the card's most recent
+    activity, which is plausibly the common case, not the rare one.
+
+    `reference_txn_id`, when given, anchors the window on THAT transaction's
+    own timestamp instead, `hours` before AND after it (symmetric), matching
+    what a caller passing the actual flagged transaction needs; when omitted,
+    or when the given id isn't found among this card's own transactions (e.g.
+    wrong card/typo), falls back to the original "hours before the card's own
+    latest transaction" behavior for backward compatibility. Task 12 is
+    expected to pass the case's own flagged/reference transaction id here
+    once its call site is updated (tracked separately, not part of this fix)
+    -- this function's signature and behavior are ready for that now.
+
+    `card_window`'s GSQL itself is unchanged: it returns the card's FULL
+    transaction history (a single VERTEX<Card>-parameterized forward MADE
+    traversal, confirmed live: exactly 59 rows for C04570-K1, matching Task
+    8's independently-verified count), and all windowing (anchor selection +
+    the hours cutoff) happens in Python, since `ts` is a plain STRING
+    attribute (no DATETIME arithmetic available server-side without extra
+    parsing ceremony this task doesn't need at this data scale, typically
+    dozens of rows per card).
     """
     await _ensure_installed(tg, "card_window", CARD_WINDOW_GSQL)
-    result = await tg.run_installed_query("card_window", {"input_card": card_id})
+    result = await _run_installed_query(tg, "card_window", {"input_card": card_id})
     print_results = _print_results(result)
     raw_txns = print_results[0]["transactions"] if print_results else []
     txns = _flatten_vertices(raw_txns, "Txns")
@@ -202,6 +289,21 @@ async def card_window(tg: TigerGraphMCP, card_id: str, hours: float = 2.0) -> li
     valid = [(t, ts) for t, ts in parsed if ts is not None]
     if not valid:
         return txns
+
+    reference_ts = None
+    if reference_txn_id is not None:
+        matches = [ts for t, ts in valid if t.get("id") == reference_txn_id]
+        if matches:
+            reference_ts = matches[0]
+
+    if reference_ts is not None:
+        low = reference_ts - timedelta(hours=hours)
+        high = reference_ts + timedelta(hours=hours)
+        return [t for t, ts in valid if low <= ts <= high]
+
+    # Fallback: no reference given (or it wasn't found on this card) --
+    # original one-directional "hours before the card's own latest
+    # transaction" behavior, kept for backward compatibility.
     latest = max(ts for _, ts in valid)
     cutoff = latest - timedelta(hours=hours)
     return [t for t, ts in valid if ts >= cutoff]
@@ -229,7 +331,7 @@ async def customer_cards(tg: TigerGraphMCP, customer_id: str) -> list[dict]:
     `card_window` avoids it for `Card` -- seed from the known VERTEX<Customer>
     parameter, no WHERE-clause primary-key filter at all."""
     await _ensure_installed(tg, "customer_cards", CUSTOMER_CARDS_GSQL)
-    result = await tg.run_installed_query("customer_cards", {"input_customer": customer_id})
+    result = await _run_installed_query(tg, "customer_cards", {"input_customer": customer_id})
     print_results = _print_results(result)
     raw_cards = print_results[0]["cards"] if print_results else []
     return _flatten_vertices(raw_cards, "Cards")
@@ -282,7 +384,7 @@ async def device_neighbors(tg: TigerGraphMCP, transaction_id: str) -> list[dict]
     (299 < the 300 cap, so nothing was actually truncated for this fixture).
     """
     await _ensure_installed(tg, "device_neighbors", DEVICE_NEIGHBORS_GSQL)
-    result = await tg.run_installed_query("device_neighbors", {"input_txn": transaction_id})
+    result = await _run_installed_query(tg, "device_neighbors", {"input_txn": transaction_id})
     print_results = _print_results(result)
     raw_cards = print_results[1]["shared_cards"] if len(print_results) > 1 else []
     return _flatten_vertices(raw_cards, "SharedCards")
@@ -337,7 +439,7 @@ async def region_neighbors(
     (this task's own fixture's region) already hits this exact cap.
     """
     await _ensure_installed(tg, "region_neighbors", REGION_NEIGHBORS_GSQL)
-    result = await tg.run_installed_query("region_neighbors", {"input_region": addr1})
+    result = await _run_installed_query(tg, "region_neighbors", {"input_region": addr1})
     print_results = _print_results(result)
     raw_txns = print_results[0]["transactions"] if print_results else []
     txns = _flatten_vertices(raw_txns, "RegionTxns")
@@ -456,19 +558,19 @@ async def closed_case_lookup(
     results: list[dict] = []
     if card_id:
         await _ensure_installed(tg, "closed_case_lookup_by_card", CLOSED_CASE_BY_CARD_GSQL)
-        result = await tg.run_installed_query("closed_case_lookup_by_card", {"input_card": card_id})
+        result = await _run_installed_query(tg, "closed_case_lookup_by_card", {"input_card": card_id})
         print_results = _print_results(result)
         raw = print_results[0]["closed_cases"] if print_results else []
         results.extend(_flatten_vertices(raw, "Cases"))
     if device_id:
         await _ensure_installed(tg, "closed_case_lookup_by_device", CLOSED_CASE_BY_DEVICE_GSQL)
-        result = await tg.run_installed_query("closed_case_lookup_by_device", {"input_device": device_id})
+        result = await _run_installed_query(tg, "closed_case_lookup_by_device", {"input_device": device_id})
         print_results = _print_results(result)
         raw = print_results[0]["closed_cases"] if print_results else []
         results.extend(_flatten_vertices(raw, "Cases"))
     if addr1:
         await _ensure_installed(tg, "closed_case_lookup_by_region", CLOSED_CASE_BY_REGION_GSQL)
-        result = await tg.run_installed_query("closed_case_lookup_by_region", {"input_region": addr1})
+        result = await _run_installed_query(tg, "closed_case_lookup_by_region", {"input_region": addr1})
         print_results = _print_results(result)
         raw = print_results[0]["closed_cases"] if print_results else []
         results.extend(_flatten_vertices(raw, "Cases"))
@@ -514,7 +616,7 @@ async def ring_membership(tg: TigerGraphMCP, card_id: str) -> dict:
     numbers exactly).
     """
     await _ensure_installed(tg, "ring_membership", RING_MEMBERSHIP_GSQL)
-    result = await tg.run_installed_query("ring_membership", {"input_card": card_id})
+    result = await _run_installed_query(tg, "ring_membership", {"input_card": card_id})
     print_results = _print_results(result)
     raw = print_results[0]["card"] if print_results else []
     rows = _flatten_vertices(raw, "Start")
@@ -559,7 +661,14 @@ FOLLOWUP_TOOL_SCHEMAS: list[dict] = [
             "description": "Re-run the card transaction window with a longer lookback (e.g. 7 days instead of 48 hours) when the default window looks incomplete.",
             "parameters": {
                 "type": "object",
-                "properties": {"card_id": {"type": "string"}, "hours": {"type": "number"}},
+                "properties": {
+                    "card_id": {"type": "string"},
+                    "hours": {"type": "number"},
+                    "reference_txn_id": {
+                        "type": "string",
+                        "description": "Optional: anchor the window on this transaction's own timestamp instead of the card's most recent transaction.",
+                    },
+                },
                 "required": ["card_id", "hours"],
             },
         },
@@ -577,5 +686,10 @@ async def dispatch_followup_tool(tg: TigerGraphMCP, name: str, arguments: dict) 
     if name == "closed_case_lookup_by_region":
         return await closed_case_lookup(tg, addr1=arguments["addr1"])
     if name == "wider_card_window":
-        return await card_window(tg, arguments["card_id"], hours=arguments.get("hours", 168))
+        return await card_window(
+            tg,
+            arguments["card_id"],
+            hours=arguments.get("hours", 168),
+            reference_txn_id=arguments.get("reference_txn_id"),
+        )
     raise ValueError(f"Unknown follow-up tool: {name}")

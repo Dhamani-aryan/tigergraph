@@ -53,6 +53,53 @@ async def test_card_window_small_window_narrows_results():
 
 
 @pytest.mark.asyncio
+async def test_card_window_without_reference_excludes_flagged_txn_at_hours_48():
+    # Reproduces task-10-review.md's Important finding directly: Task 12's
+    # actual planned call site (gather_evidence_node) calls
+    # card_window(tg, card_id, hours=48) with NO reference timestamp, and
+    # for this exact fixture that silently excludes the flagged transaction
+    # (KNOWN_TXN, 2016-11-11) because KNOWN_CARD has real activity 44 days
+    # later (2016-12-25) that the old "anchor on latest" behavior windows
+    # around instead. This test pins that fallback behavior down explicitly
+    # so a future change can't silently "fix" it back to including the
+    # flagged transaction without reference_txn_id -- the fix is the new
+    # parameter below, not a change to the no-reference fallback.
+    async with TigerGraphMCP() as tg:
+        result = await card_window(tg, KNOWN_CARD, hours=48)
+        txn_ids = {t["id"] for t in result}
+        assert KNOWN_TXN not in txn_ids
+
+
+@pytest.mark.asyncio
+async def test_card_window_with_reference_txn_id_anchors_on_reference_not_latest():
+    # The actual fix: passing reference_txn_id=KNOWN_TXN must anchor the
+    # +/-hours window on ITS timestamp (2016-11-11 23:46:24), not on the
+    # card's unrelated most-recent transaction (2016-12-25).
+    async with TigerGraphMCP() as tg:
+        result = await card_window(tg, KNOWN_CARD, hours=48, reference_txn_id=KNOWN_TXN)
+        txn_ids = {t["id"] for t in result}
+        assert KNOWN_TXN in txn_ids
+        # The two neighboring transactions from the manual checkpoint
+        # (docs/manual-case-checkpoint.md: 3450436 @ 22:36:50 and 3450503 @
+        # 22:58:57, both ~1-1.5h before KNOWN_TXN on the same evening) fall
+        # inside a +/-48h window around it.
+        assert "3450436" in txn_ids
+        assert "3450503" in txn_ids
+        # The unrelated 2016-12-25 transaction that the old "anchor on
+        # latest" behavior centered on is 44 days away -- well outside a
+        # 48h window around the reference -- and must NOT appear.
+        assert "3573010" not in txn_ids
+
+
+@pytest.mark.asyncio
+async def test_card_window_unknown_reference_txn_id_falls_back_to_latest_anchor():
+    async with TigerGraphMCP() as tg:
+        fallback = await card_window(tg, KNOWN_CARD, hours=1, reference_txn_id="not-a-real-txn-id")
+        latest_only = await card_window(tg, KNOWN_CARD, hours=1)
+        assert {t["id"] for t in fallback} == {t["id"] for t in latest_only}
+
+
+@pytest.mark.asyncio
 async def test_card_window_full_history_has_59_transactions():
     async with TigerGraphMCP() as tg:
         # hours=100000 -- wide enough to not exclude anything -- confirms
@@ -166,6 +213,18 @@ async def test_dispatch_followup_tool_routes_to_correct_function():
         )
         assert result is not None
         assert len(result) == 59  # same full-history count as card_window's own test
+
+
+@pytest.mark.asyncio
+async def test_dispatch_followup_tool_wider_card_window_passes_through_reference_txn_id():
+    async with TigerGraphMCP() as tg:
+        result = await dispatch_followup_tool(
+            tg,
+            "wider_card_window",
+            {"card_id": KNOWN_CARD, "hours": 48, "reference_txn_id": KNOWN_TXN},
+        )
+        txn_ids = {t["id"] for t in result}
+        assert KNOWN_TXN in txn_ids
 
 
 @pytest.mark.asyncio
