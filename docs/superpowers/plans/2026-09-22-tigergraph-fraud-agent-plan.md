@@ -2252,7 +2252,7 @@ git commit -m "feat: knowledge ingestion (policy, patterns, regulatory PDFs, clo
 - Test: `tests/test_graph_queries.py` (live, requires the loaded graph from Tasks 7-9)
 
 **Interfaces:**
-- Produces: `async card_window(tg, card_id, hours) -> list[dict]`, `async customer_cards(tg, customer_id) -> list[dict]`, `async device_neighbors(tg, transaction_id) -> list[dict]`, `async region_neighbors(tg, addr1, txn_ts, window_days) -> list[dict]`, `async closed_case_lookup(tg, card_id=None, device_id=None, addr1=None) -> list[dict]`, `async ring_membership(tg, card_id) -> dict` (reads Task 8.5's graph-algorithm output), `async retrieve_knowledge(tg, query_text, top_k=5) -> list[dict]`, plus `FOLLOWUP_TOOL_SCHEMAS` and `async dispatch_followup_tool(tg, name, arguments)` for the bounded agentic round. Task 12's `graph_flow.py` calls the deterministic functions directly every time, and calls `dispatch_followup_tool` at most once per case, only when the LLM's function-calling round (step 2a) requests it — see plan Architecture note on why evidence-gathering is deterministic-by-default with one bounded exception.
+- Produces: `async card_window(tg, card_id, hours, reference_txn_id=None) -> list[dict]` (a live-discovered fix during review: without `reference_txn_id`, the window anchors on the card's own latest transaction, not the transaction under investigation — Task 12 must always pass the case's `flagged_txn_id`), `async customer_cards(tg, customer_id) -> list[dict]`, `async device_neighbors(tg, transaction_id) -> list[dict]`, `async region_neighbors(tg, addr1, txn_ts, window_days) -> list[dict]`, `async closed_case_lookup(tg, card_id=None, device_id=None, addr1=None) -> list[dict]`, `async ring_membership(tg, card_id) -> dict` (reads Task 8.5's graph-algorithm output), `async retrieve_knowledge(tg, query_text, top_k=5) -> list[dict]`, plus `FOLLOWUP_TOOL_SCHEMAS` and `async dispatch_followup_tool(tg, name, arguments)` for the bounded agentic round. Task 12's `graph_flow.py` calls the deterministic functions directly every time, and calls `dispatch_followup_tool` at most once per case, only when the LLM's function-calling round (step 2a) requests it — see plan Architecture note on why evidence-gathering is deterministic-by-default with one bounded exception.
 
 **Known live-confirmed risk to check before trusting any query below (found during Task 8's manual checkpoint):** `Card` and `DeviceProfile` don't have `primary_id_as_attribute` set (only `Transaction` got that flag in Task 4's schema) — a live probe confirmed this breaks `WHERE c.card_id == "..."`-style filtering. `Customer`/`BillingRegion`/`EmailDomain`/`ClosedCase`/`FraudCase` were never explicitly tested for the same gap but were declared with the identical plain `PRIMARY_ID` syntax, so assume they have it too until proven otherwise. Every query below filters by exactly this kind of primary-key attribute comparison, so **before trusting any of them, run one as a live probe first.** If it fails the way Task 8 predicts, the idiomatic GSQL fix is a typed query **parameter** instead of a WHERE-clause filter — e.g. `CREATE QUERY card_window(VERTEX<Card> input_card, FLOAT hours) FOR GRAPH {GRAPH_NAME} {{ Start = {{input_card}}; ... }}`, then pass the primary-id string as the parameter value when running the query (GSQL resolves a `VERTEX<Type>` parameter from its primary-id string automatically — no attribute access needed). Rewrite each function's GSQL using this pattern if the WHERE-clause version fails; this is a schema-shape limitation already loaded live, not something to fix by altering Task 4's already-populated schema.
 
@@ -2911,7 +2911,13 @@ async def gather_evidence_node(tg: TigerGraphMCP, state: InvestigationState) -> 
     evidence: list[dict[str, Any]] = []
     tool_calls = 0
 
-    window = await card_window(tg, card_id, hours=48)
+    # reference_txn_id is required here, not optional -- Task 10's review found
+    # that without it, card_window anchors on the card's own LATEST transaction
+    # rather than the flagged one, silently excluding the exact transaction the
+    # case is about whenever it isn't the card's most recent activity (confirmed
+    # live: a 44-day-old flagged transaction was dropped entirely). Every
+    # case-pack row's flagged_txn_id is exactly the reference this needs.
+    window = await card_window(tg, card_id, hours=48, reference_txn_id=str(row["flagged_txn_id"]))
     evidence.append({"type": "card_window", "data": window})
     tool_calls += 1
 
