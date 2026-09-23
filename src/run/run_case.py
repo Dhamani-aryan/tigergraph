@@ -4,6 +4,7 @@ import time
 
 from src.agent.graph_flow import _flagged_amount, build_graph
 from src.agent.llm import token_tracker
+from src.agent.sar_writer import write_sar_narrative
 from src.agent.schemas import (
     ActionEntry,
     AnswerFile,
@@ -81,10 +82,14 @@ async def run_single_case(tg: TigerGraphMCP, case_row: dict) -> AnswerFile:
         ),
     )
 
+    narrative = ""
+    if sar_info["sar_file"]:
+        narrative = await write_sar_narrative(case_row, assessment)
+
     sar = SAR(
         file=sar_info["sar_file"],
         reason=sar_info["sar_reason"],
-        narrative="",  # filled by a follow-up LLM call if sar_info["sar_file"] is True
+        narrative=narrative,
         subjects=[case_row["customer_id"], case_row["card_id"]] if sar_info["sar_file"] else [],
         total_amount_usd=case_record.exposure_usd if sar_info["sar_file"] else 0.0,
         activity_dates=[] if not sar_info["sar_file"] else [str(case_row["opened_at"])[:10]] * 2,
