@@ -73,9 +73,19 @@ python -m scripts.run_batch
 ```
 
 This runs all 20 cases through the LangGraph investigation flow, writes
-`cases/HHG-001.json` … `cases/HHG-020.json`, and writes
-`runs/latest/batch_summary.json` (an aggregate summary). It prints progress
-per case (`--- HHG-001 ---`, then `wrote cases\HHG-001.json (...)`).
+`cases/HHG-001.json` … `cases/HHG-020.json`, `runs/latest/batch_summary.json`
+(an aggregate summary), and `runs/latest/traces/HHG-001.trace.json` … (one
+per case — powers the UI's Investigation/Graph tabs; a trace failing never
+costs a case its already-valid answer file). It prints progress per case
+(`--- HHG-001 ---`, then `wrote cases\HHG-001.json (...)`, then
+`wrote runs\latest\traces\HHG-001.trace.json`).
+
+**Make sure you're on commit `c486dea` or later** (`git log --oneline -1`)
+before running — that's when trace files were added. If you already pulled
+an earlier commit and started a run, it's fine to `git pull` now and finish
+with the newer code; you'll just be missing traces for cases already
+written before you pulled (rerun those specific `--case-ids` afterward if
+you want traces for everything).
 
 **Expect ~4-5 minutes per case** (mostly graph queries, a couple of LLM
 calls), so the full run is roughly **1.5-2 hours**. It's fine to leave it
