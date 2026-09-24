@@ -96,6 +96,15 @@ def _groq_chat(messages: list[dict], **kwargs) -> "openai.types.chat.ChatComplet
         return response
     except openai.RateLimitError as exc:
         retry_after = _retry_after_seconds(exc)
+        # Diagnostic fix (2026-09-24): RetryError's own str() doesn't show
+        # the underlying cause, so every failed batch run so far has only
+        # ever logged "RetryError[<Future ... raised _RateLimited>]" -- no
+        # visibility into Groq's actual error text or which limit tripped
+        # (requests vs tokens vs a genuinely different 429 cause). Printed
+        # directly here, not just attached to the exception, so it shows up
+        # in run_all.py's per-case log even though that code only prints
+        # the OUTER RetryError.
+        print(f"    [groq 429] retry_after={retry_after} message={exc.message}", flush=True)
         if retry_after is not None:
             # Sleep the server's own stated duration -- this IS the wait,
             # not an addition to tenacity's own backoff (see the retry
