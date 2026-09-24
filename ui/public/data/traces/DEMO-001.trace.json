@@ -1,0 +1,911 @@
+{
+  "schema_version": "1.0",
+  "case_id": "DEMO-001",
+  "fixture_note": "INTERFACE FIXTURE — invented values for UI development; not an investigation outcome.",
+  "trigger": {
+    "trigger_type": "risk_score",
+    "trigger_text": "Real-time model scored transaction 0090460 ($249.99, online) at 0.88. Review and decide.",
+    "flagged_txn_id": "0090460",
+    "card_id": "DEMO-C1001-K1",
+    "customer_id": "DEMO-C1001",
+    "risk_score": 0.88,
+    "opened_at": "2016-11-29 00:12:40"
+  },
+  "cutoff_ts": "2016-11-29 00:12:40",
+  "steps": [
+    {
+      "step": 1,
+      "node": "gather_evidence",
+      "label": "Gather case context",
+      "started_ms": 0,
+      "duration_ms": 2310,
+      "summary": "Loaded the trigger, card baseline and 24-hour transaction window up to the cutoff.",
+      "tool_calls": [
+        {
+          "tool": "tigergraph__run_installed_query",
+          "args": {
+            "graph": "FraudInvestigation",
+            "query_name": "get_case_context_v1",
+            "params": {
+              "case_id": "DEMO-001"
+            }
+          },
+          "via": "mcp",
+          "result_count": 1,
+          "duration_ms": 1180
+        },
+        {
+          "tool": "tigergraph__run_installed_query",
+          "args": {
+            "graph": "FraudInvestigation",
+            "query_name": "get_card_baseline_v1",
+            "params": {
+              "card_id": "DEMO-C1001-K1",
+              "as_of": "2016-11-29 00:12:40"
+            }
+          },
+          "via": "mcp",
+          "result_count": 212,
+          "duration_ms": 410
+        },
+        {
+          "tool": "tigergraph__run_installed_query",
+          "args": {
+            "graph": "FraudInvestigation",
+            "query_name": "get_transaction_window_v1",
+            "params": {
+              "card_id": "DEMO-C1001-K1",
+              "hours_before": 24
+            }
+          },
+          "via": "mcp",
+          "result_count": 7,
+          "duration_ms": 390
+        }
+      ]
+    },
+    {
+      "step": 2,
+      "node": "gather_evidence",
+      "label": "Shared-origin and region scan",
+      "started_ms": 2310,
+      "duration_ms": 1460,
+      "summary": "Found the device profile on two other customers' cards; billing region consistent with history.",
+      "tool_calls": [
+        {
+          "tool": "tigergraph__run_installed_query",
+          "args": {
+            "graph": "FraudInvestigation",
+            "query_name": "find_shared_origin_activity_v1",
+            "params": {
+              "device_profile": "iOS 16.4 | Mobile Safari 16.4 | 390x844 | proxy:anonymous",
+              "window_hours": 6
+            }
+          },
+          "via": "mcp",
+          "result_count": 3,
+          "duration_ms": 520
+        },
+        {
+          "tool": "tigergraph__run_installed_query",
+          "args": {
+            "graph": "FraudInvestigation",
+            "query_name": "find_region_anomalies_v1",
+            "params": {
+              "card_id": "DEMO-C1001-K1"
+            }
+          },
+          "via": "mcp",
+          "result_count": 0,
+          "duration_ms": 470
+        },
+        {
+          "tool": "tigergraph__run_installed_query",
+          "args": {
+            "graph": "FraudInvestigation",
+            "query_name": "wcc_component_summary_v1",
+            "params": {
+              "card_id": "DEMO-C1001-K1"
+            }
+          },
+          "via": "mcp",
+          "result_count": 5,
+          "duration_ms": 470
+        }
+      ]
+    },
+    {
+      "step": 3,
+      "node": "retrieve_knowledge",
+      "label": "GraphRAG retrieval",
+      "started_ms": 3770,
+      "duration_ms": 1210,
+      "summary": "Retrieved four closed cases and five policy/regulatory passages by TigerGraph vector search.",
+      "tool_calls": [
+        {
+          "tool": "tigergraph__search_top_k_similarity",
+          "args": {
+            "vertex_type": "ClosedCase",
+            "k": 4,
+            "as_of": "2016-11-29 00:12:40"
+          },
+          "via": "mcp",
+          "result_count": 4,
+          "duration_ms": 640
+        },
+        {
+          "tool": "tigergraph__search_top_k_similarity",
+          "args": {
+            "vertex_type": "PolicyChunk",
+            "k": 5
+          },
+          "via": "mcp",
+          "result_count": 5,
+          "duration_ms": 570
+        }
+      ]
+    },
+    {
+      "step": 4,
+      "node": "agentic_followup",
+      "label": "Agent follow-up: device neighbours",
+      "started_ms": 4980,
+      "duration_ms": 880,
+      "summary": "The model requested one follow-up tool to size the device neighbourhood (3 cards, below the collision cap).",
+      "tool_calls": [
+        {
+          "tool": "tigergraph__run_installed_query",
+          "args": {
+            "graph": "FraudInvestigation",
+            "query_name": "device_neighbors_v1",
+            "params": {
+              "device_id": "DEMO-DEV-7F21"
+            },
+            "authorization": "Bearer demo-fixture-value-should-be-redacted"
+          },
+          "via": "mcp",
+          "result_count": 3,
+          "duration_ms": 880
+        }
+      ]
+    },
+    {
+      "step": 5,
+      "node": "assess",
+      "label": "Initial assessment",
+      "started_ms": 5860,
+      "duration_ms": 4120,
+      "summary": "Structured LLM assessment: card_not_present_new_device at 0.72, resting mostly on the new-device signal.",
+      "tool_calls": []
+    },
+    {
+      "step": 6,
+      "node": "policy",
+      "label": "Initial policy",
+      "started_ms": 9980,
+      "duration_ms": 12,
+      "summary": "Deterministic rules R1 and Sec 3a produced VERIFY_WITH_CUSTOMER, STEP_UP_AUTH and CREATE_CASE.",
+      "tool_calls": []
+    },
+    {
+      "step": 7,
+      "node": "request_evidence",
+      "label": "Request customer validation",
+      "started_ms": 9992,
+      "duration_ms": 35,
+      "summary": "Asked the customer to confirm the four transactions. Response is simulated: customer denies.",
+      "tool_calls": []
+    },
+    {
+      "step": 8,
+      "node": "reassess",
+      "label": "Reassessment after denial",
+      "started_ms": 10027,
+      "duration_ms": 3890,
+      "summary": "Probability raised to 0.93 with the denial as independent customer evidence.",
+      "tool_calls": []
+    },
+    {
+      "step": 9,
+      "node": "policy",
+      "label": "Final policy",
+      "started_ms": 13917,
+      "duration_ms": 10,
+      "summary": "R2 (denial) and R6 (shared device) produced BLOCK_CARD, CREATE_CASE, FILE_REPORT and MONITOR_CONNECTED_CARDS.",
+      "tool_calls": []
+    },
+    {
+      "step": 10,
+      "node": "write_sar",
+      "label": "Draft SAR narrative",
+      "started_ms": 13927,
+      "duration_ms": 5020,
+      "summary": "Generated a 12-sentence narrative grounded in the affected episode dates.",
+      "tool_calls": []
+    },
+    {
+      "step": 11,
+      "node": "write_case",
+      "label": "Write case memory",
+      "started_ms": 18947,
+      "duration_ms": 1510,
+      "summary": "Upserted FraudCase CASE-DEMO-001 and its embedding.",
+      "tool_calls": [
+        {
+          "tool": "tigergraph__add_nodes",
+          "args": {
+            "vertex_type": "FraudCase",
+            "vertex_id": "CASE-DEMO-001"
+          },
+          "via": "mcp",
+          "result_count": 1,
+          "duration_ms": 610
+        },
+        {
+          "tool": "tigergraph__upsert_vectors",
+          "args": {
+            "vertex_type": "FraudCase",
+            "attribute": "embedding",
+            "dims": 1536
+          },
+          "via": "fallback",
+          "result_count": 1,
+          "duration_ms": 900
+        }
+      ]
+    },
+    {
+      "step": 12,
+      "node": "read_back",
+      "label": "Independent read-back",
+      "started_ms": 20457,
+      "duration_ms": 540,
+      "summary": "Read CASE-DEMO-001 back from the graph; verdict, status and probability matched.",
+      "tool_calls": [
+        {
+          "tool": "tigergraph__get_node",
+          "args": {
+            "vertex_type": "FraudCase",
+            "vertex_id": "CASE-DEMO-001"
+          },
+          "via": "mcp",
+          "result_count": 1,
+          "duration_ms": 540
+        }
+      ]
+    },
+    {
+      "step": 13,
+      "node": "validate",
+      "label": "Answer validation",
+      "started_ms": 20997,
+      "duration_ms": 403,
+      "summary": "Answer passed the contract and cross-field rules.",
+      "tool_calls": []
+    }
+  ],
+  "probability_timeline": [
+    {
+      "step": 1,
+      "label": "Context",
+      "fraud_probability": 0.41
+    },
+    {
+      "step": 2,
+      "label": "Shared origin",
+      "fraud_probability": 0.58
+    },
+    {
+      "step": 3,
+      "label": "Retrieval",
+      "fraud_probability": 0.64
+    },
+    {
+      "step": 5,
+      "label": "Assess",
+      "fraud_probability": 0.72
+    },
+    {
+      "step": 8,
+      "label": "Reassess",
+      "fraud_probability": 0.93
+    }
+  ],
+  "signals": [
+    {
+      "name": "new_device_online",
+      "fired": true,
+      "detail": "device first seen on this account 41 minutes before the trigger",
+      "entity_ids": [
+        "DEMO-DEV-7F21"
+      ]
+    },
+    {
+      "name": "shared_device",
+      "fired": true,
+      "detail": "device used by 3 cards across 3 customers in 6 hours (cap 20)",
+      "entity_ids": [
+        "DEMO-DEV-7F21",
+        "DEMO-C2044-K1",
+        "DEMO-C3310-K2"
+      ]
+    },
+    {
+      "name": "velocity_burst",
+      "fired": true,
+      "detail": "4 authorizations in 38 minutes versus a 7-day median of 1 per day",
+      "entity_ids": [
+        "9100401",
+        "9100417",
+        "9100452",
+        "0090460"
+      ]
+    },
+    {
+      "name": "proxy_flag",
+      "fired": true,
+      "detail": "identity record marks the session as anonymous proxy",
+      "entity_ids": [
+        "0090460"
+      ]
+    },
+    {
+      "name": "amount_outlier",
+      "fired": false,
+      "detail": "amounts within 1.1 robust deviations of the card median",
+      "entity_ids": []
+    },
+    {
+      "name": "out_of_region",
+      "fired": false,
+      "detail": "billing region matches 97% of the card's history",
+      "entity_ids": [
+        "DEMO-REG-204"
+      ]
+    },
+    {
+      "name": "concurrent_home_region_activity",
+      "fired": false,
+      "detail": "no in-person activity in the home region during the episode",
+      "entity_ids": []
+    }
+  ],
+  "rules_fired": [
+    {
+      "rule": "R1",
+      "phase": "initial",
+      "explanation": "Single dominant signal below the 0.85 settled bar: verify before any block."
+    },
+    {
+      "rule": "Sec 3a",
+      "phase": "initial",
+      "explanation": "Probability reached 0.30 and evidence was requested, so a case is opened."
+    },
+    {
+      "rule": "R2",
+      "phase": "final",
+      "explanation": "Customer denied the transactions: block (L1 at ≤ $2,500) and open a case."
+    },
+    {
+      "rule": "R6",
+      "phase": "final",
+      "explanation": "Shared device across cards: file a report and monitor connected cards."
+    }
+  ],
+  "retrieval": {
+    "prior_cases": [
+      {
+        "case_id": "DEMO-CC-0412",
+        "outcome": "confirmed_fraud",
+        "pattern": "card_not_present_new_device",
+        "score": 0.812,
+        "used": true
+      },
+      {
+        "case_id": "DEMO-CC-0098",
+        "outcome": "confirmed_fraud",
+        "pattern": "card_not_present_fraud",
+        "score": 0.744,
+        "used": true
+      },
+      {
+        "case_id": "DEMO-CC-1377",
+        "outcome": "confirmed_fraud",
+        "pattern": "card_testing",
+        "score": 0.521,
+        "used": false
+      },
+      {
+        "case_id": "DEMO-CC-0251",
+        "outcome": "cleared",
+        "pattern": "card_not_present_new_device",
+        "score": 0.498,
+        "used": false
+      }
+    ],
+    "documents": [
+      {
+        "doc_id": "policy:R6",
+        "title": "Shared origin",
+        "section": "Fraud Policy §R6",
+        "score": 0.781
+      },
+      {
+        "doc_id": "policy:R2",
+        "title": "Customer denies",
+        "section": "Fraud Policy §R2",
+        "score": 0.702
+      },
+      {
+        "doc_id": "policy:R1",
+        "title": "Single weak signal",
+        "section": "Fraud Policy §R1",
+        "score": 0.655
+      },
+      {
+        "doc_id": "pattern:card_not_present_new_device",
+        "title": "Card not present, new device",
+        "section": "Fraud Patterns",
+        "score": 0.633
+      },
+      {
+        "doc_id": "reg:sar-narrative",
+        "title": "SAR narrative guidance",
+        "section": "Regulatory §Narrative",
+        "score": 0.512
+      }
+    ]
+  },
+  "subgraph": {
+    "nodes": [
+      {
+        "id": "DEMO-C1001",
+        "type": "Customer",
+        "label": "DEMO-C1001",
+        "role": "subject",
+        "discovered_at_step": 1,
+        "attrs": {
+          "home_region": "DEMO-REG-204",
+          "tenure_days": 812
+        }
+      },
+      {
+        "id": "DEMO-C1001-K1",
+        "type": "Card",
+        "label": "DEMO-C1001-K1",
+        "role": "subject",
+        "discovered_at_step": 1,
+        "attrs": {
+          "network": "visa",
+          "type": "debit"
+        }
+      },
+      {
+        "id": "9100388",
+        "type": "Transaction",
+        "label": "9100388 · $41.20",
+        "role": "context",
+        "discovered_at_step": 1,
+        "attrs": {
+          "ts": "2016-11-27 18:22:05",
+          "amount_usd": 41.2,
+          "channel": "in_person"
+        }
+      },
+      {
+        "id": "9100395",
+        "type": "Transaction",
+        "label": "9100395 · $12.99",
+        "role": "context",
+        "discovered_at_step": 1,
+        "attrs": {
+          "ts": "2016-11-28 09:10:44",
+          "amount_usd": 12.99,
+          "channel": "online"
+        }
+      },
+      {
+        "id": "9100401",
+        "type": "Transaction",
+        "label": "9100401 · $89.50",
+        "role": "affected",
+        "discovered_at_step": 1,
+        "attrs": {
+          "ts": "2016-11-28 23:34:02",
+          "amount_usd": 89.5,
+          "channel": "online",
+          "sequence": 1
+        }
+      },
+      {
+        "id": "9100417",
+        "type": "Transaction",
+        "label": "9100417 · $148.02",
+        "role": "affected",
+        "discovered_at_step": 1,
+        "attrs": {
+          "ts": "2016-11-28 23:47:19",
+          "amount_usd": 148.02,
+          "channel": "online",
+          "sequence": 2
+        }
+      },
+      {
+        "id": "9100452",
+        "type": "Transaction",
+        "label": "9100452 · $124.95",
+        "role": "affected",
+        "discovered_at_step": 1,
+        "attrs": {
+          "ts": "2016-11-29 00:03:51",
+          "amount_usd": 124.95,
+          "channel": "online",
+          "sequence": 3
+        }
+      },
+      {
+        "id": "0090460",
+        "type": "Transaction",
+        "label": "0090460 · $249.99",
+        "role": "flagged",
+        "discovered_at_step": 1,
+        "attrs": {
+          "ts": "2016-11-29 00:12:40",
+          "amount_usd": 249.99,
+          "channel": "online",
+          "sequence": 4,
+          "risk_score": 0.88
+        }
+      },
+      {
+        "id": "DEMO-DEV-7F21",
+        "type": "Device",
+        "label": "iOS 16.4 · Safari · proxy",
+        "role": "connected",
+        "discovered_at_step": 2,
+        "attrs": {
+          "profile": "iOS 16.4 | Mobile Safari 16.4 | 390x844 | proxy:anonymous",
+          "first_seen": "2016-11-28 23:31:10",
+          "id_15": "New",
+          "id_23": "IP_PROXY:ANONYMOUS"
+        }
+      },
+      {
+        "id": "DEMO-REG-204",
+        "type": "Region",
+        "label": "Region 204",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "country": "87"
+        }
+      },
+      {
+        "id": "DEMO-EM-gmail",
+        "type": "Email",
+        "label": "gmail.com",
+        "role": "context",
+        "discovered_at_step": 2,
+        "attrs": {
+          "domain": "gmail.com"
+        }
+      },
+      {
+        "id": "DEMO-C2044-K1",
+        "type": "Card",
+        "label": "DEMO-C2044-K1",
+        "role": "connected",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ring_cluster_id": "WCC-DEMO-17"
+        }
+      },
+      {
+        "id": "DEMO-C2044",
+        "type": "Customer",
+        "label": "DEMO-C2044",
+        "role": "connected",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9100433",
+        "type": "Transaction",
+        "label": "9100433 · $99.00",
+        "role": "connected",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-28 23:52:12",
+          "amount_usd": 99,
+          "channel": "online"
+        }
+      },
+      {
+        "id": "DEMO-C3310-K2",
+        "type": "Card",
+        "label": "DEMO-C3310-K2",
+        "role": "connected",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ring_cluster_id": "WCC-DEMO-17"
+        }
+      },
+      {
+        "id": "DEMO-C3310",
+        "type": "Customer",
+        "label": "DEMO-C3310",
+        "role": "connected",
+        "discovered_at_step": 2,
+        "attrs": {}
+      },
+      {
+        "id": "9100444",
+        "type": "Transaction",
+        "label": "9100444 · $175.10",
+        "role": "connected",
+        "discovered_at_step": 2,
+        "attrs": {
+          "ts": "2016-11-28 23:58:37",
+          "amount_usd": 175.1,
+          "channel": "online"
+        }
+      },
+      {
+        "id": "DEMO-M-551",
+        "type": "Merchant",
+        "label": "Merchant W-551",
+        "role": "context",
+        "discovered_at_step": 1,
+        "attrs": {
+          "product_cd": "W"
+        }
+      },
+      {
+        "id": "DEMO-M-872",
+        "type": "Merchant",
+        "label": "Merchant C-872",
+        "role": "context",
+        "discovered_at_step": 1,
+        "attrs": {
+          "product_cd": "C"
+        }
+      },
+      {
+        "id": "DEMO-CC-0412",
+        "type": "ClosedCase",
+        "label": "DEMO-CC-0412",
+        "role": "prior_case",
+        "discovered_at_step": 3,
+        "attrs": {
+          "outcome": "confirmed_fraud",
+          "closed_at": "2016-10-02 11:20:00"
+        }
+      },
+      {
+        "id": "DEMO-CC-0098",
+        "type": "ClosedCase",
+        "label": "DEMO-CC-0098",
+        "role": "prior_case",
+        "discovered_at_step": 3,
+        "attrs": {
+          "outcome": "confirmed_fraud",
+          "closed_at": "2016-08-19 16:45:00"
+        }
+      },
+      {
+        "id": "DEMO-CC-0251",
+        "type": "ClosedCase",
+        "label": "DEMO-CC-0251",
+        "role": "context",
+        "discovered_at_step": 3,
+        "attrs": {
+          "outcome": "cleared",
+          "closed_at": "2016-09-01 10:02:00"
+        }
+      },
+      {
+        "id": "CASE-DEMO-001",
+        "type": "FraudCase",
+        "label": "CASE-DEMO-001",
+        "role": "this_case",
+        "discovered_at_step": 11,
+        "attrs": {
+          "verdict": "fraud",
+          "written_at": "2016-11-29 00:13:02"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "source": "DEMO-C1001",
+        "target": "DEMO-C1001-K1",
+        "type": "OWNS"
+      },
+      {
+        "source": "DEMO-C1001-K1",
+        "target": "9100388",
+        "type": "MADE"
+      },
+      {
+        "source": "DEMO-C1001-K1",
+        "target": "9100395",
+        "type": "MADE"
+      },
+      {
+        "source": "DEMO-C1001-K1",
+        "target": "9100401",
+        "type": "MADE"
+      },
+      {
+        "source": "DEMO-C1001-K1",
+        "target": "9100417",
+        "type": "MADE"
+      },
+      {
+        "source": "DEMO-C1001-K1",
+        "target": "9100452",
+        "type": "MADE"
+      },
+      {
+        "source": "DEMO-C1001-K1",
+        "target": "0090460",
+        "type": "MADE"
+      },
+      {
+        "source": "9100401",
+        "target": "9100417",
+        "type": "NEXT_IN_EPISODE",
+        "attrs": {
+          "gap_s": 797
+        }
+      },
+      {
+        "source": "9100417",
+        "target": "9100452",
+        "type": "NEXT_IN_EPISODE",
+        "attrs": {
+          "gap_s": 992
+        }
+      },
+      {
+        "source": "9100452",
+        "target": "0090460",
+        "type": "NEXT_IN_EPISODE",
+        "attrs": {
+          "gap_s": 529
+        }
+      },
+      {
+        "source": "9100401",
+        "target": "DEMO-DEV-7F21",
+        "type": "USED_DEVICE"
+      },
+      {
+        "source": "9100417",
+        "target": "DEMO-DEV-7F21",
+        "type": "USED_DEVICE"
+      },
+      {
+        "source": "9100452",
+        "target": "DEMO-DEV-7F21",
+        "type": "USED_DEVICE"
+      },
+      {
+        "source": "0090460",
+        "target": "DEMO-DEV-7F21",
+        "type": "USED_DEVICE"
+      },
+      {
+        "source": "9100433",
+        "target": "DEMO-DEV-7F21",
+        "type": "USED_DEVICE"
+      },
+      {
+        "source": "9100444",
+        "target": "DEMO-DEV-7F21",
+        "type": "USED_DEVICE"
+      },
+      {
+        "source": "DEMO-C2044",
+        "target": "DEMO-C2044-K1",
+        "type": "OWNS"
+      },
+      {
+        "source": "DEMO-C3310",
+        "target": "DEMO-C3310-K2",
+        "type": "OWNS"
+      },
+      {
+        "source": "DEMO-C2044-K1",
+        "target": "9100433",
+        "type": "MADE"
+      },
+      {
+        "source": "DEMO-C3310-K2",
+        "target": "9100444",
+        "type": "MADE"
+      },
+      {
+        "source": "9100388",
+        "target": "DEMO-REG-204",
+        "type": "BILLED_IN"
+      },
+      {
+        "source": "0090460",
+        "target": "DEMO-REG-204",
+        "type": "BILLED_IN"
+      },
+      {
+        "source": "DEMO-C1001",
+        "target": "DEMO-EM-gmail",
+        "type": "HAS_EMAIL"
+      },
+      {
+        "source": "9100401",
+        "target": "DEMO-M-551",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "9100417",
+        "target": "DEMO-M-551",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "9100452",
+        "target": "DEMO-M-872",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "0090460",
+        "target": "DEMO-M-872",
+        "type": "AT_MERCHANT"
+      },
+      {
+        "source": "DEMO-CC-0412",
+        "target": "DEMO-C2044-K1",
+        "type": "ABOUT_CARD"
+      },
+      {
+        "source": "DEMO-CC-0098",
+        "target": "DEMO-M-551",
+        "type": "SIMILAR_TO"
+      },
+      {
+        "source": "DEMO-CC-0251",
+        "target": "DEMO-M-872",
+        "type": "SIMILAR_TO"
+      },
+      {
+        "source": "CASE-DEMO-001",
+        "target": "DEMO-C1001-K1",
+        "type": "ABOUT_CARD"
+      },
+      {
+        "source": "CASE-DEMO-001",
+        "target": "DEMO-CC-0412",
+        "type": "SIMILAR_TO"
+      },
+      {
+        "source": "CASE-DEMO-001",
+        "target": "DEMO-CC-0098",
+        "type": "SIMILAR_TO"
+      }
+    ]
+  },
+  "graph_write": {
+    "written": true,
+    "graph_case_id": "CASE-DEMO-001",
+    "read_back_ok": true,
+    "written_at": "2016-11-29 00:13:02"
+  },
+  "validation": {
+    "passed": true,
+    "errors": [],
+    "warnings": []
+  },
+  "llm": {
+    "provider": "fixture",
+    "model": "none (interface fixture)",
+    "tokens": 11842
+  }
+}

@@ -1,0 +1,199 @@
+{
+  "run_id": "DEMO-FIXTURE-RUN",
+  "generated_at": "2026-09-23T00:00:00Z",
+  "git_commit": "fixture",
+  "fixture_note": "INTERFACE FIXTURE — invented values for UI development; not an investigation outcome.",
+  "llm": {
+    "provider": "fixture",
+    "model": "none (interface fixture)"
+  },
+  "cases_total": 6,
+  "cases_valid": 6,
+  "cases_written_to_graph": 5,
+  "verdicts": {
+    "fraud": 4,
+    "legitimate": 1,
+    "uncertain": 1
+  },
+  "patterns": {
+    "card_not_present_new_device": 1,
+    "none": 1,
+    "card_not_present_fraud": 1,
+    "undocumented": 1,
+    "card_testing": 1,
+    "out_of_region_use": 1
+  },
+  "sar_filed": 2,
+  "actions_changed": 3,
+  "total_exposure_usd": 4165.74,
+  "total_tool_calls": 53,
+  "total_tokens": 45488,
+  "avg_latency_s": 14.9,
+  "cases": [
+    {
+      "case_id": "DEMO-001",
+      "trigger_type": "risk_score",
+      "customer_id": "DEMO-C1001",
+      "card_id": "DEMO-C1001-K1",
+      "opened_at": "2016-11-29 00:12:40",
+      "verdict": "fraud",
+      "fraud_probability": 0.93,
+      "pattern": "card_not_present_new_device",
+      "status": "closed_fraud",
+      "exposure_usd": 612.46,
+      "sar_file": true,
+      "initial_actions": [
+        "VERIFY_WITH_CUSTOMER",
+        "STEP_UP_AUTH",
+        "CREATE_CASE"
+      ],
+      "final_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE",
+        "FILE_REPORT",
+        "MONITOR_CONNECTED_CARDS"
+      ],
+      "actions_changed": true,
+      "validation_passed": true,
+      "written_to_graph": true,
+      "latency_s": 21.4
+    },
+    {
+      "case_id": "DEMO-002",
+      "trigger_type": "customer_report",
+      "customer_id": "DEMO-C4410",
+      "card_id": "DEMO-C4410-K1",
+      "opened_at": "2016-10-15 09:02:00",
+      "verdict": "legitimate",
+      "fraud_probability": 0.08,
+      "pattern": "none",
+      "status": "closed_legitimate",
+      "exposure_usd": 0,
+      "sar_file": false,
+      "initial_actions": [
+        "CLOSE_NO_FRAUD"
+      ],
+      "final_actions": [
+        "CLOSE_NO_FRAUD"
+      ],
+      "actions_changed": false,
+      "validation_passed": true,
+      "written_to_graph": true,
+      "latency_s": 8.7
+    },
+    {
+      "case_id": "DEMO-003",
+      "trigger_type": "analyst_request",
+      "customer_id": "DEMO-C5021",
+      "card_id": "DEMO-C5021-K2",
+      "opened_at": "2016-11-02 13:15:00",
+      "verdict": "uncertain",
+      "fraud_probability": 0.55,
+      "pattern": "card_not_present_fraud",
+      "status": "escalated",
+      "exposure_usd": 1840,
+      "sar_file": false,
+      "initial_actions": [
+        "VERIFY_WITH_CUSTOMER",
+        "CREATE_CASE",
+        "ESCALATE_TO_ANALYST"
+      ],
+      "final_actions": [
+        "MONITOR_CARD",
+        "DECLINE_TRANSACTION",
+        "ESCALATE_TO_ANALYST",
+        "CREATE_CASE"
+      ],
+      "actions_changed": true,
+      "validation_passed": true,
+      "written_to_graph": true,
+      "latency_s": 17.9
+    },
+    {
+      "case_id": "DEMO-004",
+      "trigger_type": "analyst_request",
+      "customer_id": "DEMO-C6099",
+      "card_id": "DEMO-C6099-K1",
+      "opened_at": "2016-12-04 16:40:00",
+      "verdict": "fraud",
+      "fraud_probability": 0.88,
+      "pattern": "undocumented",
+      "status": "closed_fraud",
+      "exposure_usd": 1287.3,
+      "sar_file": true,
+      "initial_actions": [
+        "DECLINE_TRANSACTION",
+        "CREATE_CASE",
+        "FILE_REPORT",
+        "MONITOR_CONNECTED_CARDS",
+        "ESCALATE_TO_ANALYST"
+      ],
+      "final_actions": [
+        "DECLINE_TRANSACTION",
+        "CREATE_CASE",
+        "FILE_REPORT",
+        "MONITOR_CONNECTED_CARDS",
+        "ESCALATE_TO_ANALYST"
+      ],
+      "actions_changed": false,
+      "validation_passed": true,
+      "written_to_graph": false,
+      "latency_s": 19.2
+    },
+    {
+      "case_id": "DEMO-005",
+      "trigger_type": "risk_score",
+      "customer_id": "DEMO-C7700",
+      "card_id": "DEMO-C7700-K1",
+      "opened_at": "2016-11-20 03:22:30",
+      "verdict": "fraud",
+      "fraud_probability": 0.91,
+      "pattern": "card_testing",
+      "status": "closed_fraud",
+      "exposure_usd": 23.88,
+      "sar_file": false,
+      "initial_actions": [
+        "DECLINE_TRANSACTION",
+        "STEP_UP_AUTH",
+        "CREATE_CASE"
+      ],
+      "final_actions": [
+        "DECLINE_TRANSACTION",
+        "BLOCK_CARD",
+        "CREATE_CASE",
+        "MONITOR_CARD"
+      ],
+      "actions_changed": true,
+      "validation_passed": true,
+      "written_to_graph": true,
+      "latency_s": 12.3
+    },
+    {
+      "case_id": "DEMO-006",
+      "trigger_type": "customer_report",
+      "customer_id": "DEMO-C8801",
+      "card_id": "DEMO-C8801-K1",
+      "opened_at": "2016-12-07 19:05:00",
+      "verdict": "fraud",
+      "fraud_probability": 0.86,
+      "pattern": "out_of_region_use",
+      "status": "closed_fraud",
+      "exposure_usd": 402.1,
+      "sar_file": false,
+      "initial_actions": [
+        "DECLINE_TRANSACTION",
+        "CREATE_CASE",
+        "WARN_CUSTOMER"
+      ],
+      "final_actions": [
+        "DECLINE_TRANSACTION",
+        "CREATE_CASE",
+        "WARN_CUSTOMER"
+      ],
+      "actions_changed": false,
+      "validation_passed": true,
+      "written_to_graph": true,
+      "latency_s": 10.1
+    }
+  ]
+}

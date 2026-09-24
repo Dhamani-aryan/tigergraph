@@ -1,0 +1,142 @@
+{
+  "case_id": "DEMO-004",
+  "case": {
+    "status": "closed_fraud",
+    "verdict": "fraud",
+    "fraud_probability": 0.88,
+    "pattern": "undocumented",
+    "pattern_description": "Refund cycling: small purchases at one merchant are refunded within minutes and immediately repurchased from a headless browser, repeated across five cards in two days — not one of the five documented patterns.",
+    "affected_txn_ids": [
+      "9400012",
+      "9400019",
+      "9400027",
+      "9400031",
+      "9400044",
+      "9400050"
+    ],
+    "first_suspicious_txn_id": "9400012",
+    "connected_card_ids": [
+      "DEMO-C6100-K1",
+      "DEMO-C6102-K1",
+      "DEMO-C6107-K3",
+      "DEMO-C6111-K1"
+    ],
+    "connected_device_profiles": [
+      "Linux | Ubuntu 16.04.3 LTS Xenial Xerus x86_64 | HeadlessChrome 62.0.3202.94 (automation build; webdriver=true) | 1280x720 | proxy:IP_PROXY:ANONYMOUS | tz=UTC+00:00 | lang=en-US,en;q=0.9"
+    ],
+    "exposure_usd": 1287.3,
+    "evidence": [
+      {
+        "claim": "Six purchase/refund/repurchase cycles at merchant DEMO-M-R09 on card DEMO-C6099-K1 within 90 minutes.",
+        "source": "graph",
+        "ref": "query:get_transaction_window_v1(card_id=DEMO-C6099-K1, hours_before=48)",
+        "entity_ids": [
+          "9400012",
+          "9400019",
+          "9400027",
+          "9400031",
+          "9400044",
+          "9400050"
+        ]
+      },
+      {
+        "claim": "A headless automation browser performed the same cycle on four other customers' cards.",
+        "source": "graph",
+        "ref": "query:find_shared_origin_activity_v1(device_profile=headless)",
+        "entity_ids": [
+          "DEMO-C6100-K1",
+          "DEMO-C6102-K1",
+          "DEMO-C6107-K3",
+          "DEMO-C6111-K1"
+        ]
+      },
+      {
+        "claim": "Policy R9: undocumented but coordinated, repeated abuse across customers is reported and escalated.",
+        "source": "document",
+        "ref": "fraud_policy.md#R9",
+        "entity_ids": []
+      }
+    ],
+    "similar_prior_cases": [],
+    "summary": "Card DEMO-C6099-K1 shows six rapid purchase-refund-repurchase cycles at one merchant driven by a headless browser. The same automation touched four other customers' cards. No documented pattern fits, so the pattern is recorded as undocumented refund cycling. The graph write for this case failed and must be retried.",
+    "written_to_graph": false,
+    "graph_case_id": ""
+  },
+  "evidence_requests": [],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "DECLINE_TRANSACTION",
+        "route": "L1",
+        "reason": "R9: stop further cycles on the card"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R9: coordinated undocumented abuse"
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "R9: repeated abuse across five customers"
+      },
+      {
+        "action": "MONITOR_CONNECTED_CARDS",
+        "route": "auto",
+        "reason": "R6: four cards share the automation device"
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R9: new pattern needs analyst review"
+      }
+    ],
+    "final": [
+      {
+        "action": "DECLINE_TRANSACTION",
+        "route": "L1",
+        "reason": "R9: stop further cycles on the card"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R9: coordinated undocumented abuse"
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "R9: repeated abuse across five customers"
+      },
+      {
+        "action": "MONITOR_CONNECTED_CARDS",
+        "route": "auto",
+        "reason": "R6: four cards share the automation device"
+      },
+      {
+        "action": "ESCALATE_TO_ANALYST",
+        "route": "auto",
+        "reason": "R9: new pattern needs analyst review"
+      }
+    ],
+    "what_changed": "nothing"
+  },
+  "sar": {
+    "file": true,
+    "reason": "R9: an undocumented pattern repeated across five customers' cards.",
+    "narrative": "Between 2016-12-03 and 2016-12-04 the institution observed six purchase, refund and repurchase cycles on card DEMO-C6099-K1 at a single merchant. Each cycle completed within minutes and was driven by a headless automation browser behind an anonymizing proxy. The same automation device performed identical cycles on four cards belonging to other customers. The activity does not match any documented fraud pattern and appears designed to exploit refund processing timing. Net exposure across the affected episode on the subject card is $1,287.30. The institution has declined further attempts, opened a case, placed the connected cards under monitoring and escalated the pattern to an analyst.",
+    "subjects": [
+      "DEMO-C6099",
+      "DEMO-C6099-K1",
+      "DEMO-M-R09"
+    ],
+    "total_amount_usd": 1287.3,
+    "activity_dates": [
+      "2016-12-03",
+      "2016-12-04"
+    ]
+  },
+  "stop_reason": "Coordination across five cards settled the verdict; no evidence request could change the required report.",
+  "tool_calls": 11,
+  "tokens": 9905,
+  "latency_s": 19.2
+}
