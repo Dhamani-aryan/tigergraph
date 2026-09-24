@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pandas as pd
@@ -37,6 +37,16 @@ class DatasetIndex:
     card_ids: frozenset[str]
     customer_ids: frozenset[str]
     closed_case_ids: frozenset[str]
+    # Task 14 semantic validation: channel per transaction and each case's
+    # flagged transaction, so channel rules (CNP evidence cites online rows
+    # only; out-of-region never on an online flagged transaction) can be
+    # checked against the dataset itself. Empty when the source CSV lacks
+    # the column (e.g. small synthetic fixtures).
+    txn_channel: dict[str, str] = field(default_factory=dict, hash=False, compare=False)
+    case_flagged_txn: dict[str, str] = field(default_factory=dict, hash=False, compare=False)
+
+    def channel_of(self, txn_id: str) -> str | None:
+        return self.txn_channel.get(str(txn_id))
 
     def has_transaction(self, txn_id: str) -> bool:
         return txn_id in self.transaction_ids
@@ -68,8 +78,14 @@ def load_dataset_index(data_dir: str | Path | None = None) -> DatasetIndex:
     case_pack_path = base / "case_pack.csv"
     closed_cases_path = base / "closed_cases_history.csv"
 
-    txns = pd.read_csv(txns_path, usecols=["TransactionID", "customer_id"])
+    header = pd.read_csv(txns_path, nrows=0).columns
+    usecols = ["TransactionID", "customer_id"] + (["channel"] if "channel" in header else [])
+    txns = pd.read_csv(txns_path, usecols=usecols)
     transaction_ids = frozenset(txns["TransactionID"].astype(str))
+    txn_channel = (
+        dict(zip(txns["TransactionID"].astype(str), txns["channel"].astype(str).str.strip().str.lower()))
+        if "channel" in txns.columns else {}
+    )
     customer_ids = frozenset(txns["customer_id"].astype(str).unique())
 
     case_pack_df = pd.read_csv(case_pack_path)
@@ -88,6 +104,8 @@ def load_dataset_index(data_dir: str | Path | None = None) -> DatasetIndex:
         card_ids=frozenset(card_ids),
         customer_ids=customer_ids,
         closed_case_ids=closed_case_ids,
+        txn_channel=txn_channel,
+        case_flagged_txn=dict(zip(case_pack_df["case_id"].astype(str), case_pack_df["flagged_txn_id"].astype(str))),
     )
     if data_dir is None:
         _CACHED_INDEX = index

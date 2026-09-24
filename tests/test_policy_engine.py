@@ -100,7 +100,7 @@ def test_r8_uncertain_and_exposed_escalates():
 
 def test_r9_undocumented_coordinated_creates_case_files_report_and_escalates():
     findings = Findings(
-        pattern="undocumented", fraud_probability=0.8, single_signal=False,
+        pattern="undocumented", fraud_probability=0.9, single_signal=False,
         undocumented_coordinated=True, exposure_usd=1500.0,
     )
     result = apply_policy(findings)
@@ -174,3 +174,49 @@ def test_worked_example_from_readme():
     assert "FILE_REPORT" in final_actions
     assert "MONITOR_CONNECTED_CARDS" in final_actions
     assert final_result.sar_file is True
+
+
+# -- Task 14 policy corrections ---------------------------------------------
+def test_r1_uses_literal_070_threshold():
+    below = apply_policy(Findings(pattern="none", fraud_probability=0.69, single_signal=True, verdict="uncertain"))
+    assert "VERIFY_WITH_CUSTOMER" in _actions(below)
+    assert "R1" in next(a.reason for a in below.actions if a.action == "VERIFY_WITH_CUSTOMER")
+    above = apply_policy(Findings(pattern="none", fraud_probability=0.75, single_signal=True, verdict="uncertain"))
+    assert "R1" not in next(a.reason for a in above.actions if a.action == "VERIFY_WITH_CUSTOMER")
+
+
+def test_no_block_on_uncertain_new_device_or_amount_alone():
+    for p in (0.5, 0.8):
+        result = apply_policy(Findings(pattern="card_not_present_new_device", fraud_probability=p,
+                                       single_signal=True, verdict="uncertain", exposure_usd=300.0))
+        assert "BLOCK_CARD" not in _actions(result)
+        assert "FILE_REPORT" not in _actions(result)
+
+
+def test_file_report_always_has_create_case_first():
+    result = apply_policy(Findings(pattern="card_not_present_fraud", fraud_probability=0.9, single_signal=False,
+                                   verdict="fraud", exposure_usd=1500.0))
+    names = _actions(result)
+    assert "FILE_REPORT" in names and "CREATE_CASE" in names
+    assert names.index("CREATE_CASE") < names.index("FILE_REPORT")
+
+
+def test_decisive_legitimate_closes_without_block_or_report():
+    result = apply_policy(Findings(pattern="none", fraud_probability=0.1, single_signal=True, verdict="legitimate",
+                                   shared_device=True, exposure_usd=0.0))
+    assert _actions(result) == ["CLOSE_NO_FRAUD"]
+    assert result.sar_file is False
+
+
+def test_r6_requires_established_fraud_to_file():
+    weak = apply_policy(Findings(pattern="none", fraud_probability=0.5, single_signal=False, verdict="uncertain",
+                                 shared_device=True))
+    assert "FILE_REPORT" not in _actions(weak)
+    assert {"CREATE_CASE", "MONITOR_CONNECTED_CARDS", "ESCALATE_TO_ANALYST"} <= set(_actions(weak))
+
+
+def test_r4_no_reply_keeps_decline_and_opens_case():
+    result = apply_policy(Findings(pattern="none", fraud_probability=0.4, single_signal=True, verdict="uncertain",
+                                   customer_response="no_reply", exposure_usd=120.0))
+    assert {"MONITOR_CARD", "DECLINE_TRANSACTION", "CREATE_CASE"} <= set(_actions(result))
+    assert "BLOCK_CARD" not in _actions(result)

@@ -232,3 +232,111 @@ def test_dataset_index_knows_case_pack_card_and_customer(index: DatasetIndex):
     assert index.has_customer("C04570")
     assert index.has_closed_case("CC-1383")
     assert not index.has_closed_case("CC-9999")
+
+
+# -- Task 14 semantic validation ---------------------------------------------
+from src.agent.schemas import EvidenceRequestRecord  # noqa: E402
+from src.run.validate_outputs import validate_semantics  # noqa: E402
+
+
+def _sem_index() -> DatasetIndex:
+    return DatasetIndex(
+        transaction_ids=frozenset({"3450629", "3450436", "9999999"}),
+        card_ids=frozenset({"C04570-K1", "C99999-K1"}), customer_ids=frozenset({"C04570"}),
+        closed_case_ids=frozenset({"CC-1383"}),
+        txn_channel={"3450629": "online", "3450436": "in_person", "9999999": "online"},
+        case_flagged_txn={"HHG-017": "3450629"},
+    )
+
+
+def _fraud_answer(**case):
+    base = dict(status="closed_fraud", verdict="fraud", fraud_probability=0.9, pattern="card_not_present_fraud",
+                affected_txn_ids=["3450629"], first_suspicious_txn_id="3450629", exposure_usd=100.09)
+    base.update(case)
+    return _base_answer(case=base, next_best_actions=dict(
+        initial=[ActionEntry(action="VERIFY_WITH_CUSTOMER", route="auto", reason="R1")],
+        final=[ActionEntry(action="BLOCK_CARD", route="L1", reason="Sec 6"),
+               ActionEntry(action="CREATE_CASE", route="auto", reason="Sec 3a")],
+        what_changed="x"))
+
+
+def test_semantic_valid_legitimate_passes():
+    assert validate_semantics(_base_answer(), _sem_index()) == []
+
+
+def test_semantic_valid_fraud_passes():
+    assert validate_semantics(_fraud_answer(), _sem_index()) == []
+
+
+def test_semantic_rejects_status_verdict_contradictions():
+    idx = _sem_index()
+    assert any("closed_fraud with verdict" in v for v in validate_semantics(_fraud_answer(verdict="uncertain"), idx))
+    assert any("closed_legitimate with verdict" in v
+               for v in validate_semantics(_base_answer(case={"verdict": "fraud"}), idx))
+    assert any("uncertain with status" in v
+               for v in validate_semantics(_base_answer(case={"verdict": "uncertain", "fraud_probability": 0.5}), idx))
+
+
+def test_semantic_rejects_legitimate_with_pattern_or_block():
+    a = _base_answer(case={"pattern": "card_not_present_fraud"}, next_best_actions=dict(
+        initial=[ActionEntry(action="CLOSE_NO_FRAUD", route="auto", reason="R3")],
+        final=[ActionEntry(action="CLOSE_NO_FRAUD", route="auto", reason="R3"),
+               ActionEntry(action="BLOCK_CARD", route="L1", reason="x")],
+        what_changed="x"))
+    v = validate_semantics(a, _sem_index())
+    assert any("pattern 'card_not_present_fraud'" in x for x in v)
+    assert any("BLOCK_CARD" in x for x in v)
+    assert any("CLOSE_NO_FRAUD combined" in x for x in v)
+
+
+def test_semantic_rejects_fraud_without_episode():
+    v = validate_semantics(_fraud_answer(affected_txn_ids=[], exposure_usd=0.0, first_suspicious_txn_id=""), _sem_index())
+    assert any("empty affected_txn_ids" in x for x in v)
+    assert any("zero exposure" in x for x in v)
+
+
+def test_semantic_rejects_r7_with_block_and_report_without_case():
+    a = _fraud_answer()
+    a.next_best_actions.final = [
+        ActionEntry(action="WARN_CUSTOMER", route="auto", reason="R7"),
+        ActionEntry(action="BLOCK_CARD", route="L1", reason="x"),
+        ActionEntry(action="FILE_REPORT", route="L2", reason="x"),
+    ]
+    v = validate_semantics(a, _sem_index())
+    assert any("R7 (disputed but legitimate) path" in x for x in v)
+    assert any("FILE_REPORT without CREATE_CASE" in x for x in v)
+    assert any("R7 path closed as fraud" in x for x in v)
+
+
+def test_semantic_rejects_decisive_verdict_without_threshold_or_response():
+    v = validate_semantics(_fraud_answer(fraud_probability=0.72), _sem_index())
+    assert any("without a settling verification response" in x for x in v)
+
+
+def test_semantic_rejects_unlabeled_simulated_response():
+    a = _fraud_answer()
+    a.evidence_requests = [EvidenceRequestRecord(type="customer_validation", asked_after_step=3,
+                                                 assumed_response="Customer states they did not make this.")]
+    assert any("not labeled" in x for x in validate_semantics(a, _sem_index()))
+
+
+def test_semantic_rejects_cnp_evidence_with_in_person_rows_and_online_out_of_region():
+    a = _fraud_answer(pattern="out_of_region_use", evidence=[
+        Evidence(claim="burst", source="graph", ref="signal:cnp_burst", entity_ids=["3450629", "3450436"]),
+    ])
+    v = validate_semantics(a, _sem_index())
+    assert any("CNP evidence cites in-person" in x for x in v)
+    assert any("out-of-region claimed on an online flagged transaction" in x for x in v)
+
+
+def test_semantic_trace_checks_region_history_families_and_connected_cards():
+    a = _fraud_answer(pattern="out_of_region_use", connected_card_ids=["C99999-K1"])
+    trace = {
+        "behavior_profile": {"flagged_region_prior_count": 10},
+        "decision": {"final": {"settled_by": "probability_and_evidence", "supporting_families": ["identity_anomaly"]}},
+        "signals_detail": {"device_network": {"corroborated": False, "generic_profile": True, "corroborated_card_ids": []}},
+    }
+    v = validate_semantics(a, _sem_index(), trace)
+    assert any("already had 10 prior use" in x for x in v)
+    assert any("fewer than two independent evidence families" in x for x in v)
+    assert any("generic/collision profile" in x for x in v)

@@ -5,6 +5,12 @@ from typing import Any
 from src.ingestion.embeddings import embed
 from src.tg_client import TigerGraphMCP
 
+# Balanced prior-case sample shown to the assessment (Task 14 fix): the
+# closed-case history is 83.8% confirmed fraud, so an unbalanced top-k hands
+# the model that base rate as if it were evidence about this case.
+CLOSED_CASE_POOL_K = 30
+PER_OUTCOME_K = 3
+
 
 def _unwrap_hits(search_result: Any) -> list[dict]:
     """Unwrap `tg.search_top_k_similarity(...)`'s envelope down to a flat
@@ -41,30 +47,64 @@ def _unwrap_hits(search_result: Any) -> list[dict]:
     return hits
 
 
-async def retrieve_knowledge(tg: TigerGraphMCP, query_text: str, top_k: int = 5) -> dict[str, list[dict]]:
-    """Semantic search over policy/pattern/regulatory knowledge (Task 9's
-    `KnowledgeDoc` index, 660 vectors) and prior investigations (`ClosedCase`,
-    5,565 vectors, and this run's own `FraudCase` writes).
+def balance_closed_cases(hits: list[dict], per_outcome: int = PER_OUTCOME_K) -> list[dict]:
+    """Up to `per_outcome` most similar confirmed_fraud and up to
+    `per_outcome` most similar cleared ClosedCases. Only ClosedCase hits
+    are ever kept (FraudCase rows from earlier runs are not benchmark
+    evidence). Ties broken by id so the selection is order-independent."""
+    closed = [h for h in hits if h.get("type") == "ClosedCase" and h.get("id")]
+    closed.sort(key=lambda h: (h.get("distance", float("inf")), str(h["id"])))
+    fraud = [h for h in closed if h.get("outcome") == "confirmed_fraud"][:per_outcome]
+    cleared = [h for h in closed if h.get("outcome") == "cleared"][:per_outcome]
+    return sorted(fraud + cleared, key=lambda h: (h.get("distance", float("inf")), str(h["id"])))
 
-    Confirmed live: both `KnowledgeDoc` and `ClosedCase` searches return
-    real, relevant hits (e.g. querying "card testing small authorizations"
-    surfaces `pattern-card-testing`/`policy-r5`/`policy-r10` from
-    `KnowledgeDoc` with low, sensible distances). `FraudCase`'s vector index
-    exists (Task 4's schema) but is empty until Task 12/13 actually writes
-    an embedding when closing a case -- an empty `own_case_hits` list here
-    is the expected, correct result until that write path exists, not a bug
-    in this function.
+
+async def retrieve_knowledge(
+    tg: TigerGraphMCP, query_text: str, top_k: int = 5, case_pool_k: int = CLOSED_CASE_POOL_K,
+) -> dict[str, list[dict]]:
+    """Semantic search over policy/pattern/regulatory knowledge (`KnowledgeDoc`)
+    and the immutable closed-case history (`ClosedCase`).
+
+    Task 14 fix: `FraudCase` vectors are deliberately NOT searched. They are
+    this pipeline's own earlier outputs (including failed all-fraud runs and
+    the current case's own previous write), so retrieving them as evidence
+    made one run's mistakes the next run's "prior cases" and made results
+    depend on batch order. FraudCase memory is still written to the graph
+    by run_case.py; it just never feeds a benchmark assessment.
     """
     query_vector = embed([query_text])[0]
     knowledge_raw = await tg.search_top_k_similarity("KnowledgeDoc", "embedding", query_vector, top_k)
-    closed_case_raw = await tg.search_top_k_similarity("ClosedCase", "embedding", query_vector, top_k)
-    own_case_raw = await tg.search_top_k_similarity("FraudCase", "embedding", query_vector, top_k)
+    closed_case_raw = await tg.search_top_k_similarity("ClosedCase", "embedding", query_vector, case_pool_k)
 
-    knowledge_hits = _unwrap_hits(knowledge_raw)
-    closed_case_hits = _unwrap_hits(closed_case_raw)
-    own_case_hits = _unwrap_hits(own_case_raw)
-
+    pool = _unwrap_hits(closed_case_raw)
     return {
-        "knowledge": knowledge_hits,
-        "similar_cases": closed_case_hits + own_case_hits,
+        "knowledge": _unwrap_hits(knowledge_raw),
+        "similar_cases": balance_closed_cases(pool),
+        "closed_case_pool_size": len([h for h in pool if h.get("type") == "ClosedCase"]),
     }
+
+
+def build_similarity_query(
+    trigger_type: str, profile: Any, card_testing: Any, cnp: Any, region: Any, network: Any, recurrence: Any,
+) -> str:
+    """Retrieval text built from the case's measured shape rather than the
+    generic trigger prose (which put every ClosedCase at ~0.18 distance)."""
+    parts = [f"trigger {trigger_type}", f"channel {profile.flagged_channel or 'unknown'}"]
+    if profile.amount_ratio is not None:
+        parts.append(f"amount {profile.amount_class} {profile.amount_ratio:.1f}x median percentile {profile.amount_percentile:.2f}")
+    parts.append(f"product {profile.flagged_product or 'unknown'} {profile.product_class}")
+    if profile.flagged_channel == "online":
+        parts.append("device new" if profile.is_new_device else "device found" if profile.is_new_device is False else "device unknown")
+        if profile.is_proxy:
+            parts.append(f"proxy {profile.proxy_type}")
+    if card_testing.fired:
+        parts.append("card testing small authorizations then larger purchase")
+    elif cnp.documented_burst:
+        parts.append(f"card not present burst {cnp.online_count} online transactions 48 hours")
+    else:
+        parts.append("single transaction no burst")
+    parts.append("out of region card present new region home activity" if region.fired else f"region {profile.region_class}")
+    parts.append("shared device other cards corroborated" if network.corroborated else "no shared device ring")
+    if recurrence.tier != "none":
+        parts.append(f"recurring monthly charge {recurrence.tier}")
+    return "; ".join(parts)

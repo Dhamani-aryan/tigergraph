@@ -1,9 +1,5 @@
 # Task 14 All Fraud Batch Diagnostic
 
-> Archived. The all-fraud `cases/` and `runs/latest/` artifacts described here now live under
-> `runs/diagnostic-all-fraud/` (unchanged). The fixes are on branch `fix/task14-evidence-classification`;
-> see `TASK14_EVIDENCE_FIX.md`.
-
 ## Status
 
 This batch is reproducible evidence from the GPT 5.5 through Pi integration, but it is not submission ready.

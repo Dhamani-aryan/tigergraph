@@ -349,7 +349,7 @@ def test_pi_provenance_reports_actual_provider_and_model(fake_bridge, monkeypatc
     monkeypatch.setenv("PI_MODEL", "something-else-requested")
     from src.run.run_all import _llm_info
 
-    assert _llm_info() == {"provider": "pi/openai-codex", "model": "fake-codex-model"}
+    assert _llm_info() == {"provider": "pi/openai-codex", "model": "fake-codex-model", "reasoning_effort": "low"}
 
 
 def test_llm_info_groq_unchanged(monkeypatch):

@@ -112,10 +112,14 @@ will cause new failures. Kill any stray one manually if it's still there.
 ## 7. Validate before sending back
 
 ```bash
-python -m src.run.validate_outputs cases
+python -m src.run.validate_outputs cases --traces runs/latest/traces
 ```
 
-Should print `20/20 files passed.` If anything fails, paste the output back
+Reports structural and semantic validation separately; both should print `20/20 files passed.`
+Structural validation alone is not enough: the semantic pass catches contradictions such as
+`closed_fraud` with R7 actions, CNP evidence citing in-person rows, or connected cards taken from a
+generic device collision. Before any live run, `python -m scripts.feature_audit` (no LLM) shows every
+deterministic signal per case. If anything fails, paste the output back
 — don't try to hand-fix a JSON file.
 
 ## 8. Sanity-check the verdict distribution

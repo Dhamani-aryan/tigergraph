@@ -2,7 +2,6 @@ import pytest
 from pydantic import BaseModel
 
 from src.agent.llm import generate_structured
-from src.agent.simulator import simulate_evidence_response
 
 
 class _TinySchema(BaseModel):
@@ -56,17 +55,6 @@ def test_token_tracker_resets_and_accumulates():
     assert tracker.total == 84
     tracker.reset()
     assert tracker.total == 0
-
-
-def test_simulator_anomalous_amount_denies():
-    response = simulate_evidence_response(
-        "customer_validation",
-        flagged_amount=500.0,
-        customer_median_amount=50.0,
-        is_new_device=False,
-        fraud_probability=0.7,
-    )
-    assert "did not make" in response
 
 
 @pytest.mark.asyncio
@@ -125,14 +113,3 @@ async def test_generate_structured_recovers_from_wrong_key_name_via_retry(monkey
 
     result = await llm_module.generate_structured("Classify the pattern.", _PatternSchema, max_retries=2)
     assert result.pattern == "card_testing"
-
-
-def test_simulator_typical_amount_confirms():
-    response = simulate_evidence_response(
-        "customer_validation",
-        flagged_amount=52.0,
-        customer_median_amount=50.0,
-        is_new_device=False,
-        fraud_probability=0.2,
-    )
-    assert "confirms" in response

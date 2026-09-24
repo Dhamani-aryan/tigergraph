@@ -78,7 +78,8 @@ def _build_steps(final_state: dict, evidence_by_type: dict) -> list[dict]:
         return {"tool": name, "via": "mcp", "args": {}, "result_count": count}
 
     window = evidence_by_type.get("card_window") or []
-    device_neighbors = evidence_by_type.get("device_neighbors") or []
+    network = (final_state.get("signals") or {}).get("device_network") or {}
+    device_neighbors = network.get("other_cards_48h") or evidence_by_type.get("device_neighbors") or []
     closed_cases = evidence_by_type.get("closed_cases") or []
     ring = evidence_by_type.get("ring_membership") or {}
     device_label = evidence_by_type.get("device_profile_label") or ""
@@ -87,14 +88,15 @@ def _build_steps(final_state: dict, evidence_by_type: dict) -> list[dict]:
         NODE_GATHER_EVIDENCE,
         "Gather graph evidence",
         f"{len(window)} card transaction(s) in the pre-cutoff window, "
-        f"{len(device_neighbors)} device-sharing card(s), {len(closed_cases)} connected closed case(s).",
+        f"{len(device_neighbors)} other card(s) on the device within 48h, {len(closed_cases)} closed case(s) on this card.",
         [
             tool("card_window", window),
             tool("customer_cards", evidence_by_type.get("customer_cards")),
-            tool("device_neighbors", device_neighbors),
+            tool("device_network", evidence_by_type.get("device_network")),
             tool("device_profile_label", device_label),
             tool("closed_case_lookup", closed_cases),
             tool("ring_membership", ring),
+            tool("ring_context", evidence_by_type.get("ring_context")),
             tool("retrieve_knowledge", evidence_by_type.get("knowledge")),
         ],
     )
@@ -155,6 +157,13 @@ def _build_probability_timeline(final_state: dict, steps: list[dict]) -> list[di
             "step": reassess_step, "label": "After requested evidence",
             "fraud_probability": (final_state.get("assessment") or {}).get("fraud_probability", 0.0),
         })
+    decision = final_state.get("decision") or {}
+    if timeline and decision.get("fraud_probability") is not None and             abs(decision["fraud_probability"] - timeline[-1]["fraud_probability"]) > 1e-9:
+        # Sec 6 resolution (e.g. a confirmation caps at 0.15, a denial floors at 0.85).
+        timeline.append({
+            "step": max(s["step"] for s in steps), "label": "Resolved decision (Sec 6)",
+            "fraud_probability": decision["fraud_probability"],
+        })
     if not timeline and (final_state.get("assessment") or {}).get("fraud_probability") is not None:
         timeline.append({
             "step": assess_step or 1, "label": "Assessment",
@@ -164,61 +173,82 @@ def _build_probability_timeline(final_state: dict, steps: list[dict]) -> list[di
 
 
 def _build_signals(final_state: dict) -> list[dict]:
+    """Signals as the UI's fired/not-fired list. Built from the structured
+    detector results (src.agent.features) when present, so each `detail`
+    carries the detector's own reason and metrics, not a fixed description."""
     episode = final_state.get("episode") or {}
-    signals = [
+    s = final_state.get("signals") or {}
+    card_testing = s.get("card_testing") or {}
+    cnp = s.get("cnp_burst") or {}
+    region = s.get("out_of_region") or {}
+    recurrence = s.get("recurrence") or {}
+    network = s.get("device_network") or {}
+    profile = final_state.get("behavior_profile") or {}
+    ring_ctx = next((e["data"] for e in final_state.get("evidence") or [] if e["type"] == "ring_context"), {}) or {}
+
+    card_testing_fired = card_testing.get("fired") if s else episode.get("detected_pattern") == "card_testing"
+    cnp_fired = (
+        bool(cnp.get("documented_burst")) and episode.get("detected_pattern") == "cnp_burst"
+        if s else episode.get("detected_pattern") == "cnp_burst"
+    )
+    return [
         {
             "name": "card_testing_sequence",
-            "fired": episode.get("detected_pattern") == "card_testing",
-            "detail": "Three or more small online authorizations within an hour, then a larger purchase.",
-            "entity_ids": episode.get("txn_ids", []) if episode.get("detected_pattern") == "card_testing" else [],
+            "fired": bool(card_testing_fired),
+            "detail": card_testing.get("reason") or "Three or more online authorizations under $5 within an hour, then an online purchase >= $20 within 6h.",
+            "entity_ids": (card_testing.get("txn_ids") or episode.get("txn_ids", [])) if card_testing_fired else [],
         },
         {
             "name": "cnp_burst",
-            "fired": episode.get("detected_pattern") == "cnp_burst",
-            "detail": "Two to four related online transactions within 48 hours of the flagged one.",
-            "entity_ids": episode.get("txn_ids", []) if episode.get("detected_pattern") == "cnp_burst" else [],
+            "fired": bool(cnp_fired),
+            "detail": cnp.get("reason") or "Two to four online transactions within 48 hours of an online flagged transaction.",
+            "entity_ids": (cnp.get("online_txn_ids") or episode.get("txn_ids", [])) if cnp_fired else [],
         },
         {
             "name": "new_device",
             "fired": bool(final_state.get("is_new_device")),
-            "detail": "The flagged transaction's device is marked New for this account (id_15).",
+            "detail": "The flagged transaction's device is marked New for this account (id_15). Not proof on its own.",
             "entity_ids": [],
         },
         {
             "name": "anonymizing_proxy",
             "fired": bool(final_state.get("is_proxy")),
-            "detail": "The flagged transaction was made through a hidden/anonymizing IP proxy (id_23).",
+            "detail": f"Anonymous/hidden IP proxy on the flagged transaction (id_23 = {profile.get('proxy_type')}).",
             "entity_ids": [],
         },
         {
             "name": "out_of_region",
             "fired": bool(final_state.get("out_of_region")),
-            "detail": "Billing region differs from this card's usual region, with concurrent home-region activity.",
-            "entity_ids": [],
+            "detail": region.get("reason") or "Strict card-present out-of-region rule.",
+            "entity_ids": region.get("evidence_ids", []) if final_state.get("out_of_region") else [],
         },
         {
             "name": "shared_device",
             "fired": bool(final_state.get("shared_device")),
-            "detail": "Device fingerprint shared with other cards within the cardinality cap (not a generic collision).",
+            "detail": network.get("reason") or "Direct, time-bounded shared-device corroboration.",
             "entity_ids": final_state.get("connected_card_ids", []) or [],
         },
         {
             "name": "coordinated_ring",
+            # Context only: connected-component statistics never fire R6.
             "fired": bool(final_state.get("shared_region")),
             "detail": (
-                f"Card cluster's confirmed-fraud rate ({final_state.get('cluster_prior_fraud_rate', 0):.2f}) "
-                "clears the 0.95 coordination threshold, well above this dataset's ~84% baseline."
+                f"Connected component {ring_ctx.get('ring_cluster_id') or 'n/a'}: {ring_ctx.get('n_cards', 'n/a')} cards, "
+                f"{ring_ctx.get('n_closed_cases', 'n/a')} closed cases, prior rate "
+                f"{final_state.get('cluster_prior_fraud_rate', 0):.2f}. Contextual only; never fires R6."
             ),
             "entity_ids": [],
         },
         {
             "name": "recurring_charge",
             "fired": bool(final_state.get("recurring_charge_detected")),
-            "detail": "A prior transaction of the same amount recurs roughly monthly on this card (R7).",
-            "entity_ids": [],
+            "detail": (
+                f"Recurrence tier {recurrence.get('tier')}: {recurrence.get('reason')}" if recurrence
+                else "Strong monthly recurrence of the same amount, channel and ProductCD (R7)."
+            ),
+            "entity_ids": recurrence.get("monthly_match_ids", []) if final_state.get("recurring_charge_detected") else [],
         },
     ]
-    return signals
 
 
 def _build_rules_fired(final_state: dict) -> list[dict]:
@@ -259,7 +289,13 @@ def _build_retrieval(final_state: dict, answer: AnswerFile) -> dict:
         for d in (knowledge.get("knowledge") or [])
         if d.get("id")
     ]
-    return {"prior_cases": prior_cases, "documents": documents}
+    return {
+        "prior_cases": prior_cases,
+        "documents": documents,
+        "query_text": knowledge.get("query_text", ""),
+        "closed_case_pool_size": knowledge.get("closed_case_pool_size"),
+        "fraud_case_memory_used": False,
+    }
 
 
 def _build_subgraph(case_row: dict, final_state: dict, answer: AnswerFile, context: dict) -> dict:
@@ -373,4 +409,23 @@ def build_trace(
             "warnings": [],
         },
         "llm": {"provider": llm_provider, "model": llm_model, "tokens": answer.tokens},
+        # Task 14 audit block: every deterministic number behind the decision.
+        "behavior_profile": final_state.get("behavior_profile") or {},
+        "signals_detail": final_state.get("signals") or {},
+        "evidence_families": {
+            "initial": final_state.get("families_initial") or {},
+            "final": final_state.get("families") or {},
+            "independent_evidence_count": final_state.get("independent_evidence_count"),
+            "single_signal": final_state.get("single_signal"),
+            "matched_prior_case": final_state.get("matched_prior_case"),
+        },
+        "simulation": final_state.get("simulation") or {},
+        "decision": {
+            "initial": final_state.get("initial_decision") or {},
+            "final": final_state.get("decision") or {},
+        },
+        "assessment": {
+            "initial": final_state.get("initial_assessment") or {},
+            "final": final_state.get("assessment") or {},
+        },
     }

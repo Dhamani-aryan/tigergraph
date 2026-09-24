@@ -436,6 +436,165 @@ async def device_neighbors(tg: TigerGraphMCP, transaction_id: str, cutoff_ts: st
 
 
 # --------------------------------------------------------------------------
+# device_network (Task 14 evidence-classification fix)
+# --------------------------------------------------------------------------
+# `device_neighbors` above only returns the Card vertices that EVER touched
+# the fingerprint -- no timestamps, amounts, risk scores or which card made
+# which transaction -- so a 44-card browser/OS collision and a genuine
+# two-card ring looked identical and both became R6 "shared origin". This
+# query returns what features.evaluate_device_network needs to tell them
+# apart: the profile id, how many distinct cards used it on/before cutoff,
+# each same-device transaction in [window_start, cutoff] with its card, and
+# the confirmed-fraud ClosedCases that involve a transaction on the profile.
+DEVICE_NETWORK_GSQL = f"""
+USE GRAPH {GRAPH_NAME}
+CREATE OR REPLACE QUERY device_network(VERTEX<Transaction> input_txn, STRING window_start, STRING cutoff_ts) FOR GRAPH {GRAPH_NAME} {{
+    SetAccum<VERTEX<DeviceProfile>> @@device;
+    SetAccum<VERTEX<Transaction>> @@devTxns;
+    SetAccum<VERTEX<Transaction>> @@winTxns;
+    SetAccum<VERTEX<Transaction>> @@fraudTxns;
+    SetAccum<VERTEX<Card>> @@cards;
+    SetAccum<VERTEX<Card>> @card;
+    SetAccum<VERTEX<ClosedCase>> @fraud_cases;
+
+    Start = {{input_txn}};
+    DevStep = SELECT d FROM Start-(FROM_DEVICE)->DeviceProfile:d
+              ACCUM @@device += d;
+
+    AllTxns = {{Transaction.*}};
+    DevTxns = SELECT t FROM AllTxns:t -(FROM_DEVICE)-> DeviceProfile:d2
+              WHERE d2 IN @@device AND t.ts <= cutoff_ts
+              ACCUM @@devTxns += t,
+                    IF t.ts >= window_start THEN @@winTxns += t END;
+
+    AllCards = {{Card.*}};
+    CardStep = SELECT c FROM AllCards:c -(MADE)-> Transaction:t2
+               WHERE t2 IN @@devTxns
+               ACCUM @@cards += c, t2.@card += c;
+
+    AllCases = {{ClosedCase.*}};
+    CaseStep = SELECT cc FROM AllCases:cc -(INVOLVES)-> Transaction:t3
+               WHERE t3 IN @@devTxns AND cc.outcome == "confirmed_fraud" AND cc.closed_at <= cutoff_ts
+               ACCUM t3.@fraud_cases += cc, @@fraudTxns += t3;
+
+    WinSet = {{@@winTxns}};
+    FraudSet = {{@@fraudTxns}};
+    PRINT DevStep[DevStep.device_info, DevStep.os, DevStep.browser, DevStep.screen] AS device;
+    PRINT @@cards.size() AS n_cards;
+    PRINT WinSet[WinSet.ts, WinSet.TransactionAmt, WinSet.risk_score, WinSet.customer_id, WinSet.@card] AS window_txns;
+    PRINT FraudSet[FraudSet.ts, FraudSet.customer_id, FraudSet.@card, FraudSet.@fraud_cases] AS fraud_txns;
+}}
+INSTALL QUERY device_network
+""".strip()
+
+
+def _first(value: Any) -> Any:
+    if isinstance(value, list):
+        return value[0] if value else None
+    return value
+
+
+def _accum(row: dict[str, Any], name: str) -> Any:
+    return row.get(f"@{name}", row.get(name))
+
+
+def parse_device_network_result(print_results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Pure: the four PRINT blocks of device_network -> the dict shape
+    features.evaluate_device_network consumes."""
+    by_key: dict[str, Any] = {}
+    for block in print_results or []:
+        if isinstance(block, dict):
+            by_key.update(block)
+    device_rows = _flatten_vertices(by_key.get("device") or [], "DevStep")
+    if not device_rows:
+        return {}
+    d = device_rows[0]
+    label = " | ".join(p for p in (d.get("device_info"), d.get("os"), d.get("browser"), d.get("screen")) if p)
+    txns = []
+    for r in _flatten_vertices(by_key.get("window_txns") or [], "WinSet"):
+        txns.append({
+            "txn_id": str(r.get("id")),
+            "ts": r.get("ts"),
+            "amount": r.get("TransactionAmt"),
+            "risk_score": r.get("risk_score"),
+            "customer_id": r.get("customer_id"),
+            "card_id": _first(_accum(r, "card")),
+        })
+    fraud_cases = []
+    for r in _flatten_vertices(by_key.get("fraud_txns") or [], "FraudSet"):
+        for case_id in _accum(r, "fraud_cases") or []:
+            fraud_cases.append({
+                "case_id": case_id, "outcome": "confirmed_fraud", "txn_id": str(r.get("id")),
+                "txn_ts": r.get("ts"), "card_id": _first(_accum(r, "card")),
+            })
+    return {
+        "device_profile_id": d.get("id"),
+        "device_profile_label": label,
+        "total_distinct_cards": int(by_key.get("n_cards") or 0),
+        "txns": txns,
+        "fraud_cases": fraud_cases,
+    }
+
+
+async def device_network(tg: TigerGraphMCP, transaction_id: str, flagged_ts: str, cutoff_ts: str) -> dict:
+    """Direct, time-bounded device evidence for one flagged transaction.
+    Returns {} for a transaction with no device record (in-person rows)."""
+    anchor = _parse_ts(flagged_ts)
+    window_start = (
+        (anchor - timedelta(hours=48)).strftime("%Y-%m-%d %H:%M:%S") if anchor else "0000-00-00 00:00:00"
+    )
+    await _ensure_installed(tg, "device_network", DEVICE_NETWORK_GSQL)
+    result = await _run_installed_query(
+        tg, "device_network",
+        {"input_txn": transaction_id, "window_start": window_start, "cutoff_ts": cutoff_ts},
+    )
+    return parse_device_network_result(_print_results(result))
+
+
+# --------------------------------------------------------------------------
+# ring_context: size and closed-case sample behind a connected component
+# --------------------------------------------------------------------------
+RING_CONTEXT_GSQL = f"""
+USE GRAPH {GRAPH_NAME}
+CREATE OR REPLACE QUERY ring_context(STRING cluster_id) FOR GRAPH {GRAPH_NAME} {{
+    SetAccum<VERTEX<Card>> @@members;
+    SumAccum<INT> @@n_cases;
+    SumAccum<INT> @@n_confirmed;
+    AllCards = {{Card.*}};
+    Members = SELECT c FROM AllCards:c WHERE c.ring_cluster_id == cluster_id
+              ACCUM @@members += c;
+    AllCases = {{ClosedCase.*}};
+    Cs = SELECT cc FROM AllCases:cc -(ON_CARD)-> Card:c
+         WHERE c IN @@members
+         ACCUM @@n_cases += 1,
+               IF cc.outcome == "confirmed_fraud" THEN @@n_confirmed += 1 END;
+    PRINT @@members.size() AS n_cards, @@n_cases AS n_closed_cases, @@n_confirmed AS n_confirmed;
+}}
+INSTALL QUERY ring_context
+""".strip()
+
+
+async def ring_context(tg: TigerGraphMCP, cluster_id: str) -> dict:
+    """Cluster size and closed-case sample size for a connected component,
+    so a 1-case cluster at 100% or a 3,565-card transitive supercluster is
+    shown as what it is. Contextual graph information only -- never R6."""
+    if not cluster_id:
+        return {}
+    await _ensure_installed(tg, "ring_context", RING_CONTEXT_GSQL)
+    result = await _run_installed_query(tg, "ring_context", {"cluster_id": cluster_id})
+    merged: dict[str, Any] = {}
+    for block in _print_results(result):
+        if isinstance(block, dict):
+            merged.update(block)
+    return {
+        "ring_cluster_id": cluster_id,
+        "n_cards": int(merged.get("n_cards") or 0),
+        "n_closed_cases": int(merged.get("n_closed_cases") or 0),
+        "n_confirmed": int(merged.get("n_confirmed") or 0),
+    }
+
+
+# --------------------------------------------------------------------------
 # device_profile_label
 # --------------------------------------------------------------------------
 DEVICE_PROFILE_LABEL_GSQL = f"""

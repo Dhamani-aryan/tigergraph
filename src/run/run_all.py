@@ -18,7 +18,7 @@ import pandas as pd
 from src.run.dataset_index import _default_data_dir, load_dataset_index
 from src.run.run_case import run_single_case_with_context
 from src.run.trace_writer import build_trace
-from src.run.validate_outputs import validate_answer
+from src.run.validate_outputs import validate_answer, validate_semantics
 from src.tg_client import INVESTIGATION_ALLOWED_TOOLS, TigerGraphMCP
 
 
@@ -45,7 +45,7 @@ def _llm_info() -> dict[str, str]:
         from src.agent.pi_bridge import bridge_provenance
 
         info = bridge_provenance()
-        return {"provider": info["provider"], "model": info["model"]}
+        return {"provider": info["provider"], "model": info["model"], "reasoning_effort": info.get("reasoning_effort", "")}
     model = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b") if backend == "groq" else "qwen3:4b-instruct"
     return {"provider": backend, "model": model}
 
@@ -154,16 +154,26 @@ async def run_all(
             # tabs (ui/src/contracts/trace.ts) -- see trace_writer.py's own
             # module docstring. One bad trace must not cost the case its
             # already-written, already-valid answer file.
+            semantic: list[str] = []
             try:
                 trace = build_trace(
                     row, answer, context, validation_errors=violations,
                     llm_provider=llm_provider, llm_model=llm_model,
                 )
+                semantic = validate_semantics(answer, index, trace)
+                trace["validation"]["semantic_errors"] = semantic
                 trace_path = traces_dir / f"{case_id}.trace.json"
                 trace_path.write_text(json.dumps(trace, indent=2), encoding="utf-8")
                 print(f"  wrote {trace_path}", flush=True)
             except Exception as e:  # noqa: BLE001
+                semantic = validate_semantics(answer, index)
                 print(f"  TRACE FAILED (answer is still valid): {e}", flush=True)
+            if semantic:
+                print(f"  SEMANTIC ISSUES ({len(semantic)}):", flush=True)
+                for v in semantic:
+                    print(f"    - {v}", flush=True)
+            final_state = context.get("final_state") or {}
+            decision = final_state.get("decision") or {}
 
             summary_cases.append({
                 "case_id": case_id,
@@ -182,6 +192,11 @@ async def run_all(
                 "actions_changed": [a.action for a in answer.next_best_actions.initial]
                 != [a.action for a in answer.next_best_actions.final],
                 "validation_passed": not violations,
+                "semantic_validation_passed": not semantic,
+                "settled_by": decision.get("settled_by"),
+                "independent_evidence_families": (final_state.get("families") or {}).get("suspicious", []),
+                "benign_evidence_families": (final_state.get("families") or {}).get("benign", []),
+                "simulated_response": (final_state.get("simulation") or {}).get("response"),
                 "written_to_graph": answer.case.written_to_graph,
                 "tool_calls": answer.tool_calls,
                 "tokens": answer.tokens,
@@ -212,6 +227,7 @@ async def run_all(
         "cases_completed": len(summary_cases),
         "cases_failed": len(errors),
         "cases_valid": sum(1 for c in summary_cases if c["validation_passed"]),
+        "cases_semantic_valid": sum(1 for c in summary_cases if c.get("semantic_validation_passed")),
         "cases_written_to_graph": sum(1 for c in summary_cases if c["written_to_graph"]),
         "verdicts": verdict_counts,
         "patterns": pattern_counts,

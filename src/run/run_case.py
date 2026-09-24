@@ -4,6 +4,7 @@ import time
 from datetime import datetime, timezone
 
 from src.agent.graph_flow import _flagged_amount, build_graph
+from src.agent.decision import resolve_status
 from src.agent.llm import token_tracker
 from src.agent.sar_writer import write_sar_narrative
 from src.agent.schemas import (
@@ -43,26 +44,15 @@ async def run_single_case_with_context(tg: TigerGraphMCP, case_row: dict) -> tup
     final_actions = [ActionEntry(**a) for a in final_state["final_policy_result"]["actions"]]
     sar_info = final_state["final_policy_result"]
 
-    verdict = (
-        "fraud" if assessment["fraud_probability"] >= 0.7
-        else "legitimate" if assessment["fraud_probability"] <= 0.15
-        else "uncertain"
-    )
-    status = (
-        "closed_fraud" if verdict == "fraud"
-        else "closed_legitimate" if verdict == "legitimate"
-        else "escalated"
-    )
+    # Single source of truth (src.agent.decision): verdict, probability,
+    # pattern, status, affected transactions and SAR all come from the same
+    # resolved decision the policy engine used. There is no separate
+    # probability threshold here any more (the old >= 0.70 fraud rule).
+    decision = final_state["decision"]
+    verdict = decision["verdict"]
+    status = resolve_status(verdict, [a.action for a in final_actions])
     is_legit = verdict == "legitimate"
 
-    # Answer-quality fix (2026-09-23): everything below this point used to
-    # come from the flagged transaction ALONE (affected_txn_ids = [flagged],
-    # first_suspicious_txn_id = flagged, exposure_usd = flagged amount,
-    # connected_card_ids/connected_device_profiles = [] unconditionally) --
-    # see docs/frontend-spec.md's UI contract and the README's own field
-    # table for why this matters for scoring. `episode` (src.agent.episode,
-    # computed in gather_evidence_node) is the actual fraud episode this
-    # card shows, deterministically derived from card_window.
     episode = final_state.get("episode") or {}
     flagged_txn_id = str(case_row["flagged_txn_id"])
     affected_txn_ids = [] if is_legit else list(dict.fromkeys(episode.get("txn_ids") or [flagged_txn_id]))
@@ -75,19 +65,21 @@ async def run_single_case_with_context(tg: TigerGraphMCP, case_row: dict) -> tup
 
     similar_prior_cases = _grounded_similar_cases(final_state, assessment.get("similar_prior_case_ids", []))
     evidence = _build_evidence(case_row, final_state, assessment, episode)
-    summary = _build_summary(assessment, verdict, episode, connected_card_ids)
-    pattern_description = assessment.get("pattern_description", "") if assessment["pattern"] == "undocumented" else ""
+    summary = _build_summary(decision, assessment, verdict, episode, connected_card_ids)
+    pattern = decision["pattern"]
+    pattern_description = decision.get("pattern_description", "") if pattern == "undocumented" else ""
+    resolved = {**assessment, "pattern": pattern, "fraud_probability": decision["fraud_probability"]}
 
     graph_case_id = f"CASE-{case_row['case_id']}"
     written, written_at = await _write_case_to_graph(
-        tg, graph_case_id, case_row, assessment, verdict, status, exposure_usd
+        tg, graph_case_id, case_row, resolved, verdict, status, exposure_usd
     )
 
     case_record = CaseRecord(
         status=status,
         verdict=verdict,
-        fraud_probability=assessment["fraud_probability"],
-        pattern=assessment["pattern"],
+        fraud_probability=decision["fraud_probability"],
+        pattern=pattern,
         pattern_description=pattern_description,
         affected_txn_ids=affected_txn_ids,
         first_suspicious_txn_id=first_suspicious_txn_id,
@@ -114,7 +106,7 @@ async def run_single_case_with_context(tg: TigerGraphMCP, case_row: dict) -> tup
     narrative = ""
     if sar_info["sar_file"]:
         narrative = await write_sar_narrative(
-            case_row, assessment, episode=episode, connected_card_ids=connected_card_ids, exposure_usd=exposure_usd
+            case_row, resolved, episode=episode, connected_card_ids=connected_card_ids, exposure_usd=exposure_usd
         )
 
     sar = _build_sar(case_row, sar_info, narrative, episode, connected_card_ids, flagged_txn_id, exposure_usd)
@@ -184,164 +176,187 @@ def _grounded_similar_cases(final_state: dict, llm_ids: list[str]) -> list[str]:
 def _build_evidence(
     case_row: dict, final_state: dict, assessment: dict, episode: dict
 ) -> list[Evidence]:
-    """Answer-quality fix (2026-09-23): every evidence entry used to be the
-    LLM's free-text `evidence_claims` with `ref="assessment"` and
-    `entity_ids=[]` -- no real query name, no real entity ids (README:
-    each entry needs `ref` as "query name, document section, or request id"
-    and `entity_ids` as "the IDs the claim rests on"). Builds one entry per
-    deterministic finding that actually fired (with the real query call and
-    entity ids), then appends the LLM's own synthesis claims grounded to the
-    episode's transaction ids rather than left empty."""
+    """One entry per deterministic observation, with the query/signal that
+    produced it and the entity ids it rests on. Only fired or observed facts
+    are stated; a signal that did not fire is never listed as supporting
+    evidence. `signal:*` refs are the detector outputs the semantic
+    validator checks (e.g. a CNP entry may only cite online rows)."""
     card_id = case_row["card_id"]
     flagged_id = str(case_row["flagged_txn_id"])
-    episode_ids = episode.get("txn_ids") or [flagged_id]
+    window_ref = f"query:card_window(card_id={card_id}, reference_txn_id={flagged_id})"
+    profile = final_state.get("behavior_profile") or {}
+    signals = final_state.get("signals") or {}
+    ev_by_type = {e["type"]: e["data"] for e in (final_state.get("evidence") or [])}
     entries: list[Evidence] = []
 
-    ev_by_type = {e["type"]: e["data"] for e in (final_state.get("evidence") or [])}
-
-    detected_pattern = episode.get("detected_pattern")
-    if detected_pattern == "card_testing":
+    if profile.get("flagged_found"):
+        bits = [f"{profile.get('history_count')} prior transactions"]
+        if profile.get("amount_ratio") is not None:
+            bits.append(
+                f"amount ${profile.get('flagged_amount'):.2f} is {profile.get('amount_ratio')}x the prior median "
+                f"${profile.get('amount_median')} (percentile {profile.get('amount_percentile')}, {profile.get('amount_class')})"
+            )
+        if profile.get("flagged_product"):
+            bits.append(
+                f"ProductCD {profile['flagged_product']} used {profile.get('product_prior_count')} times before "
+                f"({profile.get('product_class')})"
+            )
+        if profile.get("flagged_channel") == "in_person" and profile.get("flagged_region"):
+            bits.append(
+                f"region {profile['flagged_region']} used {profile.get('flagged_region_prior_in_person_count')} times "
+                f"in person before ({profile.get('region_class')})"
+            )
         entries.append(Evidence(
-            claim=(
-                f"Card-testing sequence detected on card {card_id}: "
-                f"{len(episode_ids) - 1} small online authorization(s) followed by a larger purchase."
-            ),
-            source="graph",
-            ref=f"query:card_window(card_id={card_id})",
-            entity_ids=episode_ids,
-        ))
-    elif detected_pattern == "cnp_burst":
-        entries.append(Evidence(
-            claim=(
-                f"{len(episode_ids)} related online transaction(s) within 48 hours of the "
-                f"flagged transaction on card {card_id}."
-            ),
-            source="graph",
-            ref=f"query:card_window(card_id={card_id}, hours=48)",
-            entity_ids=episode_ids,
+            claim=f"Behavior profile ({profile.get('flagged_channel') or 'unknown'} channel): " + "; ".join(bits) + ".",
+            source="graph", ref=f"{window_ref}; features:behavior_profile", entity_ids=[flagged_id],
         ))
 
-    if final_state.get("is_new_device"):
+    card_testing = signals.get("card_testing") or {}
+    if card_testing.get("fired"):
         entries.append(Evidence(
-            claim="The flagged transaction's device fingerprint is marked New for this account (id_15).",
-            source="graph",
-            ref=f"query:card_window(card_id={card_id})",
-            entity_ids=[flagged_id],
-        ))
-    if final_state.get("is_proxy"):
-        entries.append(Evidence(
-            claim="The flagged transaction was made through an anonymizing/hidden IP proxy (id_23).",
-            source="graph",
-            ref=f"query:card_window(card_id={card_id})",
-            entity_ids=[flagged_id],
-        ))
-    if final_state.get("out_of_region"):
-        entries.append(Evidence(
-            claim=(
-                "The flagged transaction's billing region differs from this card's usual region, "
-                "while activity in the usual region continues."
-            ),
-            source="graph",
-            ref=f"query:card_window(card_id={card_id})",
-            entity_ids=[flagged_id],
+            claim=f"Card-testing sequence: {card_testing.get('reason')}",
+            source="graph", ref="signal:card_testing", entity_ids=list(card_testing.get("txn_ids") or []),
         ))
 
-    connected = final_state.get("connected_card_ids") or []
-    if connected:
-        shown = ", ".join(connected[:5]) + ("..." if len(connected) > 5 else "")
+    cnp = signals.get("cnp_burst") or {}
+    if cnp.get("flagged_online") and (cnp.get("online_count") or 0) >= 2:
         entries.append(Evidence(
-            claim=f"The flagged transaction's device fingerprint is shared with {len(connected)} other card(s): {shown}.",
-            source="graph",
-            ref=f"query:device_neighbors(transaction_id={flagged_id})",
-            entity_ids=connected,
+            claim=f"Online activity around the flagged transaction: {cnp.get('reason')}.",
+            source="graph", ref="signal:cnp_burst", entity_ids=list(cnp.get("online_txn_ids") or []),
+        ))
+
+    if profile.get("flagged_channel") == "online":
+        if profile.get("is_new_device"):
+            entries.append(Evidence(
+                claim="The flagged transaction's device is marked New for this account (id_15); on its own this is not proof.",
+                source="graph", ref=window_ref, entity_ids=[flagged_id],
+            ))
+        elif profile.get("is_new_device") is False:
+            entries.append(Evidence(
+                claim="The flagged transaction's device is already Found for this account (id_15).",
+                source="graph", ref=window_ref, entity_ids=[flagged_id],
+            ))
+        if profile.get("is_proxy"):
+            entries.append(Evidence(
+                claim=f"The flagged transaction came through an anonymizing proxy ({profile.get('proxy_type')}, id_23).",
+                source="graph", ref=window_ref, entity_ids=[flagged_id],
+            ))
+
+    region = signals.get("out_of_region") or {}
+    if region.get("fired"):
+        entries.append(Evidence(
+            claim=f"Out-of-region card-present use: {region.get('reason')}.",
+            source="graph", ref="signal:out_of_region", entity_ids=list(region.get("evidence_ids") or [flagged_id]),
+        ))
+
+    recurrence = signals.get("recurrence") or {}
+    if recurrence.get("tier") in ("candidate", "strong"):
+        entries.append(Evidence(
+            claim=f"Recurrence check ({recurrence.get('tier')}): {recurrence.get('reason')}. {recurrence.get('proxy_note')}",
+            source="graph", ref="signal:recurrence",
+            entity_ids=[flagged_id, *(recurrence.get("monthly_match_ids") or [])],
+        ))
+
+    network = signals.get("device_network") or {}
+    if network.get("corroborated"):
+        entries.append(Evidence(
+            claim=f"Direct shared-device corroboration: {network.get('reason')}.",
+            source="graph", ref=f"signal:device_network(transaction_id={flagged_id})",
+            entity_ids=[
+                *(network.get("corroborated_card_ids") or []), *(network.get("corroborating_txn_ids") or []),
+                *(network.get("confirmed_fraud_case_ids") or []),
+            ],
+        ))
+    elif network.get("available") and (network.get("other_card_count") or 0) > 0:
+        entries.append(Evidence(
+            claim=f"Device profile context (not corroboration): {network.get('reason')}.",
+            source="graph", ref=f"context:device_network(transaction_id={flagged_id})", entity_ids=[],
         ))
 
     closed = ev_by_type.get("closed_cases") or []
-    closed_ids = [c.get("id") for c in closed if c.get("id")]
-    if closed_ids:
+    if closed:
+        outcomes = ", ".join(f"{c.get('id')} {c.get('outcome')}" for c in closed[:5] if c.get("id"))
         entries.append(Evidence(
-            claim=f"{len(closed_ids)} closed case(s) connect to this card, device, or region.",
-            source="graph",
-            ref=f"query:closed_case_lookup(card_id={card_id})",
-            entity_ids=closed_ids[:10],
+            claim=f"Closed-case history on this card (context; does not decide this transaction): {outcomes}.",
+            source="graph", ref=f"query:closed_case_lookup(card_id={card_id})",
+            entity_ids=[c["id"] for c in closed[:10] if c.get("id")],
         ))
 
-    ring = ev_by_type.get("ring_membership") or {}
-    ring_rate = ring.get("cluster_prior_fraud_rate") or 0.0
-    if ring.get("ring_cluster_id") and ring_rate > 0:
+    ring = ev_by_type.get("ring_context") or {}
+    if ring.get("ring_cluster_id"):
+        rate = ring.get("cluster_prior_fraud_rate")
         entries.append(Evidence(
             claim=(
-                f"Card belongs to cluster {ring['ring_cluster_id']} with a prior "
-                f"confirmed-fraud rate of {ring_rate:.2f}."
+                f"Connected component {ring['ring_cluster_id']}: {ring.get('n_cards')} cards, "
+                f"{ring.get('n_closed_cases')} closed case(s) behind a prior confirmed-fraud rate of "
+                f"{rate if rate is not None else 'n/a'} -- contextual graph information, not evidence of a ring."
             ),
-            source="graph",
-            ref=f"query:ring_membership(card_id={card_id})",
-            entity_ids=[card_id],
+            source="graph", ref=f"context:ring_membership(card_id={card_id})", entity_ids=[card_id],
         ))
 
-    # LLM's own synthesis claims, still surfaced (they can name things the
-    # deterministic checks above don't cover), grounded to the episode's own
-    # transaction ids rather than left with entity_ids=[].
     for claim in assessment.get("evidence_claims", []) or []:
-        entries.append(Evidence(claim=claim, source="graph", ref="assessment:llm_synthesis", entity_ids=episode_ids))
+        entries.append(Evidence(claim=claim, source="graph", ref="assessment:llm_synthesis", entity_ids=[flagged_id]))
 
     if case_row.get("trigger_type") == "customer_report":
         entries.append(Evidence(
-            claim=f"Customer reported this transaction as unrecognized: \"{case_row.get('trigger_text', '')}\"",
-            source="customer",
-            ref="trigger:customer_report",
-            entity_ids=[flagged_id],
+            claim=f"Customer's own report on file: \"{case_row.get('trigger_text', '')}\"",
+            source="customer", ref="trigger:customer_report", entity_ids=[flagged_id],
         ))
     elif final_state.get("evidence_requests"):
         entries.append(Evidence(
             claim=final_state["evidence_requests"][-1]["assumed_response"],
-            source="customer",
-            ref="evidence_request:1",
-            entity_ids=[flagged_id],
+            source="customer", ref="evidence_request:1", entity_ids=[flagged_id],
         ))
 
     return entries
 
 
-def _build_summary(assessment: dict, verdict: str, episode: dict, connected_card_ids: list[str]) -> str:
-    """Answer-quality fix (2026-09-23): was a single generic templated
-    sentence regardless of what was actually found. README wants "two to
-    six sentences an analyst could read.\""""
-    pattern = assessment["pattern"]
-    prob = assessment["fraud_probability"]
+def _build_summary(
+    decision: dict, assessment: dict, verdict: str, episode: dict, connected_card_ids: list[str]
+) -> str:
+    prob = decision["fraud_probability"]
     if verdict == "legitimate":
-        base = f"Reviewed and closed as legitimate activity (pattern: {pattern}, probability {prob:.2f})."
-    else:
+        base = f"Closed as legitimate at probability {prob:.2f}. {decision.get('reason', '')}"
+        detail = " ".join((assessment.get("benign_facts") or [])[:2])
+    elif verdict == "fraud":
         n = len(episode.get("txn_ids") or [])
         base = (
-            f"{pattern.replace('_', ' ').title()} identified at probability {prob:.2f}, "
-            f"spanning {n} transaction{'s' if n != 1 else ''} totaling ${episode.get('exposure_usd', 0.0):.2f}."
+            f"{decision['pattern'].replace('_', ' ').title()} at probability {prob:.2f}, spanning {n} "
+            f"transaction{'s' if n != 1 else ''} totaling ${episode.get('exposure_usd', 0.0):.2f}. "
+            f"{decision.get('reason', '')}"
         )
-    claims = assessment.get("evidence_claims") or []
-    detail = " ".join(claims[:3])
-    connected_note = f" Connects to {len(connected_card_ids)} other card(s)." if connected_card_ids else ""
-    summary = f"{base} {detail}{connected_note}".strip()
-    return summary[:900]  # a summary, not the SAR narrative -- README: "Keep summary short"
+        detail = " ".join((assessment.get("evidence_claims") or [])[:2])
+    else:
+        base = f"Uncertain at probability {prob:.2f}. {decision.get('reason', '')}"
+        detail = " ".join((assessment.get("evidence_claims") or [])[:2])
+    connected_note = f" Directly corroborated with {len(connected_card_ids)} other card(s)." if connected_card_ids else ""
+    return f"{base} {detail}{connected_note}".strip()[:900]
 
 
 def _what_changed(
     case_row: dict, final_state: dict, initial_actions: list[ActionEntry], final_actions: list[ActionEntry]
 ) -> str:
-    if initial_actions == final_actions:
+    if [a.action for a in initial_actions] == [a.action for a in final_actions]:
         return "nothing"
+    decision = final_state.get("decision") or {}
+    initial = final_state.get("initial_decision") or {}
+    probs = ""
+    if initial.get("fraud_probability") is not None and decision.get("fraud_probability") is not None:
+        probs = f" Probability {initial['fraud_probability']:.2f} -> {decision['fraud_probability']:.2f}."
     if case_row.get("trigger_type") == "customer_report":
-        if final_state.get("recurring_charge_detected"):
+        if decision.get("response") == "disputes_recurring" or final_state.get("recurring_charge_detected"):
             return (
-                "The customer's own report matched a charge recurring monthly on this card (R7), "
-                "which changed the recommendation away from a block."
+                "The customer's dispute matched a strong recurring charge on this card (R7), so the recommendation "
+                "moved to verify-and-warn instead of a block." + probs
             )
         return (
             "The customer's own report, already on file at the time the case opened, established "
-            "non-recognition of the charge (R2), which changed the recommendation."
+            "non-recognition of the charge (R2), which changed the recommendation." + probs
         )
     if final_state.get("evidence_requests"):
-        return "Simulated evidence response changed the recommended actions."
-    return "The recommendation changed as additional graph evidence was incorporated."
+        response = (final_state.get("simulation") or {}).get("response", "")
+        return f"Simulated evidence response ({response}) changed the recommended actions." + probs
+    return "The recommendation changed as additional graph evidence was incorporated." + probs
 
 
 def _build_sar(

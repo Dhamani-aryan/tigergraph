@@ -1,0 +1,5470 @@
+{
+  "source": "csv",
+  "cases": [
+    {
+      "case_id": "HHG-001",
+      "trigger_type": "risk_score",
+      "window_rows": 360,
+      "behavior_profile": {
+        "flagged_txn_id": "3514030",
+        "flagged_found": true,
+        "flagged_ts": "2016-12-04 19:55:28",
+        "flagged_amount": 77.07,
+        "risk_score_context_only": 0.61,
+        "history_count": 358,
+        "history_span_days": 151.21,
+        "stable_history": true,
+        "amount_median": 83.94,
+        "amount_ratio": 0.918,
+        "amount_percentile": 0.4553,
+        "amount_class": "normal",
+        "flagged_product": "W",
+        "product_prior_count": 356,
+        "product_prior_share": 0.9944,
+        "product_class": "established",
+        "flagged_channel": "in_person",
+        "channel_prior_count": 356,
+        "flagged_region": "444.0",
+        "flagged_region_prior_count": 10,
+        "flagged_region_prior_in_person_count": 10,
+        "region_class": "established",
+        "home_region": "204.0",
+        "home_region_count": 34,
+        "home_region_share": 0.0955,
+        "in_person_with_region_count": 356,
+        "online_txn_ids_48h": [],
+        "card_present_txn_ids_48h": [
+          "3510115",
+          "3510225",
+          "3510464",
+          "3510612",
+          "3511596",
+          "3512936",
+          "3513814",
+          "3514461"
+        ],
+        "is_new_device": null,
+        "device_status": null,
+        "is_proxy": null,
+        "proxy_type": null,
+        "recurring_band_count": 7,
+        "recurring_band_denominator": 356,
+        "recurring_band_frequency": 0.0197,
+        "baseline_online_per_48h": 0.0268,
+        "independent_evidence_families": [],
+        "benign_families": [
+          "behavioral_consistency",
+          "geographic_consistency"
+        ],
+        "suspicious_findings": [],
+        "benign_findings": [
+          "normal amount: 0.918x median $83.94, percentile 0.4553",
+          "ProductCD W established (356 prior, share 0.9944)",
+          "region 444.0 established (10 prior in-person)"
+        ],
+        "unavailable_findings": []
+      },
+      "signals": {
+        "card_testing": {
+          "fired": false,
+          "reason": "no qualifying sequence contains the flagged transaction",
+          "txn_ids": [],
+          "timestamps": [],
+          "amounts": [],
+          "small_auth_ids": [],
+          "larger_purchase_id": "",
+          "larger_purchase_amount": 0.0,
+          "purchase_over_100_cleared": false
+        },
+        "cnp_burst": {
+          "flagged_online": false,
+          "online_txn_ids": [],
+          "online_count": 0,
+          "excluded_in_person_ids": [
+            "3510115",
+            "3510225",
+            "3510464",
+            "3510612",
+            "3511596",
+            "3512936",
+            "3513814",
+            "3514461"
+          ],
+          "documented_burst": false,
+          "high_volume_online": false,
+          "baseline_online_per_48h": null,
+          "exceeds_baseline": null,
+          "reason": "flagged transaction channel is in_person, not online",
+          "temporal_signal": false
+        },
+        "out_of_region": {
+          "fired": false,
+          "reason": "region 444.0 already appears 10 time(s) in this card's prior history; it is not a region the cardholder has no history in",
+          "flagged_channel": "in_person",
+          "flagged_region": "444.0",
+          "home_region": "204.0",
+          "flagged_region_prior_count": 10,
+          "flagged_region_prior_in_person_count": 10,
+          "home_region_count": 34,
+          "home_region_share": 0.0955,
+          "in_person_with_region_count": 356,
+          "home_activity_ids_48h": [],
+          "trip_candidate": false,
+          "evidence_ids": [],
+          "episode_ids": []
+        },
+        "recurrence": {
+          "tier": "none",
+          "reason": "no same-channel, same-ProductCD, amount-matching transaction 25-35 days earlier",
+          "tolerance_usd": 0.77,
+          "monthly_match_ids": [],
+          "second_cycle_match_ids": [
+            "3349967"
+          ],
+          "same_channel_product_prior_count": 356,
+          "band_count": 7,
+          "band_share": 0.0197,
+          "collision_count": 5,
+          "collision_rate": 0.014,
+          "proxy_note": "ProductCD, channel and amount are proxies for 'same merchant': this dataset has no merchant-name column."
+        },
+        "device_network": {
+          "available": false,
+          "device_profile_id": "",
+          "device_profile_label": "",
+          "total_distinct_cards": 0,
+          "other_card_count": 0,
+          "generic_profile": false,
+          "other_cards_48h": [],
+          "matching_txns_48h": [],
+          "meaningful_match": false,
+          "corroborated": false,
+          "corroboration_basis": "",
+          "corroborated_card_ids": [],
+          "corroborating_txn_ids": [],
+          "confirmed_fraud_case_ids": [],
+          "reason": "no device record (in-person or missing identity)"
+        }
+      },
+      "customer_statement": null,
+      "families_before_statement": {
+        "suspicious": [],
+        "benign": [
+          "behavioral_consistency",
+          "geographic_consistency"
+        ],
+        "strong_suspicious": [],
+        "detail": {
+          "benign:behavioral_consistency": "normal amount (0.918x median) on an established ProductCD W",
+          "benign:geographic_consistency": "region 444.0 has 10 prior in-person uses"
+        },
+        "single_signal": true
+      },
+      "families": {
+        "suspicious": [],
+        "benign": [
+          "behavioral_consistency",
+          "geographic_consistency"
+        ],
+        "strong_suspicious": [],
+        "detail": {
+          "benign:behavioral_consistency": "normal amount (0.918x median) on an established ProductCD W",
+          "benign:geographic_consistency": "region 444.0 has 10 prior in-person uses"
+        },
+        "single_signal": true
+      },
+      "episode": {
+        "txn_ids": [
+          "3514030"
+        ],
+        "first_txn_id": "3514030",
+        "exposure_usd": 77.07,
+        "detected_pattern": null,
+        "first_date": "2016-12-04",
+        "last_date": "2016-12-04",
+        "basis": "flagged_only"
+      },
+      "simulated_response_if_asked": {
+        "response": "confirmed_legitimate",
+        "text": "Simulated assumption: customer confirms they made this $77.07 purchase. Rule: confirm -- every behavioral feature is consistent with the card's own history. Metrics: history 358 prior txns; amount 0.918x median $83.94 (percentile 0.4553, normal); ProductCD W established (356 prior); channel in_person; region 444.0 established.",
+        "rule": "confirm -- every behavioral feature is consistent with the card's own history"
+      }
+    },
+    {
+      "case_id": "HHG-002",
+      "trigger_type": "risk_score",
+      "window_rows": 36,
+      "behavior_profile": {
+        "flagged_txn_id": "3478782",
+        "flagged_found": true,
+        "flagged_ts": "2016-11-22 17:27:07",
+        "flagged_amount": 292.36,
+        "risk_score_context_only": 0.79,
+        "history_count": 35,
+        "history_span_days": 141.94,
+        "stable_history": true,
+        "amount_median": 47.29,
+        "amount_ratio": 6.182,
+        "amount_percentile": 1.0,
+        "amount_class": "extreme",
+        "flagged_product": "C",
+        "product_prior_count": 35,
+        "product_prior_share": 1.0,
+        "product_class": "established",
+        "flagged_channel": "online",
+        "channel_prior_count": 35,
+        "flagged_region": null,
+        "flagged_region_prior_count": 0,
+        "flagged_region_prior_in_person_count": 0,
+        "region_class": "not_applicable",
+        "home_region": null,
+        "home_region_count": 0,
+        "home_region_share": null,
+        "in_person_with_region_count": 0,
+        "online_txn_ids_48h": [],
+        "card_present_txn_ids_48h": [],
+        "is_new_device": null,
+        "device_status": null,
+        "is_proxy": null,
+        "proxy_type": null,
+        "recurring_band_count": 0,
+        "recurring_band_denominator": 35,
+        "recurring_band_frequency": 0.0,
+        "baseline_online_per_48h": 0.5002,
+        "independent_evidence_families": [
+          "behavioral_anomaly"
+        ],
+        "benign_families": [],
+        "suspicious_findings": [
+          "extreme amount: 6.182x median $47.29, percentile 1.0"
+        ],
+        "benign_findings": [
+          "ProductCD C established (35 prior, share 1.0)"
+        ],
+        "unavailable_findings": [
+          "device newness unavailable",
+          "CNP: only the flagged online transaction within 48h"
+        ]
+      },
+      "signals": {
+        "card_testing": {
+          "fired": false,
+          "reason": "no qualifying sequence contains the flagged transaction",
+          "txn_ids": [],
+          "timestamps": [],
+          "amounts": [],
+          "small_auth_ids": [],
+          "larger_purchase_id": "",
+          "larger_purchase_amount": 0.0,
+          "purchase_over_100_cleared": false
+        },
+        "cnp_burst": {
+          "flagged_online": true,
+          "online_txn_ids": [
+            "3478782"
+          ],
+          "online_count": 1,
+          "excluded_in_person_ids": [],
+          "documented_burst": false,
+          "high_volume_online": false,
+          "baseline_online_per_48h": 0.5002,
+          "exceeds_baseline": null,
+          "reason": "only the flagged online transaction within 48h",
+          "temporal_signal": false
+        },
+        "out_of_region": {
+          "fired": false,
+          "reason": "flagged transaction is online; out-of-region requires card-present use",
+          "flagged_channel": "online",
+          "flagged_region": null,
+          "home_region": null,
+          "flagged_region_prior_count": 0,
+          "flagged_region_prior_in_person_count": 0,
+          "home_region_count": 0,
+          "home_region_share": null,
+          "in_person_with_region_count": 0,
+          "home_activity_ids_48h": [],
+          "trip_candidate": false,
+          "evidence_ids": [],
+          "episode_ids": []
+        },
+        "recurrence": {
+          "tier": "none",
+          "reason": "no same-channel, same-ProductCD, amount-matching transaction 25-35 days earlier",
+          "tolerance_usd": 2.92,
+          "monthly_match_ids": [],
+          "second_cycle_match_ids": [],
+          "same_channel_product_prior_count": 35,
+          "band_count": 0,
+          "band_share": 0.0,
+          "collision_count": 0,
+          "collision_rate": 0.0,
+          "proxy_note": "ProductCD, channel and amount are proxies for 'same merchant': this dataset has no merchant-name column."
+        },
+        "device_network": {
+          "available": false,
+          "device_profile_id": "",
+          "device_profile_label": "",
+          "total_distinct_cards": 0,
+          "other_card_count": 0,
+          "generic_profile": false,
+          "other_cards_48h": [],
+          "matching_txns_48h": [],
+          "meaningful_match": false,
+          "corroborated": false,
+          "corroboration_basis": "",
+          "corroborated_card_ids": [],
+          "corroborating_txn_ids": [],
+          "confirmed_fraud_case_ids": [],
+          "reason": "no device record (in-person or missing identity)"
+        }
+      },
+      "customer_statement": null,
+      "families_before_statement": {
+        "suspicious": [
+          "behavioral_anomaly"
+        ],
+        "benign": [],
+        "strong_suspicious": [],
+        "detail": {
+          "suspicious:behavioral_anomaly": "amount 6.182x median, percentile 1.0"
+        },
+        "single_signal": true
+      },
+      "families": {
+        "suspicious": [
+          "behavioral_anomaly"
+        ],
+        "benign": [],
+        "strong_suspicious": [],
+        "detail": {
+          "suspicious:behavioral_anomaly": "amount 6.182x median, percentile 1.0"
+        },
+        "single_signal": true
+      },
+      "episode": {
+        "txn_ids": [
+          "3478782"
+        ],
+        "first_txn_id": "3478782",
+        "exposure_usd": 292.36,
+        "detected_pattern": null,
+        "first_date": "2016-11-22",
+        "last_date": "2016-11-22",
+        "basis": "flagged_only"
+      },
+      "simulated_response_if_asked": {
+        "response": "no_reply",
+        "text": "Simulated assumption: customer did not reply within 24 hours. Rule: no reply -- profile is ambiguous: not fully consistent with history (normal amount) but only 1 suspicious family (behavioral_anomaly) and no strong signal. Metrics: history 35 prior txns; amount 6.182x median $47.29 (percentile 1.0, extreme); ProductCD C established (35 prior); channel online; device unknown.",
+        "rule": "no reply -- profile is ambiguous: not fully consistent with history (normal amount) but only 1 suspicious family (behavioral_anomaly) and no strong signal"
+      }
+    },
+    {
+      "case_id": "HHG-003",
+      "trigger_type": "customer_report",
+      "window_rows": 986,
+      "behavior_profile": {
+        "flagged_txn_id": "3530164",
+        "flagged_found": true,
+        "flagged_ts": "2016-12-10 13:01:21",
+        "flagged_amount": 49.0,
+        "risk_score_context_only": 0.4,
+        "history_count": 985,
+        "history_span_days": 156.94,
+        "stable_history": true,
+        "amount_median": 67.92,
+        "amount_ratio": 0.721,
+        "amount_percentile": 0.2843,
+        "amount_class": "normal",
+        "flagged_product": "W",
+        "product_prior_count": 936,
+        "product_prior_share": 0.9503,
+        "product_class": "established",
+        "flagged_channel": "in_person",
+        "channel_prior_count": 936,
+        "flagged_region": "330.0",
+        "flagged_region_prior_count": 42,
+        "flagged_region_prior_in_person_count": 34,
+        "region_class": "established",
+        "home_region": "299.0",
+        "home_region_count": 110,
+        "home_region_share": 0.1176,
+        "in_person_with_region_count": 935,
+        "online_txn_ids_48h": [],
+        "card_present_txn_ids_48h": [
+          "3524629",
+          "3524740",
+          "3525595",
+          "3527130",
+          "3527215",
+          "3527397",
+          "3527532",
+          "3528392",
+          "3528902",
+          "3529041",
+          "3529981",
+          "3530056"
+        ],
+        "is_new_device": null,
+        "device_status": null,
+        "is_proxy": null,
+        "proxy_type": null,
+        "recurring_band_count": 54,
+        "recurring_band_denominator": 936,
+        "recurring_band_frequency": 0.0577,
+        "baseline_online_per_48h": 0.6325,
+        "independent_evidence_families": [
+          "customer_statement"
+        ],
+        "benign_families": [
+          "behavioral_consistency",
+          "geographic_consistency"
+        ],
+        "suspicious_findings": [],
+        "benign_findings": [
+          "normal amount: 0.721x median $67.92, percentile 0.2843",
+          "ProductCD W established (936 prior, share 0.9503)",
+          "region 330.0 established (34 prior in-person)"
+        ],
+        "unavailable_findings": [
+          "recurrence candidate: amount band recurs outside the monthly slots in 4.4% of same-channel/ProductCD history (41 of 936): collision-prone, not a distinct charge"
+        ]
+      },
+      "signals": {
+        "card_testing": {
+          "fired": false,
+          "reason": "no qualifying sequence contains the flagged transaction",
+          "txn_ids": [],
+          "timestamps": [],
+          "amounts": [],
+          "small_auth_ids": [],
+          "larger_purchase_id": "",
+          "larger_purchase_amount": 0.0,
+          "purchase_over_100_cleared": false
+        },
+        "cnp_burst": {
+          "flagged_online": false,
+          "online_txn_ids": [],
+          "online_count": 0,
+          "excluded_in_person_ids": [
+            "3524629",
+            "3524740",
+            "3525595",
+            "3527130",
+            "3527215",
+            "3527397",
+            "3527532",
+            "3528392",
+            "3528902",
+            "3529041",
+            "3529981",
+            "3530056"
+          ],
+          "documented_burst": false,
+          "high_volume_online": false,
+          "baseline_online_per_48h": null,
+          "exceeds_baseline": null,
+          "reason": "flagged transaction channel is in_person, not online",
+          "temporal_signal": false
+        },
+        "out_of_region": {
+          "fired": false,
+          "reason": "region 330.0 already appears 42 time(s) in this card's prior history; it is not a region the cardholder has no history in",
+          "flagged_channel": "in_person",
+          "flagged_region": "330.0",
+          "home_region": "299.0",
+          "flagged_region_prior_count": 42,
+          "flagged_region_prior_in_person_count": 34,
+          "home_region_count": 110,
+          "home_region_share": 0.1176,
+          "in_person_with_region_count": 935,
+          "home_activity_ids_48h": [],
+          "trip_candidate": false,
+          "evidence_ids": [],
+          "episode_ids": []
+        },
+        "recurrence": {
+          "tier": "candidate",
+          "reason": "amount band recurs outside the monthly slots in 4.4% of same-channel/ProductCD history (41 of 936): collision-prone, not a distinct charge",
+          "tolerance_usd": 0.5,
+          "monthly_match_ids": [
+            "3451863"
+          ],
+          "second_cycle_match_ids": [
+            "3327256",
+            "3327940",
+            "3341157",
+            "3356702",
+            "3360480",
+            "3361189",
+            "3363572"
+          ],
+          "same_channel_product_prior_count": 936,
+          "band_count": 54,
+          "band_share": 0.0577,
+          "collision_count": 41,
+          "collision_rate": 0.0438,
+          "proxy_note": "ProductCD, channel and amount are proxies for 'same merchant': this dataset has no merchant-name column."
+        },
+        "device_network": {
+          "available": false,
+          "device_profile_id": "",
+          "device_profile_label": "",
+          "total_distinct_cards": 0,
+          "other_card_count": 0,
+          "generic_profile": false,
+          "other_cards_48h": [],
+          "matching_txns_48h": [],
+          "meaningful_match": false,
+          "corroborated": false,
+          "corroboration_basis": "",
+          "corroborated_card_ids": [],
+          "corroborating_txn_ids": [],
+          "confirmed_fraud_case_ids": [],
+          "reason": "no device record (in-person or missing identity)"
+        }
+      },
+      "customer_statement": "denies",
+      "families_before_statement": {
+        "suspicious": [],
+        "benign": [
+          "behavioral_consistency",
+          "geographic_consistency"
+        ],
+        "strong_suspicious": [],
+        "detail": {
+          "benign:behavioral_consistency": "normal amount (0.721x median) on an established ProductCD W",
+          "benign:geographic_consistency": "region 330.0 has 34 prior in-person uses"
+        },
+        "single_signal": true
+      },
+      "families": {
+        "suspicious": [
+          "customer_statement"
+        ],
+        "benign": [
+          "behavioral_consistency",
+          "geographic_consistency"
+        ],
+        "strong_suspicious": [],
+        "detail": {
+          "benign:behavioral_consistency": "normal amount (0.721x median) on an established ProductCD W",
+          "benign:geographic_consistency": "region 330.0 has 34 prior in-person uses",
+          "suspicious:customer_statement": "customer states they did not make the transaction"
+        },
+        "single_signal": true
+      },
+      "episode": {
+        "txn_ids": [
+          "3530164"
+        ],
+        "first_txn_id": "3530164",
+        "exposure_usd": 49.0,
+        "detected_pattern": null,
+        "first_date": "2016-12-10",
+        "last_date": "2016-12-10",
+        "basis": "flagged_only"
+      },
+      "simulated_response_if_asked": null
+    },
+    {
+      "case_id": "HHG-004",
+      "trigger_type": "customer_report",
+      "window_rows": 210,
+      "behavior_profile": {
+        "flagged_txn_id": "3583227",
+        "flagged_found": true,
+        "flagged_ts": "2016-12-29 01:53:54",
+        "flagged_amount": 128.33,
+        "risk_score_context_only": 0.34,
+        "history_count": 209,
+        "history_span_days": 175.08,
+        "stable_history": true,
+        "amount_median": 27.73,
+        "amount_ratio": 4.628,
+        "amount_percentile": 0.9904,
+        "amount_class": "extreme",
+        "flagged_product": "C",
+        "product_prior_count": 209,
+        "product_prior_share": 1.0,
+        "product_class": "established",
+        "flagged_channel": "online",
+        "channel_prior_count": 209,
+        "flagged_region": null,
+        "flagged_region_prior_count": 0,
+        "flagged_region_prior_in_person_count": 0,
+        "region_class": "not_applicable",
+        "home_region": null,
+        "home_region_count": 0,
+        "home_region_share": null,
+        "in_person_with_region_count": 0,
+        "online_txn_ids_48h": [
+          "3580804"
+        ],
+        "card_present_txn_ids_48h": [],
+        "is_new_device": true,
+        "device_status": "New",
+        "is_proxy": null,
+        "proxy_type": null,
+        "recurring_band_count": 0,
+        "recurring_band_denominator": 209,
+        "recurring_band_frequency": 0.0,
+        "baseline_online_per_48h": 2.4034,
+        "independent_evidence_families": [
+          "behavioral_anomaly",
+          "identity_anomaly",
+          "customer_statement"
+        ],
+        "benign_families": [],
+        "suspicious_findings": [
+          "extreme amount: 4.628x median $27.73, percentile 0.9904",
+          "device marked New for this account (id_15) -- not proof: people buy new phones"
+        ],
+        "benign_findings": [
+          "ProductCD C established (209 prior, share 1.0)"
+        ],
+        "unavailable_findings": [
+          "CNP: 2 online transactions inside one 48h window containing the flagged one (documented 2-4 burst); card baseline 2.40 online per 48h -> within routine volume",
+          "device network: 5 other card(s) used this profile, none within 48h of the flagged transaction"
+        ]
+      },
+      "signals": {
+        "card_testing": {
+          "fired": false,
+          "reason": "no qualifying sequence contains the flagged transaction",
+          "txn_ids": [],
+          "timestamps": [],
+          "amounts": [],
+          "small_auth_ids": [],
+          "larger_purchase_id": "",
+          "larger_purchase_amount": 0.0,
+          "purchase_over_100_cleared": false
+        },
+        "cnp_burst": {
+          "flagged_online": true,
+          "online_txn_ids": [
+            "3580804",
+            "3583227"
+          ],
+          "online_count": 2,
+          "excluded_in_person_ids": [],
+          "documented_burst": true,
+          "high_volume_online": false,
+          "baseline_online_per_48h": 2.4034,
+          "exceeds_baseline": false,
+          "reason": "2 online transactions inside one 48h window containing the flagged one (documented 2-4 burst); card baseline 2.40 online per 48h -> within routine volume",
+          "temporal_signal": false
+        },
+        "out_of_region": {
+          "fired": false,
+          "reason": "flagged transaction is online; out-of-region requires card-present use",
+          "flagged_channel": "online",
+          "flagged_region": null,
+          "home_region": null,
+          "flagged_region_prior_count": 0,
+          "flagged_region_prior_in_person_count": 0,
+          "home_region_count": 0,
+          "home_region_share": null,
+          "in_person_with_region_count": 0,
+          "home_activity_ids_48h": [],
+          "trip_candidate": false,
+          "evidence_ids": [],
+          "episode_ids": []
+        },
+        "recurrence": {
+          "tier": "none",
+          "reason": "no same-channel, same-ProductCD, amount-matching transaction 25-35 days earlier",
+          "tolerance_usd": 1.28,
+          "monthly_match_ids": [],
+          "second_cycle_match_ids": [],
+          "same_channel_product_prior_count": 209,
+          "band_count": 0,
+          "band_share": 0.0,
+          "collision_count": 0,
+          "collision_rate": 0.0,
+          "proxy_note": "ProductCD, channel and amount are proxies for 'same merchant': this dataset has no merchant-name column."
+        },
+        "device_network": {
+          "available": true,
+          "device_profile_id": "D57670931664e",
+          "device_profile_label": "firefox 47.0",
+          "total_distinct_cards": 6,
+          "other_card_count": 5,
+          "generic_profile": false,
+          "other_cards_48h": [],
+          "matching_txns_48h": [],
+          "meaningful_match": false,
+          "corroborated": false,
+          "corroboration_basis": "",
+          "corroborated_card_ids": [],
+          "corroborating_txn_ids": [],
+          "confirmed_fraud_case_ids": [],
+          "reason": "5 other card(s) used this profile, none within 48h of the flagged transaction"
+        }
+      },
+      "customer_statement": "denies",
+      "families_before_statement": {
+        "suspicious": [
+          "behavioral_anomaly",
+          "identity_anomaly"
+        ],
+        "benign": [],
+        "strong_suspicious": [
+          "extreme_amount_with_identity_anomaly"
+        ],
+        "detail": {
+          "suspicious:behavioral_anomaly": "amount 4.628x median, percentile 0.9904",
+          "suspicious:identity_anomaly": "device marked New for this account (id_15)"
+        },
+        "single_signal": false
+      },
+      "families": {
+        "suspicious": [
+          "behavioral_anomaly",
+          "identity_anomaly",
+          "customer_statement"
+        ],
+        "benign": [],
+        "strong_suspicious": [
+          "extreme_amount_with_identity_anomaly"
+        ],
+        "detail": {
+          "suspicious:behavioral_anomaly": "amount 4.628x median, percentile 0.9904",
+          "suspicious:identity_anomaly": "device marked New for this account (id_15)",
+          "suspicious:customer_statement": "customer states they did not make the transaction"
+        },
+        "single_signal": false
+      },
+      "episode": {
+        "txn_ids": [
+          "3583227"
+        ],
+        "first_txn_id": "3583227",
+        "exposure_usd": 128.33,
+        "detected_pattern": null,
+        "first_date": "2016-12-29",
+        "last_date": "2016-12-29",
+        "basis": "flagged_only"
+      },
+      "simulated_response_if_asked": null
+    },
+    {
+      "case_id": "HHG-005",
+      "trigger_type": "risk_score",
+      "window_rows": 91,
+      "behavior_profile": {
+        "flagged_txn_id": "3523199",
+        "flagged_found": true,
+        "flagged_ts": "2016-12-07 21:38:37",
+        "flagged_amount": 100.07,
+        "risk_score_context_only": 0.54,
+        "history_count": 90,
+        "history_span_days": 158.23,
+        "stable_history": true,
+        "amount_median": 117.01,
+        "amount_ratio": 0.855,
+        "amount_percentile": 0.2333,
+        "amount_class": "normal",
+        "flagged_product": "R",
+        "product_prior_count": 6,
+        "product_prior_share": 0.0667,
+        "product_class": "established",
+        "flagged_channel": "online",
+        "channel_prior_count": 21,
+        "flagged_region": "330.0",
+        "flagged_region_prior_count": 85,
+        "flagged_region_prior_in_person_count": 68,
+        "region_class": "not_applicable",
+        "home_region": "330.0",
+        "home_region_count": 68,
+        "home_region_share": 0.9855,
+        "in_person_with_region_count": 69,
+        "online_txn_ids_48h": [],
+        "card_present_txn_ids_48h": [],
+        "is_new_device": true,
+        "device_status": "New",
+        "is_proxy": null,
+        "proxy_type": null,
+        "recurring_band_count": 1,
+        "recurring_band_denominator": 6,
+        "recurring_band_frequency": 0.1667,
+        "baseline_online_per_48h": 0.2688,
+        "independent_evidence_families": [
+          "identity_anomaly"
+        ],
+        "benign_families": [
+          "behavioral_consistency"
+        ],
+        "suspicious_findings": [
+          "device marked New for this account (id_15) -- not proof: people buy new phones"
+        ],
+        "benign_findings": [
+          "normal amount: 0.855x median $117.01, percentile 0.2333",
+          "ProductCD R established (6 prior, share 0.0667)"
+        ],
+        "unavailable_findings": [
+          "CNP: only the flagged online transaction within 48h",
+          "device network: generic device profile: 110 distinct cards on/before cutoff (> 20); contextual only"
+        ]
+      },
+      "signals": {
+        "card_testing": {
+          "fired": false,
+          "reason": "no qualifying sequence contains the flagged transaction",
+          "txn_ids": [],
+          "timestamps": [],
+          "amounts": [],
+          "small_auth_ids": [],
+          "larger_purchase_id": "",
+          "larger_purchase_amount": 0.0,
+          "purchase_over_100_cleared": false
+        },
+        "cnp_burst": {
+          "flagged_online": true,
+          "online_txn_ids": [
+            "3523199"
+          ],
+          "online_count": 1,
+          "excluded_in_person_ids": [],
+          "documented_burst": false,
+          "high_volume_online": false,
+          "baseline_online_per_48h": 0.2688,
+          "exceeds_baseline": null,
+          "reason": "only the flagged online transaction within 48h",
+          "temporal_signal": false
+        },
+        "out_of_region": {
+          "fired": false,
+          "reason": "flagged transaction is online; out-of-region requires card-present use",
+          "flagged_channel": "online",
+          "flagged_region": "330.0",
+          "home_region": "330.0",
+          "flagged_region_prior_count": 85,
+          "flagged_region_prior_in_person_count": 68,
+          "home_region_count": 68,
+          "home_region_share": 0.9855,
+          "in_person_with_region_count": 69,
+          "home_activity_ids_48h": [],
+          "trip_candidate": false,
+          "evidence_ids": [],
+          "episode_ids": []
+        },
+        "recurrence": {
+          "tier": "none",
+          "reason": "no same-channel, same-ProductCD, amount-matching transaction 25-35 days earlier",
+          "tolerance_usd": 1.0,
+          "monthly_match_ids": [],
+          "second_cycle_match_ids": [],
+          "same_channel_product_prior_count": 6,
+          "band_count": 1,
+          "band_share": 0.1667,
+          "collision_count": 1,
+          "collision_rate": 0.1667,
+          "proxy_note": "ProductCD, channel and amount are proxies for 'same merchant': this dataset has no merchant-name column."
+        },
+        "device_network": {
+          "available": true,
+          "device_profile_id": "Dfe5d00fa203f",
+          "device_profile_label": "iOS Device | iOS 9.3.5 | mobile safari 9.0 | 1024x768",
+          "total_distinct_cards": 110,
+          "other_card_count": 109,
+          "generic_profile": true,
+          "other_cards_48h": [],
+          "matching_txns_48h": [],
+          "meaningful_match": false,
+          "corroborated": false,
+          "corroboration_basis": "",
+          "corroborated_card_ids": [],
+          "corroborating_txn_ids": [],
+          "confirmed_fraud_case_ids": [],
+          "reason": "generic device profile: 110 distinct cards on/before cutoff (> 20); contextual only"
+        }
+      },
+      "customer_statement": null,
+      "families_before_statement": {
+        "suspicious": [
+          "identity_anomaly"
+        ],
+        "benign": [
+          "behavioral_consistency"
+        ],
+        "strong_suspicious": [],
+        "detail": {
+          "benign:behavioral_consistency": "normal amount (0.855x median) on an established ProductCD R",
+          "suspicious:identity_anomaly": "device marked New for this account (id_15)"
+        },
+        "single_signal": true
+      },
+      "families": {
+        "suspicious": [
+          "identity_anomaly"
+        ],
+        "benign": [
+          "behavioral_consistency"
+        ],
+        "strong_suspicious": [],
+        "detail": {
+          "benign:behavioral_consistency": "normal amount (0.855x median) on an established ProductCD R",
+          "suspicious:identity_anomaly": "device marked New for this account (id_15)"
+        },
+        "single_signal": true
+      },
+      "episode": {
+        "txn_ids": [
+          "3523199"
+        ],
+        "first_txn_id": "3523199",
+        "exposure_usd": 100.07,
+        "detected_pattern": null,
+        "first_date": "2016-12-07",
+        "last_date": "2016-12-07",
+        "basis": "flagged_only"
+      },
+      "simulated_response_if_asked": {
+        "response": "confirmed_legitimate",
+        "text": "Simulated assumption: customer confirms they made this $100.07 purchase. Rule: confirm -- every behavioral feature is consistent with the card's own history. A device marked New does not block confirmation on its own. Metrics: history 90 prior txns; amount 0.855x median $117.01 (percentile 0.2333, normal); ProductCD R established (6 prior); channel online; device New.",
+        "rule": "confirm -- every behavioral feature is consistent with the card's own history"
+      }
+    },
+    {
+      "case_id": "HHG-006",
+      "trigger_type": "customer_report",
+      "window_rows": 201,
+      "behavior_profile": {
+        "flagged_txn_id": "3476682",
+        "flagged_found": true,
+        "flagged_ts": "2016-11-21 20:30:00",
+        "flagged_amount": 482.12,
+        "risk_score_context_only": 0.25,
+        "history_count": 199,
+        "history_span_days": 139.18,
+        "stable_history": true,
+        "amount_median": 62.93,
+        "amount_ratio": 7.661,
+        "amount_percentile": 0.9598,
+        "amount_class": "elevated",
+        "flagged_product": "C",
+        "product_prior_count": 3,
+        "product_prior_share": 0.0151,
+        "product_class": "established",
+        "flagged_channel": "online",
+        "channel_prior_count": 5,
+        "flagged_region": "264.0",
+        "flagged_region_prior_count": 28,
+        "flagged_region_prior_in_person_count": 26,
+        "region_class": "not_applicable",
+        "home_region": "264.0",
+        "home_region_count": 26,
+        "home_region_share": 0.134,
+        "in_person_with_region_count": 194,
+        "online_txn_ids_48h": [
+          "3476602",
+          "3476633",
+          "3476665"
+        ],
+        "card_present_txn_ids_48h": [
+          "3473012",
+          "3474057",
+          "3477578"
+        ],
+        "is_new_device": true,
+        "device_status": "New",
+        "is_proxy": null,
+        "proxy_type": null,
+        "recurring_band_count": 1,
+        "recurring_band_denominator": 3,
+        "recurring_band_frequency": 0.3333,
+        "baseline_online_per_48h": 0.0292,
+        "independent_evidence_families": [
+          "temporal_pattern",
+          "identity_anomaly",
+          "customer_statement"
+        ],
+        "benign_families": [],
+        "suspicious_findings": [
+          "elevated but not extreme amount: 7.661x median, percentile 0.9598",
+          "device marked New for this account (id_15) -- not proof: people buy new phones",
+          "CNP: 4 online transactions inside one 48h window containing the flagged one (documented 2-4 burst); card baseline 0.03 online per 48h -> above routine volume"
+        ],
+        "benign_findings": [
+          "ProductCD C established (3 prior, share 0.0151)"
+        ],
+        "unavailable_findings": [
+          "device network: generic device profile: 494 distinct cards on/before cutoff (> 20); contextual only"
+        ]
+      },
+      "signals": {
+        "card_testing": {
+          "fired": false,
+          "reason": "no qualifying sequence contains the flagged transaction",
+          "txn_ids": [],
+          "timestamps": [],
+          "amounts": [],
+          "small_auth_ids": [],
+          "larger_purchase_id": "",
+          "larger_purchase_amount": 0.0,
+          "purchase_over_100_cleared": false
+        },
+        "cnp_burst": {
+          "flagged_online": true,
+          "online_txn_ids": [
+            "3476602",
+            "3476633",
+            "3476665",
+            "3476682"
+          ],
+          "online_count": 4,
+          "excluded_in_person_ids": [
+            "3473012",
+            "3474057",
+            "3477578"
+          ],
+          "documented_burst": true,
+          "high_volume_online": false,
+          "baseline_online_per_48h": 0.0292,
+          "exceeds_baseline": true,
+          "reason": "4 online transactions inside one 48h window containing the flagged one (documented 2-4 burst); card baseline 0.03 online per 48h -> above routine volume",
+          "temporal_signal": true
+        },
+        "out_of_region": {
+          "fired": false,
+          "reason": "flagged transaction is online; out-of-region requires card-present use",
+          "flagged_channel": "online",
+          "flagged_region": "264.0",
+          "home_region": "264.0",
+          "flagged_region_prior_count": 28,
+          "flagged_region_prior_in_person_count": 26,
+          "home_region_count": 26,
+          "home_region_share": 0.134,
+          "in_person_with_region_count": 194,
+          "home_activity_ids_48h": [],
+          "trip_candidate": false,
+          "evidence_ids": [],
+          "episode_ids": []
+        },
+        "recurrence": {
+          "tier": "none",
+          "reason": "no same-channel, same-ProductCD, amount-matching transaction 25-35 days earlier",
+          "tolerance_usd": 4.82,
+          "monthly_match_ids": [],
+          "second_cycle_match_ids": [],
+          "same_channel_product_prior_count": 3,
+          "band_count": 1,
+          "band_share": 0.3333,
+          "collision_count": 1,
+          "collision_rate": 0.3333,
+          "proxy_note": "ProductCD, channel and amount are proxies for 'same merchant': this dataset has no merchant-name column."
+        },
+        "device_network": {
+          "available": true,
+          "device_profile_id": "D00346c61fa47",
+          "device_profile_label": "Trident/7.0 | Windows 7 | ie 11.0 for desktop | 1920x1080",
+          "total_distinct_cards": 494,
+          "other_card_count": 493,
+          "generic_profile": true,
+          "other_cards_48h": [
+            "C01982-K2",
+            "C02859-K1",
+            "C04108-K2",
+            "C07171-K2",
+            "C10448-K1",
+            "C11865-K1"
+          ],
+          "matching_txns_48h": [
+            {
+              "txn_id": "3471684",
+              "ts": "2016-11-19 22:13:20",
+              "amount": 74.94,
+              "risk_score": 0.5,
+              "customer_id": "C07171",
+              "card_id": "C07171-K2"
+            },
+            {
+              "txn_id": "3472754",
+              "ts": "2016-11-20 11:48:56",
+              "amount": 25.03,
+              "risk_score": 0.03,
+              "customer_id": "C01982",
+              "card_id": "C01982-K2"
+            },
+            {
+              "txn_id": "3473417",
+              "ts": "2016-11-20 16:52:24",
+              "amount": 74.99,
+              "risk_score": 0.44,
+              "customer_id": "C02859",
+              "card_id": "C02859-K1"
+            },
+            {
+              "txn_id": "3473438",
+              "ts": "2016-11-20 17:02:11",
+              "amount": 100.0,
+              "risk_score": 0.07,
+              "customer_id": "C10448",
+              "card_id": "C10448-K1"
+            },
+            {
+              "txn_id": "3474255",
+              "ts": "2016-11-20 21:26:49",
+              "amount": 49.96,
+              "risk_score": 0.16,
+              "customer_id": "C11865",
+              "card_id": "C11865-K1"
+            },
+            {
+              "txn_id": "3476006",
+              "ts": "2016-11-21 16:23:33",
+              "amount": 99.94,
+              "risk_score": 0.81,
+              "customer_id": "C04108",
+              "card_id": "C04108-K2"
+            }
+          ],
+          "meaningful_match": false,
+          "corroborated": false,
+          "corroboration_basis": "",
+          "corroborated_card_ids": [],
+          "corroborating_txn_ids": [],
+          "confirmed_fraud_case_ids": [],
+          "reason": "generic device profile: 494 distinct cards on/before cutoff (> 20); contextual only"
+        }
+      },
+      "customer_statement": "denies",
+      "families_before_statement": {
+        "suspicious": [
+          "temporal_pattern",
+          "identity_anomaly"
+        ],
+        "benign": [],
+        "strong_suspicious": [],
+        "detail": {
+          "suspicious:temporal_pattern": "4 online transactions inside one 48h window containing the flagged one (documented 2-4 burst); card baseline 0.03 online per 48h -> above routine volume",
+          "suspicious:identity_anomaly": "device marked New for this account (id_15)"
+        },
+        "single_signal": false
+      },
+      "families": {
+        "suspicious": [
+          "temporal_pattern",
+          "identity_anomaly",
+          "customer_statement"
+        ],
+        "benign": [],
+        "strong_suspicious": [],
+        "detail": {
+          "suspicious:temporal_pattern": "4 online transactions inside one 48h window containing the flagged one (documented 2-4 burst); card baseline 0.03 online per 48h -> above routine volume",
+          "suspicious:identity_anomaly": "device marked New for this account (id_15)",
+          "suspicious:customer_statement": "customer states they did not make the transaction"
+        },
+        "single_signal": false
+      },
+      "episode": {
+        "txn_ids": [
+          "3476602",
+          "3476633",
+          "3476665",
+          "3476682"
+        ],
+        "first_txn_id": "3476602",
+        "exposure_usd": 1906.07,
+        "detected_pattern": "cnp_burst",
+        "first_date": "2016-11-21",
+        "last_date": "2016-11-21",
+        "basis": "documented_cnp_burst"
+      },
+      "simulated_response_if_asked": null
+    },
+    {
+      "case_id": "HHG-007",
+      "trigger_type": "risk_score",
+      "window_rows": 2436,
+      "behavior_profile": {
+        "flagged_txn_id": "3514948",
+        "flagged_found": true,
+        "flagged_ts": "2016-12-05 00:46:14",
+        "flagged_amount": 111.92,
+        "risk_score_context_only": 0.87,
+        "history_count": 2432,
+        "history_span_days": 154.99,
+        "stable_history": true,
+        "amount_median": 77.03,
+        "amount_ratio": 1.453,
+        "amount_percentile": 0.7081,
+        "amount_class": "normal",
+        "flagged_product": "W",
+        "product_prior_count": 2216,
+        "product_prior_share": 0.9112,
+        "product_class": "established",
+        "flagged_channel": "in_person",
+        "channel_prior_count": 2216,
+        "flagged_region": "264.0",
+        "flagged_region_prior_count": 2221,
+        "flagged_region_prior_in_person_count": 2050,
+        "region_class": "established",
+        "home_region": "264.0",
+        "home_region_count": 2050,
+        "home_region_share": 0.9251,
+        "in_person_with_region_count": 2216,
+        "online_txn_ids_48h": [],
+        "card_present_txn_ids_48h": [
+          "3509151",
+          "3509355",
+          "3509392",
+          "3509466",
+          "3510700",
+          "3511523",
+          "3511607",
+          "3511937",
+          "3512302",
+          "3512690",
+          "3512716",
+          "3513073",
+          "3513079",
+          "3513351",
+          "3513366",
+          "3513495",
+          "3513664",
+          "3514092",
+          "3514137",
+          "3514145",
+          "3514278",
+          "3514335",
+          "3514573",
+          "3515001",
+          "3515045",
+          "3515193"
+        ],
+        "is_new_device": null,
+        "device_status": null,
+        "is_proxy": null,
+        "proxy_type": null,
+        "recurring_band_count": 5,
+        "recurring_band_denominator": 2216,
+        "recurring_band_frequency": 0.0023,
+        "baseline_online_per_48h": 2.8237,
+        "independent_evidence_families": [],
+        "benign_families": [
+          "behavioral_consistency",
+          "geographic_consistency"
+        ],
+        "suspicious_findings": [],
+        "benign_findings": [
+          "normal amount: 1.453x median $77.03, percentile 0.7081",
+          "ProductCD W established (2216 prior, share 0.9112)",
+          "region 264.0 established (2050 prior in-person)",
+          "recurrence strong: exactly one amount match (+/-$1.12) 32 days earlier, same channel and ProductCD; band collision rate 0.1% of 2216 prior"
+        ],
+        "unavailable_findings": []
+      },
+      "signals": {
+        "card_testing": {
+          "fired": false,
+          "reason": "no qualifying sequence contains the flagged transaction",
+          "txn_ids": [],
+          "timestamps": [],
+          "amounts": [],
+          "small_auth_ids": [],
+          "larger_purchase_id": "",
+          "larger_purchase_amount": 0.0,
+          "purchase_over_100_cleared": false
+        },
+        "cnp_burst": {
+          "flagged_online": false,
+          "online_txn_ids": [],
+          "online_count": 0,
+          "excluded_in_person_ids": [
+            "3509151",
+            "3509355",
+            "3509392",
+            "3509466",
+            "3510700",
+            "3511523",
+            "3511607",
+            "3511937",
+            "3512302",
+            "3512690",
+            "3512716",
+            "3513073",
+            "3513079",
+            "3513351",
+            "3513366",
+            "3513495",
+            "3513664",
+            "3514092",
+            "3514137",
+            "3514145",
+            "3514278",
+            "3514335",
+            "3514573",
+            "3515001",
+            "3515045",
+            "3515193"
+          ],
+          "documented_burst": false,
+          "high_volume_online": false,
+          "baseline_online_per_48h": null,
+          "exceeds_baseline": null,
+          "reason": "flagged transaction channel is in_person, not online",
+          "temporal_signal": false
+        },
+        "out_of_region": {
+          "fired": false,
+          "reason": "region 264.0 already appears 2221 time(s) in this card's prior history; it is not a region the cardholder has no history in",
+          "flagged_channel": "in_person",
+          "flagged_region": "264.0",
+          "home_region": "264.0",
+          "flagged_region_prior_count": 2221,
+          "flagged_region_prior_in_person_count": 2050,
+          "home_region_count": 2050,
+          "home_region_share": 0.9251,
+          "in_person_with_region_count": 2216,
+          "home_activity_ids_48h": [],
+          "trip_candidate": false,
+          "evidence_ids": [],
+          "episode_ids": []
+        },
+        "recurrence": {
+          "tier": "strong",
+          "reason": "exactly one amount match (+/-$1.12) 32 days earlier, same channel and ProductCD; band collision rate 0.1% of 2216 prior",
+          "tolerance_usd": 1.12,
+          "monthly_match_ids": [
+            "3424567"
+          ],
+          "second_cycle_match_ids": [],
+          "same_channel_product_prior_count": 2216,
+          "band_count": 5,
+          "band_share": 0.0023,
+          "collision_count": 3,
+          "collision_rate": 0.0014,
+          "proxy_note": "ProductCD, channel and amount are proxies for 'same merchant': this dataset has no merchant-name column."
+        },
+        "device_network": {
+          "available": false,
+          "device_profile_id": "",
+          "device_profile_label": "",
+          "total_distinct_cards": 0,
+          "other_card_count": 0,
+          "generic_profile": false,
+          "other_cards_48h": [],
+          "matching_txns_48h": [],
+          "meaningful_match": false,
+          "corroborated": false,
+          "corroboration_basis": "",
+          "corroborated_card_ids": [],
+          "corroborating_txn_ids": [],
+          "confirmed_fraud_case_ids": [],
+          "reason": "no device record (in-person or missing identity)"
+        }
+      },
+      "customer_statement": null,
+      "families_before_statement": {
+        "suspicious": [],
+        "benign": [
+          "behavioral_consistency",
+          "geographic_consistency"
+        ],
+        "strong_suspicious": [],
+        "detail": {
+          "benign:behavioral_consistency": "normal amount (1.453x median) on an established ProductCD W",
+          "benign:geographic_consistency": "region 264.0 has 2050 prior in-person uses"
+        },
+        "single_signal": true
+      },
+      "families": {
+        "suspicious": [],
+        "benign": [
+          "behavioral_consistency",
+          "geographic_consistency"
+        ],
+        "strong_suspicious": [],
+        "detail": {
+          "benign:behavioral_consistency": "normal amount (1.453x median) on an established ProductCD W",
+          "benign:geographic_consistency": "region 264.0 has 2050 prior in-person uses"
+        },
+        "single_signal": true
+      },
+      "episode": {
+        "txn_ids": [
+          "3514948"
+        ],
+        "first_txn_id": "3514948",
+        "exposure_usd": 111.92,
+        "detected_pattern": null,
+        "first_date": "2016-12-05",
+        "last_date": "2016-12-05",
+        "basis": "flagged_only"
+      },
+      "simulated_response_if_asked": {
+        "response": "confirmed_legitimate",
+        "text": "Simulated assumption: customer confirms they made this $111.92 purchase. Rule: confirm -- every behavioral feature is consistent with the card's own history. Metrics: history 2432 prior txns; amount 1.453x median $77.03 (percentile 0.7081, normal); ProductCD W established (2216 prior); channel in_person; region 264.0 established.",
+        "rule": "confirm -- every behavioral feature is consistent with the card's own history"
+      }
+    },
+    {
+      "case_id": "HHG-008",
+      "trigger_type": "customer_report",
+      "window_rows": 901,
+      "behavior_profile": {
+        "flagged_txn_id": "3558054",
+        "flagged_found": true,
+        "flagged_ts": "2016-12-19 22:08:56",
+        "flagged_amount": 55.68,
+        "risk_score_context_only": 0.38,
+        "history_count": 900,
+        "history_span_days": 170.89,
+        "stable_history": true,
+        "amount_median": 39.38,
+        "amount_ratio": 1.414,
+        "amount_percentile": 0.68,
+        "amount_class": "normal",
+        "flagged_product": "C",
+        "product_prior_count": 899,
+        "product_prior_share": 0.9989,
+        "product_class": "established",
+        "flagged_channel": "online",
+        "channel_prior_count": 899,
+        "flagged_region": null,
+        "flagged_region_prior_count": 0,
+        "flagged_region_prior_in_person_count": 0,
+        "region_class": "not_applicable",
+        "home_region": "299.0",
+        "home_region_count": 1,
+        "home_region_share": 1.0,
+        "in_person_with_region_count": 1,
+        "online_txn_ids_48h": [
+          "3553223",
+          "3553269",
+          "3553275",
+          "3553281",
+          "3554288",
+          "3554589",
+          "3554683",
+          "3555638",
+          "3555768",
+          "3556719",
+          "3557118",
+          "3557979",
+          "3557987"
+        ],
+        "card_present_txn_ids_48h": [],
+        "is_new_device": false,
+        "device_status": "Found",
+        "is_proxy": null,
+        "proxy_type": null,
+        "recurring_band_count": 7,
+        "recurring_band_denominator": 899,
+        "recurring_band_frequency": 0.0078,
+        "baseline_online_per_48h": 10.4918,
+        "independent_evidence_families": [],
+        "benign_families": [
+          "behavioral_consistency",
+          "customer_confirmation"
+        ],
+        "suspicious_findings": [],
+        "benign_findings": [
+          "normal amount: 1.414x median $39.38, percentile 0.68",
+          "ProductCD C established (899 prior, share 0.9989)",
+          "device Found for this account (id_15)",
+          "recurrence strong: exactly one amount match (+/-$0.56) 31 days earlier, same channel and ProductCD; band collision rate 0.6% of 899 prior"
+        ],
+        "unavailable_findings": [
+          "CNP: 14 online transactions inside one 48h window: high-volume online activity, not the documented 2-4 burst; card baseline 10.49 online per 48h -> within routine volume",
+          "device network: generic device profile: 125 distinct cards on/before cutoff (> 20); contextual only"
+        ]
+      },
+      "signals": {
+        "card_testing": {
+          "fired": false,
+          "reason": "no qualifying sequence contains the flagged transaction",
+          "txn_ids": [],
+          "timestamps": [],
+          "amounts": [],
+          "small_auth_ids": [],
+          "larger_purchase_id": "",
+          "larger_purchase_amount": 0.0,
+          "purchase_over_100_cleared": false
+        },
+        "cnp_burst": {
+          "flagged_online": true,
+          "online_txn_ids": [
+            "3553223",
+            "3553269",
+            "3553275",
+            "3553281",
+            "3554288",
+            "3554589",
+            "3554683",
+            "3555638",
+            "3555768",
+            "3556719",
+            "3557118",
+            "3557979",
+            "3557987",
+            "3558054"
+          ],
+          "online_count": 14,
+          "excluded_in_person_ids": [],
+          "documented_burst": false,
+          "high_volume_online": true,
+          "baseline_online_per_48h": 10.4918,
+          "exceeds_baseline": false,
+          "reason": "14 online transactions inside one 48h window: high-volume online activity, not the documented 2-4 burst; card baseline 10.49 online per 48h -> within routine volume",
+          "temporal_signal": false
+        },
+        "out_of_region": {
+          "fired": false,
+          "reason": "flagged transaction is online; out-of-region requires card-present use",
+          "flagged_channel": "online",
+          "flagged_region": null,
+          "home_region": "299.0",
+          "flagged_region_prior_count": 0,
+          "flagged_region_prior_in_person_count": 0,
+          "home_region_count": 1,
+          "home_region_share": 1.0,
+          "in_person_with_region_count": 1,
+          "home_activity_ids_48h": [],
+          "trip_candidate": false,
+          "evidence_ids": [],
+          "episode_ids": []
+        },
+        "recurrence": {
+          "tier": "strong",
+          "reason": "exactly one amount match (+/-$0.56) 31 days earlier, same channel and ProductCD; band collision rate 0.6% of 899 prior",
+          "tolerance_usd": 0.56,
+          "monthly_match_ids": [
+            "3469864"
+          ],
+          "second_cycle_match_ids": [],
+          "same_channel_product_prior_count": 899,
+          "band_count": 7,
+          "band_share": 0.0078,
+          "collision_count": 5,
+          "collision_rate": 0.0056,
+          "proxy_note": "ProductCD, channel and amount are proxies for 'same merchant': this dataset has no merchant-name column."
+        },
+        "device_network": {
+          "available": true,
+          "device_profile_id": "D4fb68da248b8",
+          "device_profile_label": "chrome 66.0",
+          "total_distinct_cards": 125,
+          "other_card_count": 124,
+          "generic_profile": true,
+          "other_cards_48h": [
+            "C00027-K1",
+            "C00294-K2",
+            "C00426-K2",
+            "C01521-K2",
+            "C01983-K1",
+            "C02147-K2",
+            "C02456-K1",
+            "C02545-K2",
+            "C02782-K2",
+            "C02897-K1",
+            "C03218-K2",
+            "C03729-K1",
+            "C04083-K1",
+            "C05031-K2",
+            "C05381-K2",
+            "C05423-K1",
+            "C06740-K1",
+            "C06744-K2",
+            "C07134-K2",
+            "C07562-K2",
+            "C07576-K1",
+            "C08391-K2",
+            "C08537-K1",
+            "C08962-K2",
+            "C09657-K2",
+            "C09835-K1",
+            "C10245-K1",
+            "C10630-K1",
+            "C10837-K2",
+            "C10957-K2",
+            "C11352-K1",
+            "C11509-K2",
+            "C11807-K1",
+            "C11919-K2",
+            "C11923-K2",
+            "C12028-K2",
+            "C13407-K1"
+          ],
+          "matching_txns_48h": [
+            {
+              "txn_id": "3552526",
+              "ts": "2016-12-17 22:42:26",
+              "amount": 14.08,
+              "risk_score": 0.41,
+              "customer_id": "C11807",
+              "card_id": "C11807-K1"
+            },
+            {
+              "txn_id": "3552572",
+              "ts": "2016-12-17 22:52:13",
+              "amount": 25.02,
+              "risk_score": 0.02,
+              "customer_id": "C11352",
+              "card_id": "C11352-K1"
+            },
+            {
+              "txn_id": "3552577",
+              "ts": "2016-12-17 22:52:38",
+              "amount": 17.5,
+              "risk_score": 0.02,
+              "customer_id": "C03729",
+              "card_id": "C03729-K1"
+            },
+            {
+              "txn_id": "3552710",
+              "ts": "2016-12-17 23:40:46",
+              "amount": 27.48,
+              "risk_score": 0.11,
+              "customer_id": "C02545",
+              "card_id": "C02545-K2"
+            },
+            {
+              "txn_id": "3552834",
+              "ts": "2016-12-18 00:17:14",
+              "amount": 132.88,
+              "risk_score": 0.24,
+              "customer_id": "C08537",
+              "card_id": "C08537-K1"
+            },
+            {
+              "txn_id": "3552888",
+              "ts": "2016-12-18 00:31:41",
+              "amount": 8.35,
+              "risk_score": 0.41,
+              "customer_id": "C10837",
+              "card_id": "C10837-K2"
+            },
+            {
+              "txn_id": "3552900",
+              "ts": "2016-12-18 00:36:13",
+              "amount": 19.09,
+              "risk_score": 0.35,
+              "customer_id": "C02147",
+              "card_id": "C02147-K2"
+            },
+            {
+              "txn_id": "3552911",
+              "ts": "2016-12-18 00:39:28",
+              "amount": 8.36,
+              "risk_score": 0.54,
+              "customer_id": "C02147",
+              "card_id": "C02147-K2"
+            },
+            {
+              "txn_id": "3552923",
+              "ts": "2016-12-18 00:42:53",
+              "amount": 70.64,
+              "risk_score": 0.27,
+              "customer_id": "C09657",
+              "card_id": "C09657-K2"
+            },
+            {
+              "txn_id": "3552928",
+              "ts": "2016-12-18 00:45:19",
+              "amount": 8.33,
+              "risk_score": 0.92,
+              "customer_id": "C10837",
+              "card_id": "C10837-K2"
+            },
+            {
+              "txn_id": "3552969",
+              "ts": "2016-12-18 00:59:51",
+              "amount": 70.76,
+              "risk_score": 0.14,
+              "customer_id": "C09657",
+              "card_id": "C09657-K2"
+            },
+            {
+              "txn_id": "3553003",
+              "ts": "2016-12-18 01:10:25",
+              "amount": 131.68,
+              "risk_score": 0.02,
+              "customer_id": "C00294",
+              "card_id": "C00294-K2"
+            },
+            {
+              "txn_id": "3553098",
+              "ts": "2016-12-18 01:52:38",
+              "amount": 87.33,
+              "risk_score": 0.14,
+              "customer_id": "C07576",
+              "card_id": "C07576-K1"
+            },
+            {
+              "txn_id": "3553105",
+              "ts": "2016-12-18 01:58:05",
+              "amount": 9.21,
+              "risk_score": 0.42,
+              "customer_id": "C00027",
+              "card_id": "C00027-K1"
+            },
+            {
+              "txn_id": "3553188",
+              "ts": "2016-12-18 02:34:43",
+              "amount": 25.81,
+              "risk_score": 0.35,
+              "customer_id": "C07134",
+              "card_id": "C07134-K2"
+            },
+            {
+              "txn_id": "3553209",
+              "ts": "2016-12-18 02:46:34",
+              "amount": 25.83,
+              "risk_score": 0.13,
+              "customer_id": "C07134",
+              "card_id": "C07134-K2"
+            },
+            {
+              "txn_id": "3553231",
+              "ts": "2016-12-18 02:57:00",
+              "amount": 25.88,
+              "risk_score": 0.25,
+              "customer_id": "C07134",
+              "card_id": "C07134-K2"
+            },
+            {
+              "txn_id": "3553279",
+              "ts": "2016-12-18 03:18:49",
+              "amount": 9.48,
+              "risk_score": 0.09,
+              "customer_id": "C11919",
+              "card_id": "C11919-K2"
+            },
+            {
+              "txn_id": "3553280",
+              "ts": "2016-12-18 03:19:15",
+              "amount": 9.55,
+              "risk_score": 0.04,
+              "customer_id": "C00426",
+              "card_id": "C00426-K2"
+            },
+            {
+              "txn_id": "3553300",
+              "ts": "2016-12-18 03:34:14",
+              "amount": 14.02,
+              "risk_score": 0.24,
+              "customer_id": "C11923",
+              "card_id": "C11923-K2"
+            }
+          ],
+          "meaningful_match": false,
+          "corroborated": false,
+          "corroboration_basis": "",
+          "corroborated_card_ids": [],
+          "corroborating_txn_ids": [],
+          "confirmed_fraud_case_ids": [],
+          "reason": "generic device profile: 125 distinct cards on/before cutoff (> 20); contextual only"
+        }
+      },
+      "customer_statement": "disputes_recurring",
+      "families_before_statement": {
+        "suspicious": [],
+        "benign": [
+          "behavioral_consistency"
+        ],
+        "strong_suspicious": [],
+        "detail": {
+          "benign:behavioral_consistency": "normal amount (1.414x median) on an established ProductCD C"
+        },
+        "single_signal": true
+      },
+      "families": {
+        "suspicious": [],
+        "benign": [
+          "behavioral_consistency",
+          "customer_confirmation"
+        ],
+        "strong_suspicious": [],
+        "detail": {
+          "benign:behavioral_consistency": "normal amount (1.414x median) on an established ProductCD C",
+          "benign:customer_confirmation": "disputed charge matches the card's own strong recurring pattern"
+        },
+        "single_signal": true
+      },
+      "episode": {
+        "txn_ids": [
+          "3558054"
+        ],
+        "first_txn_id": "3558054",
+        "exposure_usd": 55.68,
+        "detected_pattern": null,
+        "first_date": "2016-12-19",
+        "last_date": "2016-12-19",
+        "basis": "flagged_only"
+      },
+      "simulated_response_if_asked": null
+    },
+    {
+      "case_id": "HHG-009",
+      "trigger_type": "customer_report",
+      "window_rows": 47,
+      "behavior_profile": {
+        "flagged_txn_id": "3581141",
+        "flagged_found": true,
+        "flagged_ts": "2016-12-28 12:10:53",
+        "flagged_amount": 30.02,
+        "risk_score_context_only": 0.28,
+        "history_count": 46,
+        "history_span_days": 176.65,
+        "stable_history": true,
+        "amount_median": 49.97,
+        "amount_ratio": 0.601,
+        "amount_percentile": 0.3043,
+        "amount_class": "normal",
+        "flagged_product": "S",
+        "product_prior_count": 39,
+        "product_prior_share": 0.8478,
+        "product_class": "established",
+        "flagged_channel": "online",
+        "channel_prior_count": 40,
+        "flagged_region": "203.0",
+        "flagged_region_prior_count": 1,
+        "flagged_region_prior_in_person_count": 1,
+        "region_class": "not_applicable",
+        "home_region": "441.0",
+        "home_region_count": 4,
+        "home_region_share": 0.6667,
+        "in_person_with_region_count": 6,
+        "online_txn_ids_48h": [],
+        "card_present_txn_ids_48h": [],
+        "is_new_device": false,
+        "device_status": "Found",
+        "is_proxy": null,
+        "proxy_type": null,
+        "recurring_band_count": 4,
+        "recurring_band_denominator": 39,
+        "recurring_band_frequency": 0.1026,
+        "baseline_online_per_48h": 0.4581,
+        "independent_evidence_families": [
+          "customer_statement"
+        ],
+        "benign_families": [
+          "behavioral_consistency"
+        ],
+        "suspicious_findings": [],
+        "benign_findings": [
+          "normal amount: 0.601x median $49.97, percentile 0.3043",
+          "ProductCD S established (39 prior, share 0.8478)",
+          "device Found for this account (id_15)"
+        ],
+        "unavailable_findings": [
+          "CNP: only the flagged online transaction within 48h"
+        ]
+      },
+      "signals": {
+        "card_testing": {
+          "fired": false,
+          "reason": "no qualifying sequence contains the flagged transaction",
+          "txn_ids": [],
+          "timestamps": [],
+          "amounts": [],
+          "small_auth_ids": [],
+          "larger_purchase_id": "",
+          "larger_purchase_amount": 0.0,
+          "purchase_over_100_cleared": false
+        },
+        "cnp_burst": {
+          "flagged_online": true,
+          "online_txn_ids": [
+            "3581141"
+          ],
+          "online_count": 1,
+          "excluded_in_person_ids": [],
+          "documented_burst": false,
+          "high_volume_online": false,
+          "baseline_online_per_48h": 0.4581,
+          "exceeds_baseline": null,
+          "reason": "only the flagged online transaction within 48h",
+          "temporal_signal": false
+        },
+        "out_of_region": {
+          "fired": false,
+          "reason": "flagged transaction is online; out-of-region requires card-present use",
+          "flagged_channel": "online",
+          "flagged_region": "203.0",
+          "home_region": "441.0",
+          "flagged_region_prior_count": 1,
+          "flagged_region_prior_in_person_count": 1,
+          "home_region_count": 4,
+          "home_region_share": 0.6667,
+          "in_person_with_region_count": 6,
+          "home_activity_ids_48h": [],
+          "trip_candidate": false,
+          "evidence_ids": [],
+          "episode_ids": []
+        },
+        "recurrence": {
+          "tier": "none",
+          "reason": "no same-channel, same-ProductCD, amount-matching transaction 25-35 days earlier",
+          "tolerance_usd": 0.5,
+          "monthly_match_ids": [],
+          "second_cycle_match_ids": [
+            "3381749"
+          ],
+          "same_channel_product_prior_count": 39,
+          "band_count": 4,
+          "band_share": 0.1026,
+          "collision_count": 3,
+          "collision_rate": 0.0769,
+          "proxy_note": "ProductCD, channel and amount are proxies for 'same merchant': this dataset has no merchant-name column."
+        },
+        "device_network": {
+          "available": false,
+          "device_profile_id": "",
+          "device_profile_label": "",
+          "total_distinct_cards": 0,
+          "other_card_count": 0,
+          "generic_profile": false,
+          "other_cards_48h": [],
+          "matching_txns_48h": [],
+          "meaningful_match": false,
+          "corroborated": false,
+          "corroboration_basis": "",
+          "corroborated_card_ids": [],
+          "corroborating_txn_ids": [],
+          "confirmed_fraud_case_ids": [],
+          "reason": "no device record (in-person or missing identity)"
+        }
+      },
+      "customer_statement": "denies",
+      "families_before_statement": {
+        "suspicious": [],
+        "benign": [
+          "behavioral_consistency"
+        ],
+        "strong_suspicious": [],
+        "detail": {
+          "benign:behavioral_consistency": "normal amount (0.601x median) on an established ProductCD S"
+        },
+        "single_signal": true
+      },
+      "families": {
+        "suspicious": [
+          "customer_statement"
+        ],
+        "benign": [
+          "behavioral_consistency"
+        ],
+        "strong_suspicious": [],
+        "detail": {
+          "benign:behavioral_consistency": "normal amount (0.601x median) on an established ProductCD S",
+          "suspicious:customer_statement": "customer states they did not make the transaction"
+        },
+        "single_signal": true
+      },
+      "episode": {
+        "txn_ids": [
+          "3581141"
+        ],
+        "first_txn_id": "3581141",
+        "exposure_usd": 30.02,
+        "detected_pattern": null,
+        "first_date": "2016-12-28",
+        "last_date": "2016-12-28",
+        "basis": "flagged_only"
+      },
+      "simulated_response_if_asked": null
+    },
+    {
+      "case_id": "HHG-010",
+      "trigger_type": "risk_score",
+      "window_rows": 34,
+      "behavior_profile": {
+        "flagged_txn_id": "3506725",
+        "flagged_found": true,
+        "flagged_ts": "2016-12-02 15:18:27",
+        "flagged_amount": 1000.03,
+        "risk_score_context_only": 0.9,
+        "history_count": 33,
+        "history_span_days": 148.64,
+        "stable_history": true,
+        "amount_median": 68.98,
+        "amount_ratio": 14.497,
+        "amount_percentile": 1.0,
+        "amount_class": "extreme",
+        "flagged_product": "R",
+        "product_prior_count": 9,
+        "product_prior_share": 0.2727,
+        "product_class": "established",
+        "flagged_channel": "online",
+        "channel_prior_count": 16,
+        "flagged_region": "469.0",
+        "flagged_region_prior_count": 24,
+        "flagged_region_prior_in_person_count": 11,
+        "region_class": "not_applicable",
+        "home_region": "469.0",
+        "home_region_count": 11,
+        "home_region_share": 0.6471,
+        "in_person_with_region_count": 17,
+        "online_txn_ids_48h": [],
+        "card_present_txn_ids_48h": [],
+        "is_new_device": true,
+        "device_status": "New",
+        "is_proxy": null,
+        "proxy_type": null,
+        "recurring_band_count": 0,
+        "recurring_band_denominator": 9,
+        "recurring_band_frequency": 0.0,
+        "baseline_online_per_48h": 0.2182,
+        "independent_evidence_families": [
+          "behavioral_anomaly",
+          "identity_anomaly"
+        ],
+        "benign_families": [],
+        "suspicious_findings": [
+          "extreme amount: 14.497x median $68.98, percentile 1.0",
+          "device marked New for this account (id_15) -- not proof: people buy new phones"
+        ],
+        "benign_findings": [
+          "ProductCD R established (9 prior, share 0.2727)"
+        ],
+        "unavailable_findings": [
+          "CNP: only the flagged online transaction within 48h",
+          "device network: generic device profile: 185 distinct cards on/before cutoff (> 20); contextual only"
+        ]
+      },
+      "signals": {
+        "card_testing": {
+          "fired": false,
+          "reason": "no qualifying sequence contains the flagged transaction",
+          "txn_ids": [],
+          "timestamps": [],
+          "amounts": [],
+          "small_auth_ids": [],
+          "larger_purchase_id": "",
+          "larger_purchase_amount": 0.0,
+          "purchase_over_100_cleared": false
+        },
+        "cnp_burst": {
+          "flagged_online": true,
+          "online_txn_ids": [
+            "3506725"
+          ],
+          "online_count": 1,
+          "excluded_in_person_ids": [],
+          "documented_burst": false,
+          "high_volume_online": false,
+          "baseline_online_per_48h": 0.2182,
+          "exceeds_baseline": null,
+          "reason": "only the flagged online transaction within 48h",
+          "temporal_signal": false
+        },
+        "out_of_region": {
+          "fired": false,
+          "reason": "flagged transaction is online; out-of-region requires card-present use",
+          "flagged_channel": "online",
+          "flagged_region": "469.0",
+          "home_region": "469.0",
+          "flagged_region_prior_count": 24,
+          "flagged_region_prior_in_person_count": 11,
+          "home_region_count": 11,
+          "home_region_share": 0.6471,
+          "in_person_with_region_count": 17,
+          "home_activity_ids_48h": [],
+          "trip_candidate": false,
+          "evidence_ids": [],
+          "episode_ids": []
+        },
+        "recurrence": {
+          "tier": "none",
+          "reason": "no same-channel, same-ProductCD, amount-matching transaction 25-35 days earlier",
+          "tolerance_usd": 10.0,
+          "monthly_match_ids": [],
+          "second_cycle_match_ids": [],
+          "same_channel_product_prior_count": 9,
+          "band_count": 0,
+          "band_share": 0.0,
+          "collision_count": 0,
+          "collision_rate": 0.0,
+          "proxy_note": "ProductCD, channel and amount are proxies for 'same merchant': this dataset has no merchant-name column."
+        },
+        "device_network": {
+          "available": true,
+          "device_profile_id": "Dbd75c3985a46",
+          "device_profile_label": "Windows | Windows 10 | edge 16.0 | 1366x768",
+          "total_distinct_cards": 185,
+          "other_card_count": 184,
+          "generic_profile": true,
+          "other_cards_48h": [
+            "C02250-K2",
+            "C03738-K2",
+            "C10308-K1",
+            "C12897-K1"
+          ],
+          "matching_txns_48h": [
+            {
+              "txn_id": "3500844",
+              "ts": "2016-11-30 17:39:55",
+              "amount": 100.04,
+              "risk_score": 0.12,
+              "customer_id": "C12897",
+              "card_id": "C12897-K1"
+            },
+            {
+              "txn_id": "3500928",
+              "ts": "2016-11-30 18:02:54",
+              "amount": 105.0,
+              "risk_score": 0.02,
+              "customer_id": "C10308",
+              "card_id": "C10308-K1"
+            },
+            {
+              "txn_id": "3500930",
+              "ts": "2016-11-30 18:03:53",
+              "amount": 105.01,
+              "risk_score": 0.34,
+              "customer_id": "C10308",
+              "card_id": "C10308-K1"
+            },
+            {
+              "txn_id": "3501023",
+              "ts": "2016-11-30 18:28:58",
+              "amount": 104.99,
+              "risk_score": 0.17,
+              "customer_id": "C10308",
+              "card_id": "C10308-K1"
+            },
+            {
+              "txn_id": "3501132",
+              "ts": "2016-11-30 19:00:43",
+              "amount": 104.97,
+              "risk_score": 0.07,
+              "customer_id": "C10308",
+              "card_id": "C10308-K1"
+            },
+            {
+              "txn_id": "3501177",
+              "ts": "2016-11-30 19:14:43",
+              "amount": 54.98,
+              "risk_score": 0.14,
+              "customer_id": "C10308",
+              "card_id": "C10308-K1"
+            },
+            {
+              "txn_id": "3502901",
+              "ts": "2016-12-01 10:22:57",
+              "amount": 25.04,
+              "risk_score": 0.06,
+              "customer_id": "C03738",
+              "card_id": "C03738-K2"
+            },
+            {
+              "txn_id": "3504429",
+              "ts": "2016-12-01 20:09:52",
+              "amount": 54.98,
+              "risk_score": 0.13,
+              "customer_id": "C10308",
+              "card_id": "C10308-K1"
+            },
+            {
+              "txn_id": "3504479",
+              "ts": "2016-12-01 20:27:53",
+              "amount": 110.09,
+              "risk_score": 0.07,
+              "customer_id": "C10308",
+              "card_id": "C10308-K1"
+            },
+            {
+              "txn_id": "3506263",
+              "ts": "2016-12-02 12:36:44",
+              "amount": 150.05,
+              "risk_score": 0.27,
+              "customer_id": "C02250",
+              "card_id": "C02250-K2"
+            },
+            {
+              "txn_id": "3507297",
+              "ts": "2016-12-02 18:01:49",
+              "amount": 55.09,
+              "risk_score": 0.01,
+              "customer_id": "C10308",
+              "card_id": "C10308-K1"
+            }
+          ],
+          "meaningful_match": false,
+          "corroborated": false,
+          "corroboration_basis": "",
+          "corroborated_card_ids": [],
+          "corroborating_txn_ids": [],
+          "confirmed_fraud_case_ids": [],
+          "reason": "generic device profile: 185 distinct cards on/before cutoff (> 20); contextual only"
+        }
+      },
+      "customer_statement": null,
+      "families_before_statement": {
+        "suspicious": [
+          "behavioral_anomaly",
+          "identity_anomaly"
+        ],
+        "benign": [],
+        "strong_suspicious": [
+          "extreme_amount_with_identity_anomaly"
+        ],
+        "detail": {
+          "suspicious:behavioral_anomaly": "amount 14.497x median, percentile 1.0",
+          "suspicious:identity_anomaly": "device marked New for this account (id_15)"
+        },
+        "single_signal": false
+      },
+      "families": {
+        "suspicious": [
+          "behavioral_anomaly",
+          "identity_anomaly"
+        ],
+        "benign": [],
+        "strong_suspicious": [
+          "extreme_amount_with_identity_anomaly"
+        ],
+        "detail": {
+          "suspicious:behavioral_anomaly": "amount 14.497x median, percentile 1.0",
+          "suspicious:identity_anomaly": "device marked New for this account (id_15)"
+        },
+        "single_signal": false
+      },
+      "episode": {
+        "txn_ids": [
+          "3506725"
+        ],
+        "first_txn_id": "3506725",
+        "exposure_usd": 1000.03,
+        "detected_pattern": null,
+        "first_date": "2016-12-02",
+        "last_date": "2016-12-02",
+        "basis": "flagged_only"
+      },
+      "simulated_response_if_asked": {
+        "response": "denies",
+        "text": "Simulated assumption: customer states they did not make this $1000.03 purchase and still has the card. Rule: deny -- 2 independent suspicious families (behavioral_anomaly, identity_anomaly) including strong signal(s) extreme_amount_with_identity_anomaly. Metrics: history 33 prior txns; amount 14.497x median $68.98 (percentile 1.0, extreme); ProductCD R established (9 prior); channel online; device New.",
+        "rule": "deny -- 2 independent suspicious families (behavioral_anomaly, identity_anomaly) including strong signal(s) extreme_amount_with_identity_anomaly"
+      }
+    },
+    {
+      "case_id": "HHG-011",
+      "trigger_type": "customer_report",
+      "window_rows": 10341,
+      "behavior_profile": {
+        "flagged_txn_id": "3583368",
+        "flagged_found": true,
+        "flagged_ts": "2016-12-29 03:27:44",
+        "flagged_amount": 131.3,
+        "risk_score_context_only": 0.39,
+        "history_count": 10335,
+        "history_span_days": 180.14,
+        "stable_history": true,
+        "amount_median": 28.58,
+        "amount_ratio": 4.594,
+        "amount_percentile": 0.9674,
+        "amount_class": "elevated",
+        "flagged_product": "C",
+        "product_prior_count": 10334,
+        "product_prior_share": 0.9999,
+        "product_class": "established",
+        "flagged_channel": "online",
+        "channel_prior_count": 10335,
+        "flagged_region": null,
+        "flagged_region_prior_count": 0,
+        "flagged_region_prior_in_person_count": 0,
+        "region_class": "not_applicable",
+        "home_region": null,
+        "home_region_count": 0,
+        "home_region_share": null,
+        "in_person_with_region_count": 0,
+        "online_txn_ids_48h": [
+          "3578405",
+          "3578451",
+          "3578471",
+          "3578475",
+          "3578483",
+          "3578486",
+          "3578491",
+          "3578496",
+          "3578506",
+          "3578817",
+          "3578995",
+          "3578997",
+          "3579400",
+          "3579407",
+          "3579576",
+          "3579597",
+          "3580137",
+          "3580202",
+          "3580219",
+          "3580232",
+          "3580348",
+          "3580380",
+          "3580403",
+          "3580417",
+          "3580427",
+          "3580478",
+          "3580544",
+          "3580712",
+          "3580765",
+          "3580776",
+          "3580815",
+          "3580821",
+          "3580907",
+          "3580933",
+          "3580951",
+          "3580992",
+          "3581048",
+          "3581345",
+          "3582082",
+          "3582107",
+          "3582142",
+          "3582175",
+          "3582178",
+          "3582327",
+          "3582338",
+          "3582375",
+          "3582413",
+          "3582602",
+          "3582624",
+          "3582671",
+          "3582738",
+          "3582868",
+          "3582897",
+          "3583101",
+          "3583140",
+          "3583199",
+          "3583229",
+          "3583348",
+          "3583406",
+          "3583411",
+          "3583415",
+          "3583417",
+          "3583435"
+        ],
+        "card_present_txn_ids_48h": [],
+        "is_new_device": true,
+        "device_status": "New",
+        "is_proxy": null,
+        "proxy_type": null,
+        "recurring_band_count": 14,
+        "recurring_band_denominator": 10334,
+        "recurring_band_frequency": 0.0014,
+        "baseline_online_per_48h": 115.3813,
+        "independent_evidence_families": [
+          "identity_anomaly",
+          "direct_network_corroboration",
+          "customer_statement"
+        ],
+        "benign_families": [],
+        "suspicious_findings": [
+          "elevated but not extreme amount: 4.594x median, percentile 0.9674",
+          "device marked New for this account (id_15) -- not proof: people buy new phones",
+          "device network: 2 other cards transacted on this 3-card device profile within 6h of each other at near-identical amounts"
+        ],
+        "benign_findings": [
+          "ProductCD C established (10334 prior, share 0.9999)"
+        ],
+        "unavailable_findings": [
+          "CNP: 62 online transactions inside one 48h window: high-volume online activity, not the documented 2-4 burst; card baseline 115.38 online per 48h -> within routine volume"
+        ]
+      },
+      "signals": {
+        "card_testing": {
+          "fired": false,
+          "reason": "no qualifying sequence contains the flagged transaction",
+          "txn_ids": [],
+          "timestamps": [],
+          "amounts": [],
+          "small_auth_ids": [],
+          "larger_purchase_id": "",
+          "larger_purchase_amount": 0.0,
+          "purchase_over_100_cleared": false
+        },
+        "cnp_burst": {
+          "flagged_online": true,
+          "online_txn_ids": [
+            "3578451",
+            "3578471",
+            "3578475",
+            "3578483",
+            "3578486",
+            "3578491",
+            "3578496",
+            "3578506",
+            "3578817",
+            "3578995",
+            "3578997",
+            "3579400",
+            "3579407",
+            "3579576",
+            "3579597",
+            "3580137",
+            "3580202",
+            "3580219",
+            "3580232",
+            "3580348",
+            "3580380",
+            "3580403",
+            "3580417",
+            "3580427",
+            "3580478",
+            "3580544",
+            "3580712",
+            "3580765",
+            "3580776",
+            "3580815",
+            "3580821",
+            "3580907",
+            "3580933",
+            "3580951",
+            "3580992",
+            "3581048",
+            "3581345",
+            "3582082",
+            "3582107",
+            "3582142",
+            "3582175",
+            "3582178",
+            "3582327",
+            "3582338",
+            "3582375",
+            "3582413",
+            "3582602",
+            "3582624",
+            "3582671",
+            "3582738",
+            "3582868",
+            "3582897",
+            "3583101",
+            "3583140",
+            "3583199",
+            "3583229",
+            "3583348",
+            "3583368",
+            "3583406",
+            "3583411",
+            "3583415",
+            "3583417"
+          ],
+          "online_count": 62,
+          "excluded_in_person_ids": [],
+          "documented_burst": false,
+          "high_volume_online": true,
+          "baseline_online_per_48h": 115.3813,
+          "exceeds_baseline": false,
+          "reason": "62 online transactions inside one 48h window: high-volume online activity, not the documented 2-4 burst; card baseline 115.38 online per 48h -> within routine volume",
+          "temporal_signal": false
+        },
+        "out_of_region": {
+          "fired": false,
+          "reason": "flagged transaction is online; out-of-region requires card-present use",
+          "flagged_channel": "online",
+          "flagged_region": null,
+          "home_region": null,
+          "flagged_region_prior_count": 0,
+          "flagged_region_prior_in_person_count": 0,
+          "home_region_count": 0,
+          "home_region_share": null,
+          "in_person_with_region_count": 0,
+          "home_activity_ids_48h": [],
+          "trip_candidate": false,
+          "evidence_ids": [],
+          "episode_ids": []
+        },
+        "recurrence": {
+          "tier": "none",
+          "reason": "no same-channel, same-ProductCD, amount-matching transaction 25-35 days earlier",
+          "tolerance_usd": 1.31,
+          "monthly_match_ids": [],
+          "second_cycle_match_ids": [
+            "3389493",
+            "3389533",
+            "3389542",
+            "3390485"
+          ],
+          "same_channel_product_prior_count": 10334,
+          "band_count": 14,
+          "band_share": 0.0014,
+          "collision_count": 9,
+          "collision_rate": 0.0009,
+          "proxy_note": "ProductCD, channel and amount are proxies for 'same merchant': this dataset has no merchant-name column."
+        },
+        "device_network": {
+          "available": true,
+          "device_profile_id": "Da1e0c3bdef2c",
+          "device_profile_label": "SM-G610F Build/NRD90M | chrome 66.0 for android",
+          "total_distinct_cards": 3,
+          "other_card_count": 2,
+          "generic_profile": false,
+          "other_cards_48h": [
+            "C03938-K1",
+            "C05595-K1"
+          ],
+          "matching_txns_48h": [
+            {
+              "txn_id": "3582730",
+              "ts": "2016-12-28 22:43:11",
+              "amount": 125.72,
+              "risk_score": 0.68,
+              "customer_id": "C05595",
+              "card_id": "C05595-K1"
+            },
+            {
+              "txn_id": "3582750",
+              "ts": "2016-12-28 22:48:51",
+              "amount": 125.59,
+              "risk_score": 0.22,
+              "customer_id": "C03938",
+              "card_id": "C03938-K1"
+            }
+          ],
+          "meaningful_match": true,
+          "corroborated": true,
+          "corroboration_basis": "near_identical_amounts",
+          "corroborated_card_ids": [
+            "C03938-K1",
+            "C05595-K1"
+          ],
+          "corroborating_txn_ids": [
+            "3582730",
+            "3582750"
+          ],
+          "confirmed_fraud_case_ids": [],
+          "reason": "2 other cards transacted on this 3-card device profile within 6h of each other at near-identical amounts"
+        }
+      },
+      "customer_statement": "denies",
+      "families_before_statement": {
+        "suspicious": [
+          "identity_anomaly",
+          "direct_network_corroboration"
+        ],
+        "benign": [],
+        "strong_suspicious": [
+          "direct_shared_origin"
+        ],
+        "detail": {
+          "suspicious:identity_anomaly": "device marked New for this account (id_15)",
+          "suspicious:direct_network_corroboration": "2 other cards transacted on this 3-card device profile within 6h of each other at near-identical amounts"
+        },
+        "single_signal": false
+      },
+      "families": {
+        "suspicious": [
+          "identity_anomaly",
+          "direct_network_corroboration",
+          "customer_statement"
+        ],
+        "benign": [],
+        "strong_suspicious": [
+          "direct_shared_origin"
+        ],
+        "detail": {
+          "suspicious:identity_anomaly": "device marked New for this account (id_15)",
+          "suspicious:direct_network_corroboration": "2 other cards transacted on this 3-card device profile within 6h of each other at near-identical amounts",
+          "suspicious:customer_statement": "customer states they did not make the transaction"
+        },
+        "single_signal": false
+      },
+      "episode": {
+        "txn_ids": [
+          "3583368"
+        ],
+        "first_txn_id": "3583368",
+        "exposure_usd": 131.3,
+        "detected_pattern": null,
+        "first_date": "2016-12-29",
+        "last_date": "2016-12-29",
+        "basis": "flagged_only"
+      },
+      "simulated_response_if_asked": null
+    },
+    {
+      "case_id": "HHG-012",
+      "trigger_type": "risk_score",
+      "window_rows": 914,
+      "behavior_profile": {
+        "flagged_txn_id": "3553342",
+        "flagged_found": true,
+        "flagged_ts": "2016-12-18 04:00:31",
+        "flagged_amount": 30.91,
+        "risk_score_context_only": 0.55,
+        "history_count": 913,
+        "history_span_days": 168.6,
+        "stable_history": true,
+        "amount_median": 49.08,
+        "amount_ratio": 0.63,
+        "amount_percentile": 0.2486,
+        "amount_class": "normal",
+        "flagged_product": "W",
+        "product_prior_count": 852,
+        "product_prior_share": 0.9332,
+        "product_class": "established",
+        "flagged_channel": "in_person",
+        "channel_prior_count": 852,
+        "flagged_region": "494.0",
+        "flagged_region_prior_count": 21,
+        "flagged_region_prior_in_person_count": 21,
+        "region_class": "established",
+        "home_region": "325.0",
+        "home_region_count": 116,
+        "home_region_share": 0.1362,
+        "in_person_with_region_count": 852,
+        "online_txn_ids_48h": [],
+        "card_present_txn_ids_48h": [
+          "3547831",
+          "3548770",
+          "3549201",
+          "3549583",
+          "3550012",
+          "3550013",
+          "3550293",
+          "3550470",
+          "3551245",
+          "3552000",
+          "3552020",
+          "3553253"
+        ],
+        "is_new_device": null,
+        "device_status": null,
+        "is_proxy": null,
+        "proxy_type": null,
+        "recurring_band_count": 23,
+        "recurring_band_denominator": 852,
+        "recurring_band_frequency": 0.027,
+        "baseline_online_per_48h": 0.7323,
+        "independent_evidence_families": [],
+        "benign_families": [
+          "behavioral_consistency",
+          "geographic_consistency"
+        ],
+        "suspicious_findings": [],
+        "benign_findings": [
+          "normal amount: 0.63x median $49.08, percentile 0.2486",
+          "ProductCD W established (852 prior, share 0.9332)",
+          "region 494.0 established (21 prior in-person)"
+        ],
+        "unavailable_findings": [
+          "recurrence candidate: 3 matches in the 25-35 day window: coincidental, not one recurring charge"
+        ]
+      },
+      "signals": {
+        "card_testing": {
+          "fired": false,
+          "reason": "no qualifying sequence contains the flagged transaction",
+          "txn_ids": [],
+          "timestamps": [],
+          "amounts": [],
+          "small_auth_ids": [],
+          "larger_purchase_id": "",
+          "larger_purchase_amount": 0.0,
+          "purchase_over_100_cleared": false
+        },
+        "cnp_burst": {
+          "flagged_online": false,
+          "online_txn_ids": [],
+          "online_count": 0,
+          "excluded_in_person_ids": [
+            "3547831",
+            "3548770",
+            "3549201",
+            "3549583",
+            "3550012",
+            "3550013",
+            "3550293",
+            "3550470",
+            "3551245",
+            "3552000",
+            "3552020",
+            "3553253"
+          ],
+          "documented_burst": false,
+          "high_volume_online": false,
+          "baseline_online_per_48h": null,
+          "exceeds_baseline": null,
+          "reason": "flagged transaction channel is in_person, not online",
+          "temporal_signal": false
+        },
+        "out_of_region": {
+          "fired": false,
+          "reason": "region 494.0 already appears 21 time(s) in this card's prior history; it is not a region the cardholder has no history in",
+          "flagged_channel": "in_person",
+          "flagged_region": "494.0",
+          "home_region": "325.0",
+          "flagged_region_prior_count": 21,
+          "flagged_region_prior_in_person_count": 21,
+          "home_region_count": 116,
+          "home_region_share": 0.1362,
+          "in_person_with_region_count": 852,
+          "home_activity_ids_48h": [],
+          "trip_candidate": false,
+          "evidence_ids": [],
+          "episode_ids": []
+        },
+        "recurrence": {
+          "tier": "candidate",
+          "reason": "3 matches in the 25-35 day window: coincidental, not one recurring charge",
+          "tolerance_usd": 0.5,
+          "monthly_match_ids": [
+            "3456319",
+            "3460056",
+            "3477559"
+          ],
+          "second_cycle_match_ids": [
+            "3380318"
+          ],
+          "same_channel_product_prior_count": 852,
+          "band_count": 23,
+          "band_share": 0.027,
+          "collision_count": 14,
+          "collision_rate": 0.0164,
+          "proxy_note": "ProductCD, channel and amount are proxies for 'same merchant': this dataset has no merchant-name column."
+        },
+        "device_network": {
+          "available": false,
+          "device_profile_id": "",
+          "device_profile_label": "",
+          "total_distinct_cards": 0,
+          "other_card_count": 0,
+          "generic_profile": false,
+          "other_cards_48h": [],
+          "matching_txns_48h": [],
+          "meaningful_match": false,
+          "corroborated": false,
+          "corroboration_basis": "",
+          "corroborated_card_ids": [],
+          "corroborating_txn_ids": [],
+          "confirmed_fraud_case_ids": [],
+          "reason": "no device record (in-person or missing identity)"
+        }
+      },
+      "customer_statement": null,
+      "families_before_statement": {
+        "suspicious": [],
+        "benign": [
+          "behavioral_consistency",
+          "geographic_consistency"
+        ],
+        "strong_suspicious": [],
+        "detail": {
+          "benign:behavioral_consistency": "normal amount (0.63x median) on an established ProductCD W",
+          "benign:geographic_consistency": "region 494.0 has 21 prior in-person uses"
+        },
+        "single_signal": true
+      },
+      "families": {
+        "suspicious": [],
+        "benign": [
+          "behavioral_consistency",
+          "geographic_consistency"
+        ],
+        "strong_suspicious": [],
+        "detail": {
+          "benign:behavioral_consistency": "normal amount (0.63x median) on an established ProductCD W",
+          "benign:geographic_consistency": "region 494.0 has 21 prior in-person uses"
+        },
+        "single_signal": true
+      },
+      "episode": {
+        "txn_ids": [
+          "3553342"
+        ],
+        "first_txn_id": "3553342",
+        "exposure_usd": 30.91,
+        "detected_pattern": null,
+        "first_date": "2016-12-18",
+        "last_date": "2016-12-18",
+        "basis": "flagged_only"
+      },
+      "simulated_response_if_asked": {
+        "response": "confirmed_legitimate",
+        "text": "Simulated assumption: customer confirms they made this $30.91 purchase. Rule: confirm -- every behavioral feature is consistent with the card's own history. Metrics: history 913 prior txns; amount 0.63x median $49.08 (percentile 0.2486, normal); ProductCD W established (852 prior); channel in_person; region 494.0 established.",
+        "rule": "confirm -- every behavioral feature is consistent with the card's own history"
+      }
+    },
+    {
+      "case_id": "HHG-013",
+      "trigger_type": "risk_score",
+      "window_rows": 1441,
+      "behavior_profile": {
+        "flagged_txn_id": "3526826",
+        "flagged_found": true,
+        "flagged_ts": "2016-12-09 02:39:29",
+        "flagged_amount": 35.66,
+        "risk_score_context_only": 0.76,
+        "history_count": 1439,
+        "history_span_days": 159.49,
+        "stable_history": true,
+        "amount_median": 59.09,
+        "amount_ratio": 0.603,
+        "amount_percentile": 0.1466,
+        "amount_class": "normal",
+        "flagged_product": "C",
+        "product_prior_count": 1,
+        "product_prior_share": 0.0007,
+        "product_class": "rare",
+        "flagged_channel": "online",
+        "channel_prior_count": 21,
+        "flagged_region": null,
+        "flagged_region_prior_count": 0,
+        "flagged_region_prior_in_person_count": 0,
+        "region_class": "not_applicable",
+        "home_region": "264.0",
+        "home_region_count": 1220,
+        "home_region_share": 0.8604,
+        "in_person_with_region_count": 1418,
+        "online_txn_ids_48h": [],
+        "card_present_txn_ids_48h": [
+          "3521713",
+          "3521799",
+          "3521839",
+          "3521874",
+          "3522133",
+          "3523372",
+          "3523953",
+          "3524194",
+          "3524237",
+          "3524600",
+          "3524626",
+          "3524788",
+          "3525205",
+          "3525559",
+          "3525584",
+          "3525753",
+          "3525762",
+          "3525902",
+          "3526234",
+          "3526249",
+          "3526265",
+          "3526538",
+          "3526677",
+          "3526747",
+          "3526999"
+        ],
+        "is_new_device": true,
+        "device_status": "New",
+        "is_proxy": null,
+        "proxy_type": null,
+        "recurring_band_count": 1,
+        "recurring_band_denominator": 1,
+        "recurring_band_frequency": 1.0,
+        "baseline_online_per_48h": 0.2667,
+        "independent_evidence_families": [
+          "identity_anomaly"
+        ],
+        "benign_families": [],
+        "suspicious_findings": [
+          "ProductCD C rare (1 prior, share 0.0007)",
+          "device marked New for this account (id_15) -- not proof: people buy new phones"
+        ],
+        "benign_findings": [
+          "normal amount: 0.603x median $59.09, percentile 0.1466"
+        ],
+        "unavailable_findings": [
+          "CNP: only the flagged online transaction within 48h",
+          "device network: generic device profile: 59 distinct cards on/before cutoff (> 20); contextual only"
+        ]
+      },
+      "signals": {
+        "card_testing": {
+          "fired": false,
+          "reason": "no qualifying sequence contains the flagged transaction",
+          "txn_ids": [],
+          "timestamps": [],
+          "amounts": [],
+          "small_auth_ids": [],
+          "larger_purchase_id": "",
+          "larger_purchase_amount": 0.0,
+          "purchase_over_100_cleared": false
+        },
+        "cnp_burst": {
+          "flagged_online": true,
+          "online_txn_ids": [
+            "3526826"
+          ],
+          "online_count": 1,
+          "excluded_in_person_ids": [
+            "3521713",
+            "3521799",
+            "3521839",
+            "3521874",
+            "3522133",
+            "3523372",
+            "3523953",
+            "3524194",
+            "3524237",
+            "3524600",
+            "3524626",
+            "3524788",
+            "3525205",
+            "3525559",
+            "3525584",
+            "3525753",
+            "3525762",
+            "3525902",
+            "3526234",
+            "3526249",
+            "3526265",
+            "3526538",
+            "3526677",
+            "3526747",
+            "3526999"
+          ],
+          "documented_burst": false,
+          "high_volume_online": false,
+          "baseline_online_per_48h": 0.2667,
+          "exceeds_baseline": null,
+          "reason": "only the flagged online transaction within 48h",
+          "temporal_signal": false
+        },
+        "out_of_region": {
+          "fired": false,
+          "reason": "flagged transaction is online; out-of-region requires card-present use",
+          "flagged_channel": "online",
+          "flagged_region": null,
+          "home_region": "264.0",
+          "flagged_region_prior_count": 0,
+          "flagged_region_prior_in_person_count": 0,
+          "home_region_count": 1220,
+          "home_region_share": 0.8604,
+          "in_person_with_region_count": 1418,
+          "home_activity_ids_48h": [],
+          "trip_candidate": false,
+          "evidence_ids": [],
+          "episode_ids": []
+        },
+        "recurrence": {
+          "tier": "none",
+          "reason": "no same-channel, same-ProductCD, amount-matching transaction 25-35 days earlier",
+          "tolerance_usd": 0.5,
+          "monthly_match_ids": [],
+          "second_cycle_match_ids": [],
+          "same_channel_product_prior_count": 1,
+          "band_count": 1,
+          "band_share": 1.0,
+          "collision_count": 1,
+          "collision_rate": 1.0,
+          "proxy_note": "ProductCD, channel and amount are proxies for 'same merchant': this dataset has no merchant-name column."
+        },
+        "device_network": {
+          "available": true,
+          "device_profile_id": "D133257c5d83b",
+          "device_profile_label": "Windows | chrome 66.0",
+          "total_distinct_cards": 59,
+          "other_card_count": 58,
+          "generic_profile": true,
+          "other_cards_48h": [
+            "C00140-K1",
+            "C00426-K2",
+            "C00523-K1",
+            "C00788-K1",
+            "C01109-K2",
+            "C01433-K1",
+            "C01521-K2",
+            "C01525-K2",
+            "C02228-K1",
+            "C02315-K1",
+            "C02456-K1",
+            "C02782-K2",
+            "C02851-K2",
+            "C04034-K2",
+            "C04177-K1",
+            "C04597-K2",
+            "C05027-K1",
+            "C05031-K2",
+            "C05381-K2",
+            "C05423-K1",
+            "C05996-K1",
+            "C06049-K1",
+            "C06224-K2",
+            "C06339-K1",
+            "C06630-K2",
+            "C06940-K1",
+            "C08391-K2",
+            "C08832-K1",
+            "C09354-K1",
+            "C09657-K2",
+            "C09975-K1",
+            "C10026-K1",
+            "C10031-K1",
+            "C11444-K1",
+            "C11509-K2",
+            "C11844-K2",
+            "C11919-K2",
+            "C11923-K2",
+            "C12136-K2",
+            "C12961-K2",
+            "C12966-K1",
+            "C13171-K2",
+            "C13407-K1"
+          ],
+          "matching_txns_48h": [
+            {
+              "txn_id": "3521313",
+              "ts": "2016-12-07 03:14:08",
+              "amount": 76.29,
+              "risk_score": 0.01,
+              "customer_id": "C08391",
+              "card_id": "C08391-K2"
+            },
+            {
+              "txn_id": "3521343",
+              "ts": "2016-12-07 03:32:12",
+              "amount": 76.27,
+              "risk_score": 0.15,
+              "customer_id": "C08391",
+              "card_id": "C08391-K2"
+            },
+            {
+              "txn_id": "3521344",
+              "ts": "2016-12-07 03:32:13",
+              "amount": 70.53,
+              "risk_score": 0.01,
+              "customer_id": "C08391",
+              "card_id": "C08391-K2"
+            },
+            {
+              "txn_id": "3521346",
+              "ts": "2016-12-07 03:33:46",
+              "amount": 76.31,
+              "risk_score": 0.37,
+              "customer_id": "C08391",
+              "card_id": "C08391-K2"
+            },
+            {
+              "txn_id": "3521347",
+              "ts": "2016-12-07 03:34:12",
+              "amount": 14.78,
+              "risk_score": 0.06,
+              "customer_id": "C06049",
+              "card_id": "C06049-K1"
+            },
+            {
+              "txn_id": "3521350",
+              "ts": "2016-12-07 03:35:45",
+              "amount": 76.35,
+              "risk_score": 0.09,
+              "customer_id": "C08391",
+              "card_id": "C08391-K2"
+            },
+            {
+              "txn_id": "3521385",
+              "ts": "2016-12-07 04:08:33",
+              "amount": 24.34,
+              "risk_score": 0.45,
+              "customer_id": "C11923",
+              "card_id": "C11923-K2"
+            },
+            {
+              "txn_id": "3521454",
+              "ts": "2016-12-07 05:06:31",
+              "amount": 115.53,
+              "risk_score": 0.06,
+              "customer_id": "C08832",
+              "card_id": "C08832-K1"
+            },
+            {
+              "txn_id": "3521458",
+              "ts": "2016-12-07 05:14:32",
+              "amount": 37.2,
+              "risk_score": 0.06,
+              "customer_id": "C11923",
+              "card_id": "C11923-K2"
+            },
+            {
+              "txn_id": "3521468",
+              "ts": "2016-12-07 05:38:48",
+              "amount": 121.8,
+              "risk_score": 0.01,
+              "customer_id": "C02315",
+              "card_id": "C02315-K1"
+            },
+            {
+              "txn_id": "3521480",
+              "ts": "2016-12-07 05:56:30",
+              "amount": 121.75,
+              "risk_score": 0.26,
+              "customer_id": "C02315",
+              "card_id": "C02315-K1"
+            },
+            {
+              "txn_id": "3521661",
+              "ts": "2016-12-07 12:32:11",
+              "amount": 29.74,
+              "risk_score": 0.22,
+              "customer_id": "C11923",
+              "card_id": "C11923-K2"
+            },
+            {
+              "txn_id": "3521751",
+              "ts": "2016-12-07 13:22:53",
+              "amount": 20.67,
+              "risk_score": 0.08,
+              "customer_id": "C09354",
+              "card_id": "C09354-K1"
+            },
+            {
+              "txn_id": "3521945",
+              "ts": "2016-12-07 14:42:23",
+              "amount": 56.46,
+              "risk_score": 0.13,
+              "customer_id": "C08391",
+              "card_id": "C08391-K2"
+            },
+            {
+              "txn_id": "3521949",
+              "ts": "2016-12-07 14:44:17",
+              "amount": 70.45,
+              "risk_score": 0.08,
+              "customer_id": "C08391",
+              "card_id": "C08391-K2"
+            },
+            {
+              "txn_id": "3521971",
+              "ts": "2016-12-07 14:49:31",
+              "amount": 70.47,
+              "risk_score": 0.03,
+              "customer_id": "C08391",
+              "card_id": "C08391-K2"
+            },
+            {
+              "txn_id": "3521987",
+              "ts": "2016-12-07 14:58:01",
+              "amount": 119.42,
+              "risk_score": 0.02,
+              "customer_id": "C08391",
+              "card_id": "C08391-K2"
+            },
+            {
+              "txn_id": "3522034",
+              "ts": "2016-12-07 15:09:40",
+              "amount": 81.81,
+              "risk_score": 0.1,
+              "customer_id": "C01525",
+              "card_id": "C01525-K2"
+            },
+            {
+              "txn_id": "3522248",
+              "ts": "2016-12-07 16:30:52",
+              "amount": 28.06,
+              "risk_score": 0.74,
+              "customer_id": "C06224",
+              "card_id": "C06224-K2"
+            },
+            {
+              "txn_id": "3522258",
+              "ts": "2016-12-07 16:33:57",
+              "amount": 28.13,
+              "risk_score": 0.07,
+              "customer_id": "C06224",
+              "card_id": "C06224-K2"
+            }
+          ],
+          "meaningful_match": false,
+          "corroborated": false,
+          "corroboration_basis": "",
+          "corroborated_card_ids": [],
+          "corroborating_txn_ids": [],
+          "confirmed_fraud_case_ids": [],
+          "reason": "generic device profile: 59 distinct cards on/before cutoff (> 20); contextual only"
+        }
+      },
+      "customer_statement": null,
+      "families_before_statement": {
+        "suspicious": [
+          "identity_anomaly"
+        ],
+        "benign": [],
+        "strong_suspicious": [],
+        "detail": {
+          "suspicious:identity_anomaly": "device marked New for this account (id_15)"
+        },
+        "single_signal": true
+      },
+      "families": {
+        "suspicious": [
+          "identity_anomaly"
+        ],
+        "benign": [],
+        "strong_suspicious": [],
+        "detail": {
+          "suspicious:identity_anomaly": "device marked New for this account (id_15)"
+        },
+        "single_signal": true
+      },
+      "episode": {
+        "txn_ids": [
+          "3526826"
+        ],
+        "first_txn_id": "3526826",
+        "exposure_usd": 35.66,
+        "detected_pattern": null,
+        "first_date": "2016-12-09",
+        "last_date": "2016-12-09",
+        "basis": "flagged_only"
+      },
+      "simulated_response_if_asked": {
+        "response": "no_reply",
+        "text": "Simulated assumption: customer did not reply within 24 hours. Rule: no reply -- profile is ambiguous: not fully consistent with history (established ProductCD) but only 1 suspicious family (identity_anomaly) and no strong signal. Metrics: history 1439 prior txns; amount 0.603x median $59.09 (percentile 0.1466, normal); ProductCD C rare (1 prior); channel online; device New.",
+        "rule": "no reply -- profile is ambiguous: not fully consistent with history (established ProductCD) but only 1 suspicious family (identity_anomaly) and no strong signal"
+      }
+    },
+    {
+      "case_id": "HHG-014",
+      "trigger_type": "analyst_request",
+      "window_rows": 73,
+      "behavior_profile": {
+        "flagged_txn_id": "3478561",
+        "flagged_found": true,
+        "flagged_ts": "2016-11-22 16:11:00",
+        "flagged_amount": 74.96,
+        "risk_score_context_only": 0.05,
+        "history_count": 71,
+        "history_span_days": 140.87,
+        "stable_history": true,
+        "amount_median": 55.92,
+        "amount_ratio": 1.34,
+        "amount_percentile": 0.7887,
+        "amount_class": "normal",
+        "flagged_product": "C",
+        "product_prior_count": 1,
+        "product_prior_share": 0.0141,
+        "product_class": "rare",
+        "flagged_channel": "online",
+        "channel_prior_count": 2,
+        "flagged_region": "191.0",
+        "flagged_region_prior_count": 36,
+        "flagged_region_prior_in_person_count": 34,
+        "region_class": "not_applicable",
+        "home_region": "272.0",
+        "home_region_count": 35,
+        "home_region_share": 0.5072,
+        "in_person_with_region_count": 69,
+        "online_txn_ids_48h": [],
+        "card_present_txn_ids_48h": [
+          "3477218",
+          "3478886"
+        ],
+        "is_new_device": true,
+        "device_status": "New",
+        "is_proxy": true,
+        "proxy_type": "IP_PROXY:ANONYMOUS",
+        "recurring_band_count": 0,
+        "recurring_band_denominator": 1,
+        "recurring_band_frequency": 0.0,
+        "baseline_online_per_48h": 0.0288,
+        "independent_evidence_families": [
+          "identity_anomaly"
+        ],
+        "benign_families": [],
+        "suspicious_findings": [
+          "ProductCD C rare (1 prior, share 0.0141)",
+          "device marked New for this account (id_15) -- not proof: people buy new phones",
+          "anonymizing proxy (IP_PROXY:ANONYMOUS)"
+        ],
+        "benign_findings": [
+          "normal amount: 1.34x median $55.92, percentile 0.7887"
+        ],
+        "unavailable_findings": [
+          "CNP: only the flagged online transaction within 48h",
+          "device network: generic device profile: 44 distinct cards on/before cutoff (> 20); contextual only"
+        ]
+      },
+      "signals": {
+        "card_testing": {
+          "fired": false,
+          "reason": "no qualifying sequence contains the flagged transaction",
+          "txn_ids": [],
+          "timestamps": [],
+          "amounts": [],
+          "small_auth_ids": [],
+          "larger_purchase_id": "",
+          "larger_purchase_amount": 0.0,
+          "purchase_over_100_cleared": false
+        },
+        "cnp_burst": {
+          "flagged_online": true,
+          "online_txn_ids": [
+            "3478561"
+          ],
+          "online_count": 1,
+          "excluded_in_person_ids": [
+            "3477218",
+            "3478886"
+          ],
+          "documented_burst": false,
+          "high_volume_online": false,
+          "baseline_online_per_48h": 0.0288,
+          "exceeds_baseline": null,
+          "reason": "only the flagged online transaction within 48h",
+          "temporal_signal": false
+        },
+        "out_of_region": {
+          "fired": false,
+          "reason": "flagged transaction is online; out-of-region requires card-present use",
+          "flagged_channel": "online",
+          "flagged_region": "191.0",
+          "home_region": "272.0",
+          "flagged_region_prior_count": 36,
+          "flagged_region_prior_in_person_count": 34,
+          "home_region_count": 35,
+          "home_region_share": 0.5072,
+          "in_person_with_region_count": 69,
+          "home_activity_ids_48h": [],
+          "trip_candidate": false,
+          "evidence_ids": [],
+          "episode_ids": []
+        },
+        "recurrence": {
+          "tier": "none",
+          "reason": "no same-channel, same-ProductCD, amount-matching transaction 25-35 days earlier",
+          "tolerance_usd": 0.75,
+          "monthly_match_ids": [],
+          "second_cycle_match_ids": [],
+          "same_channel_product_prior_count": 1,
+          "band_count": 0,
+          "band_share": 0.0,
+          "collision_count": 0,
+          "collision_rate": 0.0,
+          "proxy_note": "ProductCD, channel and amount are proxies for 'same merchant': this dataset has no merchant-name column."
+        },
+        "device_network": {
+          "available": true,
+          "device_profile_id": "D7e7ac97b8377",
+          "device_profile_label": "SM-G935F Build/NRD90M | Android 7.0 | chrome 62.0 for android | 1920x1080",
+          "total_distinct_cards": 44,
+          "other_card_count": 43,
+          "generic_profile": true,
+          "other_cards_48h": [
+            "C03676-K2",
+            "C04274-K1",
+            "C05448-K1",
+            "C09906-K1",
+            "C11082-K1",
+            "C11670-K2"
+          ],
+          "matching_txns_48h": [
+            {
+              "txn_id": "3474445",
+              "ts": "2016-11-20 22:32:00",
+              "amount": 44.98,
+              "risk_score": 0.03,
+              "customer_id": "C11082",
+              "card_id": "C11082-K1"
+            },
+            {
+              "txn_id": "3475406",
+              "ts": "2016-11-21 10:09:00",
+              "amount": 256.28,
+              "risk_score": 0.11,
+              "customer_id": "C11670",
+              "card_id": "C11670-K2"
+            },
+            {
+              "txn_id": "3476202",
+              "ts": "2016-11-21 17:34:00",
+              "amount": 221.02,
+              "risk_score": 0.21,
+              "customer_id": "C04274",
+              "card_id": "C04274-K1"
+            },
+            {
+              "txn_id": "3477916",
+              "ts": "2016-11-22 09:50:00",
+              "amount": 129.35,
+              "risk_score": 0.44,
+              "customer_id": "C03676",
+              "card_id": "C03676-K2"
+            },
+            {
+              "txn_id": "3478133",
+              "ts": "2016-11-22 13:20:00",
+              "amount": 165.32,
+              "risk_score": 0.26,
+              "customer_id": "C09906",
+              "card_id": "C09906-K1"
+            },
+            {
+              "txn_id": "3478714",
+              "ts": "2016-11-22 17:00:00",
+              "amount": 245.8,
+              "risk_score": 0.05,
+              "customer_id": "C05448",
+              "card_id": "C05448-K1"
+            }
+          ],
+          "meaningful_match": false,
+          "corroborated": false,
+          "corroboration_basis": "",
+          "corroborated_card_ids": [],
+          "corroborating_txn_ids": [],
+          "confirmed_fraud_case_ids": [],
+          "reason": "generic device profile: 44 distinct cards on/before cutoff (> 20); contextual only"
+        }
+      },
+      "customer_statement": null,
+      "families_before_statement": {
+        "suspicious": [
+          "identity_anomaly"
+        ],
+        "benign": [],
+        "strong_suspicious": [],
+        "detail": {
+          "suspicious:identity_anomaly": "device marked New for this account (id_15); anonymizing proxy (IP_PROXY:ANONYMOUS)"
+        },
+        "single_signal": true
+      },
+      "families": {
+        "suspicious": [
+          "identity_anomaly"
+        ],
+        "benign": [],
+        "strong_suspicious": [],
+        "detail": {
+          "suspicious:identity_anomaly": "device marked New for this account (id_15); anonymizing proxy (IP_PROXY:ANONYMOUS)"
+        },
+        "single_signal": true
+      },
+      "episode": {
+        "txn_ids": [
+          "3478561"
+        ],
+        "first_txn_id": "3478561",
+        "exposure_usd": 74.96,
+        "detected_pattern": null,
+        "first_date": "2016-11-22",
+        "last_date": "2016-11-22",
+        "basis": "flagged_only"
+      },
+      "simulated_response_if_asked": {
+        "response": "no_reply",
+        "text": "Simulated assumption: customer did not reply within 24 hours. Rule: no reply -- profile is ambiguous: not fully consistent with history (established ProductCD, no anonymizing proxy) but only 1 suspicious family (identity_anomaly) and no strong signal. Metrics: history 71 prior txns; amount 1.34x median $55.92 (percentile 0.7887, normal); ProductCD C rare (1 prior); channel online; device New.",
+        "rule": "no reply -- profile is ambiguous: not fully consistent with history (established ProductCD, no anonymizing proxy) but only 1 suspicious family (identity_anomaly) and no strong signal"
+      }
+    },
+    {
+      "case_id": "HHG-015",
+      "trigger_type": "risk_score",
+      "window_rows": 69,
+      "behavior_profile": {
+        "flagged_txn_id": "3464869",
+        "flagged_found": true,
+        "flagged_ts": "2016-11-17 14:03:36",
+        "flagged_amount": 599.94,
+        "risk_score_context_only": 0.77,
+        "history_count": 68,
+        "history_span_days": 137.69,
+        "stable_history": true,
+        "amount_median": 99.96,
+        "amount_ratio": 6.002,
+        "amount_percentile": 1.0,
+        "amount_class": "extreme",
+        "flagged_product": "R",
+        "product_prior_count": 23,
+        "product_prior_share": 0.3382,
+        "product_class": "established",
+        "flagged_channel": "online",
+        "channel_prior_count": 56,
+        "flagged_region": "327.0",
+        "flagged_region_prior_count": 0,
+        "flagged_region_prior_in_person_count": 0,
+        "region_class": "not_applicable",
+        "home_region": "299.0",
+        "home_region_count": 4,
+        "home_region_share": 0.3333,
+        "in_person_with_region_count": 12,
+        "online_txn_ids_48h": [],
+        "card_present_txn_ids_48h": [
+          "3462385",
+          "3462387",
+          "3462404"
+        ],
+        "is_new_device": true,
+        "device_status": "New",
+        "is_proxy": null,
+        "proxy_type": null,
+        "recurring_band_count": 0,
+        "recurring_band_denominator": 23,
+        "recurring_band_frequency": 0.0,
+        "baseline_online_per_48h": 0.8254,
+        "independent_evidence_families": [
+          "behavioral_anomaly",
+          "identity_anomaly"
+        ],
+        "benign_families": [],
+        "suspicious_findings": [
+          "extreme amount: 6.002x median $99.96, percentile 1.0",
+          "device marked New for this account (id_15) -- not proof: people buy new phones"
+        ],
+        "benign_findings": [
+          "ProductCD R established (23 prior, share 0.3382)"
+        ],
+        "unavailable_findings": [
+          "CNP: only the flagged online transaction within 48h",
+          "device network: 5 other card(s) used this profile, none within 48h of the flagged transaction"
+        ]
+      },
+      "signals": {
+        "card_testing": {
+          "fired": false,
+          "reason": "no qualifying sequence contains the flagged transaction",
+          "txn_ids": [],
+          "timestamps": [],
+          "amounts": [],
+          "small_auth_ids": [],
+          "larger_purchase_id": "",
+          "larger_purchase_amount": 0.0,
+          "purchase_over_100_cleared": false
+        },
+        "cnp_burst": {
+          "flagged_online": true,
+          "online_txn_ids": [
+            "3464869"
+          ],
+          "online_count": 1,
+          "excluded_in_person_ids": [
+            "3462385",
+            "3462387",
+            "3462404"
+          ],
+          "documented_burst": false,
+          "high_volume_online": false,
+          "baseline_online_per_48h": 0.8254,
+          "exceeds_baseline": null,
+          "reason": "only the flagged online transaction within 48h",
+          "temporal_signal": false
+        },
+        "out_of_region": {
+          "fired": false,
+          "reason": "flagged transaction is online; out-of-region requires card-present use",
+          "flagged_channel": "online",
+          "flagged_region": "327.0",
+          "home_region": "299.0",
+          "flagged_region_prior_count": 0,
+          "flagged_region_prior_in_person_count": 0,
+          "home_region_count": 4,
+          "home_region_share": 0.3333,
+          "in_person_with_region_count": 12,
+          "home_activity_ids_48h": [],
+          "trip_candidate": false,
+          "evidence_ids": [],
+          "episode_ids": []
+        },
+        "recurrence": {
+          "tier": "none",
+          "reason": "no same-channel, same-ProductCD, amount-matching transaction 25-35 days earlier",
+          "tolerance_usd": 6.0,
+          "monthly_match_ids": [],
+          "second_cycle_match_ids": [],
+          "same_channel_product_prior_count": 23,
+          "band_count": 0,
+          "band_share": 0.0,
+          "collision_count": 0,
+          "collision_rate": 0.0,
+          "proxy_note": "ProductCD, channel and amount are proxies for 'same merchant': this dataset has no merchant-name column."
+        },
+        "device_network": {
+          "available": true,
+          "device_profile_id": "Dcbb47ea1e4a7",
+          "device_profile_label": "Trident/7.0 | Windows 8.1 | ie 11.0 for desktop | 1680x1050",
+          "total_distinct_cards": 6,
+          "other_card_count": 5,
+          "generic_profile": false,
+          "other_cards_48h": [],
+          "matching_txns_48h": [],
+          "meaningful_match": false,
+          "corroborated": false,
+          "corroboration_basis": "",
+          "corroborated_card_ids": [],
+          "corroborating_txn_ids": [],
+          "confirmed_fraud_case_ids": [],
+          "reason": "5 other card(s) used this profile, none within 48h of the flagged transaction"
+        }
+      },
+      "customer_statement": null,
+      "families_before_statement": {
+        "suspicious": [
+          "behavioral_anomaly",
+          "identity_anomaly"
+        ],
+        "benign": [],
+        "strong_suspicious": [
+          "extreme_amount_with_identity_anomaly"
+        ],
+        "detail": {
+          "suspicious:behavioral_anomaly": "amount 6.002x median, percentile 1.0",
+          "suspicious:identity_anomaly": "device marked New for this account (id_15)"
+        },
+        "single_signal": false
+      },
+      "families": {
+        "suspicious": [
+          "behavioral_anomaly",
+          "identity_anomaly"
+        ],
+        "benign": [],
+        "strong_suspicious": [
+          "extreme_amount_with_identity_anomaly"
+        ],
+        "detail": {
+          "suspicious:behavioral_anomaly": "amount 6.002x median, percentile 1.0",
+          "suspicious:identity_anomaly": "device marked New for this account (id_15)"
+        },
+        "single_signal": false
+      },
+      "episode": {
+        "txn_ids": [
+          "3464869"
+        ],
+        "first_txn_id": "3464869",
+        "exposure_usd": 599.94,
+        "detected_pattern": null,
+        "first_date": "2016-11-17",
+        "last_date": "2016-11-17",
+        "basis": "flagged_only"
+      },
+      "simulated_response_if_asked": {
+        "response": "denies",
+        "text": "Simulated assumption: customer states they did not make this $599.94 purchase and still has the card. Rule: deny -- 2 independent suspicious families (behavioral_anomaly, identity_anomaly) including strong signal(s) extreme_amount_with_identity_anomaly. Metrics: history 68 prior txns; amount 6.002x median $99.96 (percentile 1.0, extreme); ProductCD R established (23 prior); channel online; device New.",
+        "rule": "deny -- 2 independent suspicious families (behavioral_anomaly, identity_anomaly) including strong signal(s) extreme_amount_with_identity_anomaly"
+      }
+    },
+    {
+      "case_id": "HHG-016",
+      "trigger_type": "customer_report",
+      "window_rows": 49,
+      "behavior_profile": {
+        "flagged_txn_id": "3534820",
+        "flagged_found": true,
+        "flagged_ts": "2016-12-11 22:39:08",
+        "flagged_amount": 59.67,
+        "risk_score_context_only": 0.37,
+        "history_count": 48,
+        "history_span_days": 158.15,
+        "stable_history": true,
+        "amount_median": 37.75,
+        "amount_ratio": 1.581,
+        "amount_percentile": 0.75,
+        "amount_class": "normal",
+        "flagged_product": "C",
+        "product_prior_count": 48,
+        "product_prior_share": 1.0,
+        "product_class": "established",
+        "flagged_channel": "online",
+        "channel_prior_count": 48,
+        "flagged_region": null,
+        "flagged_region_prior_count": 0,
+        "flagged_region_prior_in_person_count": 0,
+        "region_class": "not_applicable",
+        "home_region": null,
+        "home_region_count": 0,
+        "home_region_share": null,
+        "in_person_with_region_count": 0,
+        "online_txn_ids_48h": [],
+        "card_present_txn_ids_48h": [],
+        "is_new_device": true,
+        "device_status": "New",
+        "is_proxy": null,
+        "proxy_type": null,
+        "recurring_band_count": 0,
+        "recurring_band_denominator": 48,
+        "recurring_band_frequency": 0.0,
+        "baseline_online_per_48h": 0.6148,
+        "independent_evidence_families": [
+          "identity_anomaly",
+          "customer_statement"
+        ],
+        "benign_families": [
+          "behavioral_consistency"
+        ],
+        "suspicious_findings": [
+          "device marked New for this account (id_15) -- not proof: people buy new phones"
+        ],
+        "benign_findings": [
+          "normal amount: 1.581x median $37.75, percentile 0.75",
+          "ProductCD C established (48 prior, share 1.0)"
+        ],
+        "unavailable_findings": [
+          "CNP: only the flagged online transaction within 48h",
+          "device network: generic device profile: 143 distinct cards on/before cutoff (> 20); contextual only"
+        ]
+      },
+      "signals": {
+        "card_testing": {
+          "fired": false,
+          "reason": "no qualifying sequence contains the flagged transaction",
+          "txn_ids": [],
+          "timestamps": [],
+          "amounts": [],
+          "small_auth_ids": [],
+          "larger_purchase_id": "",
+          "larger_purchase_amount": 0.0,
+          "purchase_over_100_cleared": false
+        },
+        "cnp_burst": {
+          "flagged_online": true,
+          "online_txn_ids": [
+            "3534820"
+          ],
+          "online_count": 1,
+          "excluded_in_person_ids": [],
+          "documented_burst": false,
+          "high_volume_online": false,
+          "baseline_online_per_48h": 0.6148,
+          "exceeds_baseline": null,
+          "reason": "only the flagged online transaction within 48h",
+          "temporal_signal": false
+        },
+        "out_of_region": {
+          "fired": false,
+          "reason": "flagged transaction is online; out-of-region requires card-present use",
+          "flagged_channel": "online",
+          "flagged_region": null,
+          "home_region": null,
+          "flagged_region_prior_count": 0,
+          "flagged_region_prior_in_person_count": 0,
+          "home_region_count": 0,
+          "home_region_share": null,
+          "in_person_with_region_count": 0,
+          "home_activity_ids_48h": [],
+          "trip_candidate": false,
+          "evidence_ids": [],
+          "episode_ids": []
+        },
+        "recurrence": {
+          "tier": "none",
+          "reason": "no same-channel, same-ProductCD, amount-matching transaction 25-35 days earlier",
+          "tolerance_usd": 0.6,
+          "monthly_match_ids": [],
+          "second_cycle_match_ids": [],
+          "same_channel_product_prior_count": 48,
+          "band_count": 0,
+          "band_share": 0.0,
+          "collision_count": 0,
+          "collision_rate": 0.0,
+          "proxy_note": "ProductCD, channel and amount are proxies for 'same merchant': this dataset has no merchant-name column."
+        },
+        "device_network": {
+          "available": true,
+          "device_profile_id": "Dca350e7d2d00",
+          "device_profile_label": "Windows | edge 16.0",
+          "total_distinct_cards": 143,
+          "other_card_count": 142,
+          "generic_profile": true,
+          "other_cards_48h": [
+            "C00854-K2",
+            "C01002-K1",
+            "C01525-K2",
+            "C04597-K2",
+            "C05381-K2",
+            "C05630-K1",
+            "C06224-K2",
+            "C06744-K2",
+            "C08374-K1",
+            "C09251-K1",
+            "C11923-K2",
+            "C12340-K1"
+          ],
+          "matching_txns_48h": [
+            {
+              "txn_id": "3529321",
+              "ts": "2016-12-10 00:28:04",
+              "amount": 26.0,
+              "risk_score": 0.9,
+              "customer_id": "C12340",
+              "card_id": "C12340-K1"
+            },
+            {
+              "txn_id": "3529511",
+              "ts": "2016-12-10 01:39:46",
+              "amount": 154.15,
+              "risk_score": 0.14,
+              "customer_id": "C11923",
+              "card_id": "C11923-K2"
+            },
+            {
+              "txn_id": "3529926",
+              "ts": "2016-12-10 06:49:19",
+              "amount": 139.25,
+              "risk_score": 0.04,
+              "customer_id": "C01002",
+              "card_id": "C01002-K1"
+            },
+            {
+              "txn_id": "3529938",
+              "ts": "2016-12-10 07:58:55",
+              "amount": 139.24,
+              "risk_score": 0.02,
+              "customer_id": "C01002",
+              "card_id": "C01002-K1"
+            },
+            {
+              "txn_id": "3530247",
+              "ts": "2016-12-10 13:46:27",
+              "amount": 175.07,
+              "risk_score": 0.51,
+              "customer_id": "C08374",
+              "card_id": "C08374-K1"
+            },
+            {
+              "txn_id": "3530283",
+              "ts": "2016-12-10 14:00:35",
+              "amount": 174.96,
+              "risk_score": 0.71,
+              "customer_id": "C08374",
+              "card_id": "C08374-K1"
+            },
+            {
+              "txn_id": "3530305",
+              "ts": "2016-12-10 14:08:01",
+              "amount": 175.04,
+              "risk_score": 0.46,
+              "customer_id": "C08374",
+              "card_id": "C08374-K1"
+            },
+            {
+              "txn_id": "3531451",
+              "ts": "2016-12-10 20:27:24",
+              "amount": 59.66,
+              "risk_score": 0.2,
+              "customer_id": "C00854",
+              "card_id": "C00854-K2"
+            },
+            {
+              "txn_id": "3531452",
+              "ts": "2016-12-10 20:27:42",
+              "amount": 59.6,
+              "risk_score": 0.2,
+              "customer_id": "C09251",
+              "card_id": "C09251-K1"
+            },
+            {
+              "txn_id": "3531522",
+              "ts": "2016-12-10 20:48:52",
+              "amount": 59.71,
+              "risk_score": 0.13,
+              "customer_id": "C06224",
+              "card_id": "C06224-K2"
+            },
+            {
+              "txn_id": "3531867",
+              "ts": "2016-12-10 22:34:07",
+              "amount": 23.41,
+              "risk_score": 0.07,
+              "customer_id": "C05381",
+              "card_id": "C05381-K2"
+            },
+            {
+              "txn_id": "3532418",
+              "ts": "2016-12-11 01:34:54",
+              "amount": 154.15,
+              "risk_score": 0.47,
+              "customer_id": "C01525",
+              "card_id": "C01525-K2"
+            },
+            {
+              "txn_id": "3534342",
+              "ts": "2016-12-11 20:08:46",
+              "amount": 29.28,
+              "risk_score": 0.2,
+              "customer_id": "C04597",
+              "card_id": "C04597-K2"
+            },
+            {
+              "txn_id": "3534386",
+              "ts": "2016-12-11 20:23:34",
+              "amount": 59.63,
+              "risk_score": 0.1,
+              "customer_id": "C05630",
+              "card_id": "C05630-K1"
+            },
+            {
+              "txn_id": "3534518",
+              "ts": "2016-12-11 21:01:47",
+              "amount": 14.58,
+              "risk_score": 0.09,
+              "customer_id": "C06744",
+              "card_id": "C06744-K2"
+            },
+            {
+              "txn_id": "3535294",
+              "ts": "2016-12-12 01:19:12",
+              "amount": 28.45,
+              "risk_score": 0.03,
+              "customer_id": "C11923",
+              "card_id": "C11923-K2"
+            },
+            {
+              "txn_id": "3535325",
+              "ts": "2016-12-12 01:33:23",
+              "amount": 19.17,
+              "risk_score": 0.16,
+              "customer_id": "C11923",
+              "card_id": "C11923-K2"
+            }
+          ],
+          "meaningful_match": false,
+          "corroborated": false,
+          "corroboration_basis": "",
+          "corroborated_card_ids": [],
+          "corroborating_txn_ids": [],
+          "confirmed_fraud_case_ids": [],
+          "reason": "generic device profile: 143 distinct cards on/before cutoff (> 20); contextual only"
+        }
+      },
+      "customer_statement": "denies",
+      "families_before_statement": {
+        "suspicious": [
+          "identity_anomaly"
+        ],
+        "benign": [
+          "behavioral_consistency"
+        ],
+        "strong_suspicious": [],
+        "detail": {
+          "benign:behavioral_consistency": "normal amount (1.581x median) on an established ProductCD C",
+          "suspicious:identity_anomaly": "device marked New for this account (id_15)"
+        },
+        "single_signal": true
+      },
+      "families": {
+        "suspicious": [
+          "identity_anomaly",
+          "customer_statement"
+        ],
+        "benign": [
+          "behavioral_consistency"
+        ],
+        "strong_suspicious": [],
+        "detail": {
+          "benign:behavioral_consistency": "normal amount (1.581x median) on an established ProductCD C",
+          "suspicious:identity_anomaly": "device marked New for this account (id_15)",
+          "suspicious:customer_statement": "customer states they did not make the transaction"
+        },
+        "single_signal": false
+      },
+      "episode": {
+        "txn_ids": [
+          "3534820"
+        ],
+        "first_txn_id": "3534820",
+        "exposure_usd": 59.67,
+        "detected_pattern": null,
+        "first_date": "2016-12-11",
+        "last_date": "2016-12-11",
+        "basis": "flagged_only"
+      },
+      "simulated_response_if_asked": null
+    },
+    {
+      "case_id": "HHG-017",
+      "trigger_type": "risk_score",
+      "window_rows": 53,
+      "behavior_profile": {
+        "flagged_txn_id": "3450629",
+        "flagged_found": true,
+        "flagged_ts": "2016-11-11 23:46:24",
+        "flagged_amount": 100.09,
+        "risk_score_context_only": 0.57,
+        "history_count": 52,
+        "history_span_days": 117.23,
+        "stable_history": true,
+        "amount_median": 199.97,
+        "amount_ratio": 0.501,
+        "amount_percentile": 0.2115,
+        "amount_class": "normal",
+        "flagged_product": "R",
+        "product_prior_count": 29,
+        "product_prior_share": 0.5577,
+        "product_class": "established",
+        "flagged_channel": "online",
+        "channel_prior_count": 35,
+        "flagged_region": "204.0",
+        "flagged_region_prior_count": 5,
+        "flagged_region_prior_in_person_count": 0,
+        "region_class": "not_applicable",
+        "home_region": "325.0",
+        "home_region_count": 8,
+        "home_region_share": 0.4706,
+        "in_person_with_region_count": 17,
+        "online_txn_ids_48h": [
+          "3450436",
+          "3450503"
+        ],
+        "card_present_txn_ids_48h": [],
+        "is_new_device": false,
+        "device_status": "Found",
+        "is_proxy": true,
+        "proxy_type": "IP_PROXY:HIDDEN",
+        "recurring_band_count": 9,
+        "recurring_band_denominator": 29,
+        "recurring_band_frequency": 0.3103,
+        "baseline_online_per_48h": 0.5727,
+        "independent_evidence_families": [
+          "temporal_pattern",
+          "identity_anomaly"
+        ],
+        "benign_families": [
+          "behavioral_consistency"
+        ],
+        "suspicious_findings": [
+          "anonymizing proxy (IP_PROXY:HIDDEN)",
+          "CNP: 3 online transactions inside one 48h window containing the flagged one (documented 2-4 burst); card baseline 0.57 online per 48h -> above routine volume"
+        ],
+        "benign_findings": [
+          "normal amount: 0.501x median $199.97, percentile 0.2115",
+          "ProductCD R established (29 prior, share 0.5577)",
+          "device Found for this account (id_15)"
+        ],
+        "unavailable_findings": [
+          "device network: generic device profile: 164 distinct cards on/before cutoff (> 20); contextual only"
+        ]
+      },
+      "signals": {
+        "card_testing": {
+          "fired": false,
+          "reason": "no qualifying sequence contains the flagged transaction",
+          "txn_ids": [],
+          "timestamps": [],
+          "amounts": [],
+          "small_auth_ids": [],
+          "larger_purchase_id": "",
+          "larger_purchase_amount": 0.0,
+          "purchase_over_100_cleared": false
+        },
+        "cnp_burst": {
+          "flagged_online": true,
+          "online_txn_ids": [
+            "3450436",
+            "3450503",
+            "3450629"
+          ],
+          "online_count": 3,
+          "excluded_in_person_ids": [],
+          "documented_burst": true,
+          "high_volume_online": false,
+          "baseline_online_per_48h": 0.5727,
+          "exceeds_baseline": true,
+          "reason": "3 online transactions inside one 48h window containing the flagged one (documented 2-4 burst); card baseline 0.57 online per 48h -> above routine volume",
+          "temporal_signal": true
+        },
+        "out_of_region": {
+          "fired": false,
+          "reason": "flagged transaction is online; out-of-region requires card-present use",
+          "flagged_channel": "online",
+          "flagged_region": "204.0",
+          "home_region": "325.0",
+          "flagged_region_prior_count": 5,
+          "flagged_region_prior_in_person_count": 0,
+          "home_region_count": 8,
+          "home_region_share": 0.4706,
+          "in_person_with_region_count": 17,
+          "home_activity_ids_48h": [],
+          "trip_candidate": false,
+          "evidence_ids": [],
+          "episode_ids": []
+        },
+        "recurrence": {
+          "tier": "none",
+          "reason": "no same-channel, same-ProductCD, amount-matching transaction 25-35 days earlier",
+          "tolerance_usd": 1.0,
+          "monthly_match_ids": [],
+          "second_cycle_match_ids": [],
+          "same_channel_product_prior_count": 29,
+          "band_count": 9,
+          "band_share": 0.3103,
+          "collision_count": 8,
+          "collision_rate": 0.2759,
+          "proxy_note": "ProductCD, channel and amount are proxies for 'same merchant': this dataset has no merchant-name column."
+        },
+        "device_network": {
+          "available": true,
+          "device_profile_id": "Dec9ef04aa023",
+          "device_profile_label": "Windows | Windows 10 | chrome 65.0 | 1920x1080",
+          "total_distinct_cards": 164,
+          "other_card_count": 163,
+          "generic_profile": true,
+          "other_cards_48h": [
+            "C00750-K2",
+            "C01387-K1",
+            "C01909-K2",
+            "C03019-K2",
+            "C03040-K2",
+            "C03738-K2",
+            "C03999-K1",
+            "C04125-K2",
+            "C05086-K1",
+            "C05560-K2",
+            "C05868-K1",
+            "C05992-K1",
+            "C06224-K2",
+            "C07718-K1",
+            "C08083-K1",
+            "C08918-K2",
+            "C09165-K2",
+            "C09249-K1",
+            "C09471-K2",
+            "C09873-K1",
+            "C09933-K2",
+            "C09981-K2",
+            "C10068-K1",
+            "C11464-K2",
+            "C12166-K2",
+            "C12993-K1"
+          ],
+          "matching_txns_48h": [
+            {
+              "txn_id": "3445800",
+              "ts": "2016-11-10 02:48:02",
+              "amount": 29.98,
+              "risk_score": 0.05,
+              "customer_id": "C01909",
+              "card_id": "C01909-K2"
+            },
+            {
+              "txn_id": "3445983",
+              "ts": "2016-11-10 06:24:56",
+              "amount": 40.05,
+              "risk_score": 0.36,
+              "customer_id": "C12166",
+              "card_id": "C12166-K2"
+            },
+            {
+              "txn_id": "3446119",
+              "ts": "2016-11-10 12:10:47",
+              "amount": 499.96,
+              "risk_score": 0.14,
+              "customer_id": "C05560",
+              "card_id": "C05560-K2"
+            },
+            {
+              "txn_id": "3446131",
+              "ts": "2016-11-10 12:27:44",
+              "amount": 50.04,
+              "risk_score": 0.08,
+              "customer_id": "C04125",
+              "card_id": "C04125-K2"
+            },
+            {
+              "txn_id": "3446136",
+              "ts": "2016-11-10 12:33:36",
+              "amount": 500.02,
+              "risk_score": 0.08,
+              "customer_id": "C05560",
+              "card_id": "C05560-K2"
+            },
+            {
+              "txn_id": "3446338",
+              "ts": "2016-11-10 14:18:03",
+              "amount": 19.91,
+              "risk_score": 0.07,
+              "customer_id": "C09471",
+              "card_id": "C09471-K2"
+            },
+            {
+              "txn_id": "3446421",
+              "ts": "2016-11-10 14:52:54",
+              "amount": 4.92,
+              "risk_score": 0.32,
+              "customer_id": "C03738",
+              "card_id": "C03738-K2"
+            },
+            {
+              "txn_id": "3446466",
+              "ts": "2016-11-10 15:16:29",
+              "amount": 40.0,
+              "risk_score": 0.11,
+              "customer_id": "C11464",
+              "card_id": "C11464-K2"
+            },
+            {
+              "txn_id": "3446476",
+              "ts": "2016-11-10 15:19:49",
+              "amount": 39.99,
+              "risk_score": 0.13,
+              "customer_id": "C11464",
+              "card_id": "C11464-K2"
+            },
+            {
+              "txn_id": "3446506",
+              "ts": "2016-11-10 15:32:02",
+              "amount": 40.09,
+              "risk_score": 0.12,
+              "customer_id": "C11464",
+              "card_id": "C11464-K2"
+            },
+            {
+              "txn_id": "3446515",
+              "ts": "2016-11-10 15:34:17",
+              "amount": 15.09,
+              "risk_score": 0.26,
+              "customer_id": "C03738",
+              "card_id": "C03738-K2"
+            },
+            {
+              "txn_id": "3446555",
+              "ts": "2016-11-10 15:50:10",
+              "amount": 11.93,
+              "risk_score": 0.08,
+              "customer_id": "C00750",
+              "card_id": "C00750-K2"
+            },
+            {
+              "txn_id": "3446803",
+              "ts": "2016-11-10 17:15:14",
+              "amount": 49.92,
+              "risk_score": 0.13,
+              "customer_id": "C09249",
+              "card_id": "C09249-K1"
+            },
+            {
+              "txn_id": "3446893",
+              "ts": "2016-11-10 17:47:44",
+              "amount": 99.92,
+              "risk_score": 0.81,
+              "customer_id": "C03019",
+              "card_id": "C03019-K2"
+            },
+            {
+              "txn_id": "3446972",
+              "ts": "2016-11-10 18:13:19",
+              "amount": 75.02,
+              "risk_score": 0.79,
+              "customer_id": "C05086",
+              "card_id": "C05086-K1"
+            },
+            {
+              "txn_id": "3446976",
+              "ts": "2016-11-10 18:15:36",
+              "amount": 175.08,
+              "risk_score": 0.92,
+              "customer_id": "C09165",
+              "card_id": "C09165-K2"
+            },
+            {
+              "txn_id": "3446983",
+              "ts": "2016-11-10 18:16:36",
+              "amount": 50.05,
+              "risk_score": 0.18,
+              "customer_id": "C09981",
+              "card_id": "C09981-K2"
+            },
+            {
+              "txn_id": "3447211",
+              "ts": "2016-11-10 19:31:56",
+              "amount": 50.02,
+              "risk_score": 0.62,
+              "customer_id": "C08083",
+              "card_id": "C08083-K1"
+            },
+            {
+              "txn_id": "3447265",
+              "ts": "2016-11-10 19:46:14",
+              "amount": 50.07,
+              "risk_score": 0.03,
+              "customer_id": "C01387",
+              "card_id": "C01387-K1"
+            },
+            {
+              "txn_id": "3447270",
+              "ts": "2016-11-10 19:47:24",
+              "amount": 74.97,
+              "risk_score": 0.16,
+              "customer_id": "C05086",
+              "card_id": "C05086-K1"
+            }
+          ],
+          "meaningful_match": false,
+          "corroborated": false,
+          "corroboration_basis": "",
+          "corroborated_card_ids": [],
+          "corroborating_txn_ids": [],
+          "confirmed_fraud_case_ids": [],
+          "reason": "generic device profile: 164 distinct cards on/before cutoff (> 20); contextual only"
+        }
+      },
+      "customer_statement": null,
+      "families_before_statement": {
+        "suspicious": [
+          "temporal_pattern",
+          "identity_anomaly"
+        ],
+        "benign": [
+          "behavioral_consistency"
+        ],
+        "strong_suspicious": [],
+        "detail": {
+          "benign:behavioral_consistency": "normal amount (0.501x median) on an established ProductCD R",
+          "suspicious:temporal_pattern": "3 online transactions inside one 48h window containing the flagged one (documented 2-4 burst); card baseline 0.57 online per 48h -> above routine volume",
+          "suspicious:identity_anomaly": "anonymizing proxy (IP_PROXY:HIDDEN)"
+        },
+        "single_signal": false
+      },
+      "families": {
+        "suspicious": [
+          "temporal_pattern",
+          "identity_anomaly"
+        ],
+        "benign": [
+          "behavioral_consistency"
+        ],
+        "strong_suspicious": [],
+        "detail": {
+          "benign:behavioral_consistency": "normal amount (0.501x median) on an established ProductCD R",
+          "suspicious:temporal_pattern": "3 online transactions inside one 48h window containing the flagged one (documented 2-4 burst); card baseline 0.57 online per 48h -> above routine volume",
+          "suspicious:identity_anomaly": "anonymizing proxy (IP_PROXY:HIDDEN)"
+        },
+        "single_signal": false
+      },
+      "episode": {
+        "txn_ids": [
+          "3450436",
+          "3450503",
+          "3450629"
+        ],
+        "first_txn_id": "3450436",
+        "exposure_usd": 300.14,
+        "detected_pattern": "cnp_burst",
+        "first_date": "2016-11-11",
+        "last_date": "2016-11-11",
+        "basis": "documented_cnp_burst"
+      },
+      "simulated_response_if_asked": {
+        "response": "no_reply",
+        "text": "Simulated assumption: customer did not reply within 24 hours. Rule: no reply -- profile is ambiguous: not fully consistent with history (no anonymizing proxy) but only 2 suspicious families (temporal_pattern, identity_anomaly) and no strong signal. Metrics: history 52 prior txns; amount 0.501x median $199.97 (percentile 0.2115, normal); ProductCD R established (29 prior); channel online; device Found.",
+        "rule": "no reply -- profile is ambiguous: not fully consistent with history (no anonymizing proxy) but only 2 suspicious families (temporal_pattern, identity_anomaly) and no strong signal"
+      }
+    },
+    {
+      "case_id": "HHG-018",
+      "trigger_type": "customer_report",
+      "window_rows": 5867,
+      "behavior_profile": {
+        "flagged_txn_id": "3491361",
+        "flagged_found": true,
+        "flagged_ts": "2016-11-27 13:41:26",
+        "flagged_amount": 39.08,
+        "risk_score_context_only": 0.48,
+        "history_count": 5864,
+        "history_span_days": 148.54,
+        "stable_history": true,
+        "amount_median": 86.92,
+        "amount_ratio": 0.45,
+        "amount_percentile": 0.177,
+        "amount_class": "normal",
+        "flagged_product": "W",
+        "product_prior_count": 5373,
+        "product_prior_share": 0.9163,
+        "product_class": "established",
+        "flagged_channel": "in_person",
+        "channel_prior_count": 5373,
+        "flagged_region": "126.0",
+        "flagged_region_prior_count": 565,
+        "flagged_region_prior_in_person_count": 495,
+        "region_class": "established",
+        "home_region": "325.0",
+        "home_region_count": 4444,
+        "home_region_share": 0.8297,
+        "in_person_with_region_count": 5356,
+        "online_txn_ids_48h": [
+          "3487659",
+          "3488570",
+          "3489428",
+          "3489904"
+        ],
+        "card_present_txn_ids_48h": [
+          "3486046",
+          "3486080",
+          "3486178",
+          "3486190",
+          "3486192",
+          "3486266",
+          "3486341",
+          "3486462",
+          "3486507",
+          "3486559",
+          "3486744",
+          "3486755",
+          "3486949",
+          "3486963",
+          "3486966",
+          "3487032",
+          "3487364",
+          "3487401",
+          "3487425",
+          "3487444",
+          "3487493",
+          "3487509",
+          "3487549",
+          "3487557",
+          "3487573",
+          "3487604",
+          "3487632",
+          "3487685",
+          "3487694",
+          "3487810",
+          "3487905",
+          "3487973",
+          "3487985",
+          "3487994",
+          "3488000",
+          "3488006",
+          "3488015",
+          "3488023",
+          "3488044",
+          "3488056",
+          "3488061",
+          "3488103",
+          "3488116",
+          "3488325",
+          "3488371",
+          "3488433",
+          "3488476",
+          "3488490",
+          "3488502",
+          "3488601",
+          "3488661",
+          "3488749",
+          "3488755",
+          "3488852",
+          "3488866",
+          "3488893",
+          "3488922",
+          "3488954",
+          "3488967",
+          "3488986",
+          "3489157",
+          "3489290",
+          "3489383",
+          "3489497",
+          "3489509",
+          "3489515",
+          "3489676",
+          "3489691",
+          "3489703",
+          "3489721",
+          "3489767",
+          "3489772",
+          "3489813",
+          "3490019",
+          "3490069",
+          "3490114",
+          "3490180",
+          "3490239",
+          "3490305",
+          "3490411",
+          "3490444",
+          "3490511",
+          "3490585",
+          "3490630",
+          "3490655",
+          "3490727",
+          "3490961",
+          "3490982",
+          "3491104",
+          "3491265",
+          "3491379",
+          "3491469"
+        ],
+        "is_new_device": null,
+        "device_status": null,
+        "is_proxy": null,
+        "proxy_type": null,
+        "recurring_band_count": 144,
+        "recurring_band_denominator": 5373,
+        "recurring_band_frequency": 0.0268,
+        "baseline_online_per_48h": 6.6465,
+        "independent_evidence_families": [
+          "customer_statement"
+        ],
+        "benign_families": [
+          "behavioral_consistency",
+          "geographic_consistency"
+        ],
+        "suspicious_findings": [],
+        "benign_findings": [
+          "normal amount: 0.45x median $86.92, percentile 0.177",
+          "ProductCD W established (5373 prior, share 0.9163)",
+          "region 126.0 established (495 prior in-person)"
+        ],
+        "unavailable_findings": [
+          "recurrence candidate: 9 matches in the 25-35 day window: coincidental, not one recurring charge"
+        ]
+      },
+      "signals": {
+        "card_testing": {
+          "fired": false,
+          "reason": "no qualifying sequence contains the flagged transaction",
+          "txn_ids": [],
+          "timestamps": [],
+          "amounts": [],
+          "small_auth_ids": [],
+          "larger_purchase_id": "",
+          "larger_purchase_amount": 0.0,
+          "purchase_over_100_cleared": false
+        },
+        "cnp_burst": {
+          "flagged_online": false,
+          "online_txn_ids": [],
+          "online_count": 0,
+          "excluded_in_person_ids": [
+            "3486046",
+            "3486080",
+            "3486178",
+            "3486190",
+            "3486192",
+            "3486266",
+            "3486341",
+            "3486462",
+            "3486507",
+            "3486559",
+            "3486744",
+            "3486755",
+            "3486949",
+            "3486963",
+            "3486966",
+            "3487032",
+            "3487364",
+            "3487401",
+            "3487425",
+            "3487444",
+            "3487493",
+            "3487509",
+            "3487549",
+            "3487557",
+            "3487573",
+            "3487604",
+            "3487632",
+            "3487685",
+            "3487694",
+            "3487810",
+            "3487905",
+            "3487973",
+            "3487985",
+            "3487994",
+            "3488000",
+            "3488006",
+            "3488015",
+            "3488023",
+            "3488044",
+            "3488056",
+            "3488061",
+            "3488103",
+            "3488116",
+            "3488325",
+            "3488371",
+            "3488433",
+            "3488476",
+            "3488490",
+            "3488502",
+            "3488601",
+            "3488661",
+            "3488749",
+            "3488755",
+            "3488852",
+            "3488866",
+            "3488893",
+            "3488922",
+            "3488954",
+            "3488967",
+            "3488986",
+            "3489157",
+            "3489290",
+            "3489383",
+            "3489497",
+            "3489509",
+            "3489515",
+            "3489676",
+            "3489691",
+            "3489703",
+            "3489721",
+            "3489767",
+            "3489772",
+            "3489813",
+            "3490019",
+            "3490069",
+            "3490114",
+            "3490180",
+            "3490239",
+            "3490305",
+            "3490411",
+            "3490444",
+            "3490511",
+            "3490585",
+            "3490630",
+            "3490655",
+            "3490727",
+            "3490961",
+            "3490982",
+            "3491104",
+            "3491265",
+            "3491379",
+            "3491469"
+          ],
+          "documented_burst": false,
+          "high_volume_online": false,
+          "baseline_online_per_48h": null,
+          "exceeds_baseline": null,
+          "reason": "flagged transaction channel is in_person, not online",
+          "temporal_signal": false
+        },
+        "out_of_region": {
+          "fired": false,
+          "reason": "region 126.0 already appears 565 time(s) in this card's prior history; it is not a region the cardholder has no history in",
+          "flagged_channel": "in_person",
+          "flagged_region": "126.0",
+          "home_region": "325.0",
+          "flagged_region_prior_count": 565,
+          "flagged_region_prior_in_person_count": 495,
+          "home_region_count": 4444,
+          "home_region_share": 0.8297,
+          "in_person_with_region_count": 5356,
+          "home_activity_ids_48h": [],
+          "trip_candidate": false,
+          "evidence_ids": [],
+          "episode_ids": []
+        },
+        "recurrence": {
+          "tier": "candidate",
+          "reason": "9 matches in the 25-35 day window: coincidental, not one recurring charge",
+          "tolerance_usd": 0.5,
+          "monthly_match_ids": [
+            "3392062",
+            "3400222",
+            "3404014",
+            "3404248",
+            "3410159",
+            "3412701",
+            "3416607",
+            "3419584",
+            "3419747"
+          ],
+          "second_cycle_match_ids": [
+            "3279869",
+            "3286847",
+            "3287842",
+            "3288902",
+            "3291426",
+            "3293431",
+            "3293975",
+            "3296030",
+            "3303623",
+            "3309755",
+            "3322872"
+          ],
+          "same_channel_product_prior_count": 5373,
+          "band_count": 144,
+          "band_share": 0.0268,
+          "collision_count": 94,
+          "collision_rate": 0.0175,
+          "proxy_note": "ProductCD, channel and amount are proxies for 'same merchant': this dataset has no merchant-name column."
+        },
+        "device_network": {
+          "available": false,
+          "device_profile_id": "",
+          "device_profile_label": "",
+          "total_distinct_cards": 0,
+          "other_card_count": 0,
+          "generic_profile": false,
+          "other_cards_48h": [],
+          "matching_txns_48h": [],
+          "meaningful_match": false,
+          "corroborated": false,
+          "corroboration_basis": "",
+          "corroborated_card_ids": [],
+          "corroborating_txn_ids": [],
+          "confirmed_fraud_case_ids": [],
+          "reason": "no device record (in-person or missing identity)"
+        }
+      },
+      "customer_statement": "denies",
+      "families_before_statement": {
+        "suspicious": [],
+        "benign": [
+          "behavioral_consistency",
+          "geographic_consistency"
+        ],
+        "strong_suspicious": [],
+        "detail": {
+          "benign:behavioral_consistency": "normal amount (0.45x median) on an established ProductCD W",
+          "benign:geographic_consistency": "region 126.0 has 495 prior in-person uses"
+        },
+        "single_signal": true
+      },
+      "families": {
+        "suspicious": [
+          "customer_statement"
+        ],
+        "benign": [
+          "behavioral_consistency",
+          "geographic_consistency"
+        ],
+        "strong_suspicious": [],
+        "detail": {
+          "benign:behavioral_consistency": "normal amount (0.45x median) on an established ProductCD W",
+          "benign:geographic_consistency": "region 126.0 has 495 prior in-person uses",
+          "suspicious:customer_statement": "customer states they did not make the transaction"
+        },
+        "single_signal": true
+      },
+      "episode": {
+        "txn_ids": [
+          "3491361"
+        ],
+        "first_txn_id": "3491361",
+        "exposure_usd": 39.08,
+        "detected_pattern": null,
+        "first_date": "2016-11-27",
+        "last_date": "2016-11-27",
+        "basis": "flagged_only"
+      },
+      "simulated_response_if_asked": null
+    },
+    {
+      "case_id": "HHG-019",
+      "trigger_type": "risk_score",
+      "window_rows": 221,
+      "behavior_profile": {
+        "flagged_txn_id": "3503878",
+        "flagged_found": true,
+        "flagged_ts": "2016-12-01 17:28:53",
+        "flagged_amount": 99.92,
+        "risk_score_context_only": 0.9,
+        "history_count": 220,
+        "history_span_days": 151.7,
+        "stable_history": true,
+        "amount_median": 116.92,
+        "amount_ratio": 0.855,
+        "amount_percentile": 0.4,
+        "amount_class": "normal",
+        "flagged_product": "R",
+        "product_prior_count": 13,
+        "product_prior_share": 0.0591,
+        "product_class": "established",
+        "flagged_channel": "online",
+        "channel_prior_count": 57,
+        "flagged_region": "264.0",
+        "flagged_region_prior_count": 5,
+        "flagged_region_prior_in_person_count": 0,
+        "region_class": "not_applicable",
+        "home_region": "325.0",
+        "home_region_count": 44,
+        "home_region_share": 0.2699,
+        "in_person_with_region_count": 163,
+        "online_txn_ids_48h": [],
+        "card_present_txn_ids_48h": [
+          "3499109"
+        ],
+        "is_new_device": true,
+        "device_status": "New",
+        "is_proxy": null,
+        "proxy_type": null,
+        "recurring_band_count": 4,
+        "recurring_band_denominator": 13,
+        "recurring_band_frequency": 0.3077,
+        "baseline_online_per_48h": 0.7615,
+        "independent_evidence_families": [
+          "identity_anomaly",
+          "direct_network_corroboration"
+        ],
+        "benign_families": [
+          "behavioral_consistency"
+        ],
+        "suspicious_findings": [
+          "device marked New for this account (id_15) -- not proof: people buy new phones",
+          "device network: 2 other cards on this 3-card device profile transacted within 48h of the flagged $99.92 at near-identical amounts: C11309-K1 $100.06 at 2016-11-29 17:45, C06224-K2 $100.00 at 2016-12-01 18:00"
+        ],
+        "benign_findings": [
+          "normal amount: 0.855x median $116.92, percentile 0.4",
+          "ProductCD R established (13 prior, share 0.0591)"
+        ],
+        "unavailable_findings": [
+          "CNP: only the flagged online transaction within 48h",
+          "recurrence candidate: only 13 prior same-channel/ProductCD transactions; not enough baseline to rule out coincidence"
+        ]
+      },
+      "signals": {
+        "card_testing": {
+          "fired": false,
+          "reason": "no qualifying sequence contains the flagged transaction",
+          "txn_ids": [],
+          "timestamps": [],
+          "amounts": [],
+          "small_auth_ids": [],
+          "larger_purchase_id": "",
+          "larger_purchase_amount": 0.0,
+          "purchase_over_100_cleared": false
+        },
+        "cnp_burst": {
+          "flagged_online": true,
+          "online_txn_ids": [
+            "3503878"
+          ],
+          "online_count": 1,
+          "excluded_in_person_ids": [
+            "3499109"
+          ],
+          "documented_burst": false,
+          "high_volume_online": false,
+          "baseline_online_per_48h": 0.7615,
+          "exceeds_baseline": null,
+          "reason": "only the flagged online transaction within 48h",
+          "temporal_signal": false
+        },
+        "out_of_region": {
+          "fired": false,
+          "reason": "flagged transaction is online; out-of-region requires card-present use",
+          "flagged_channel": "online",
+          "flagged_region": "264.0",
+          "home_region": "325.0",
+          "flagged_region_prior_count": 5,
+          "flagged_region_prior_in_person_count": 0,
+          "home_region_count": 44,
+          "home_region_share": 0.2699,
+          "in_person_with_region_count": 163,
+          "home_activity_ids_48h": [],
+          "trip_candidate": false,
+          "evidence_ids": [],
+          "episode_ids": []
+        },
+        "recurrence": {
+          "tier": "candidate",
+          "reason": "only 13 prior same-channel/ProductCD transactions; not enough baseline to rule out coincidence",
+          "tolerance_usd": 1.0,
+          "monthly_match_ids": [
+            "3419333"
+          ],
+          "second_cycle_match_ids": [],
+          "same_channel_product_prior_count": 13,
+          "band_count": 4,
+          "band_share": 0.3077,
+          "collision_count": 3,
+          "collision_rate": 0.2308,
+          "proxy_note": "ProductCD, channel and amount are proxies for 'same merchant': this dataset has no merchant-name column."
+        },
+        "device_network": {
+          "available": true,
+          "device_profile_id": "Df1763b597e38",
+          "device_profile_label": "Windows | other | chrome 61.0 | 1280x720",
+          "total_distinct_cards": 3,
+          "other_card_count": 2,
+          "generic_profile": false,
+          "other_cards_48h": [
+            "C06224-K2",
+            "C11309-K1"
+          ],
+          "matching_txns_48h": [
+            {
+              "txn_id": "3497738",
+              "ts": "2016-11-29 17:45:09",
+              "amount": 100.06,
+              "risk_score": 0.71,
+              "customer_id": "C11309",
+              "card_id": "C11309-K1"
+            },
+            {
+              "txn_id": "3503988",
+              "ts": "2016-12-01 18:00:57",
+              "amount": 100.0,
+              "risk_score": 0.91,
+              "customer_id": "C06224",
+              "card_id": "C06224-K2"
+            }
+          ],
+          "meaningful_match": true,
+          "corroborated": true,
+          "corroboration_basis": "near_identical_to_flagged",
+          "corroborated_card_ids": [
+            "C06224-K2",
+            "C11309-K1"
+          ],
+          "corroborating_txn_ids": [
+            "3497738",
+            "3503988"
+          ],
+          "confirmed_fraud_case_ids": [],
+          "reason": "2 other cards on this 3-card device profile transacted within 48h of the flagged $99.92 at near-identical amounts: C11309-K1 $100.06 at 2016-11-29 17:45, C06224-K2 $100.00 at 2016-12-01 18:00"
+        }
+      },
+      "customer_statement": null,
+      "families_before_statement": {
+        "suspicious": [
+          "identity_anomaly",
+          "direct_network_corroboration"
+        ],
+        "benign": [
+          "behavioral_consistency"
+        ],
+        "strong_suspicious": [
+          "direct_shared_origin"
+        ],
+        "detail": {
+          "benign:behavioral_consistency": "normal amount (0.855x median) on an established ProductCD R",
+          "suspicious:identity_anomaly": "device marked New for this account (id_15)",
+          "suspicious:direct_network_corroboration": "2 other cards on this 3-card device profile transacted within 48h of the flagged $99.92 at near-identical amounts: C11309-K1 $100.06 at 2016-11-29 17:45, C06224-K2 $100.00 at 2016-12-01 18:00"
+        },
+        "single_signal": false
+      },
+      "families": {
+        "suspicious": [
+          "identity_anomaly",
+          "direct_network_corroboration"
+        ],
+        "benign": [
+          "behavioral_consistency"
+        ],
+        "strong_suspicious": [
+          "direct_shared_origin"
+        ],
+        "detail": {
+          "benign:behavioral_consistency": "normal amount (0.855x median) on an established ProductCD R",
+          "suspicious:identity_anomaly": "device marked New for this account (id_15)",
+          "suspicious:direct_network_corroboration": "2 other cards on this 3-card device profile transacted within 48h of the flagged $99.92 at near-identical amounts: C11309-K1 $100.06 at 2016-11-29 17:45, C06224-K2 $100.00 at 2016-12-01 18:00"
+        },
+        "single_signal": false
+      },
+      "episode": {
+        "txn_ids": [
+          "3503878"
+        ],
+        "first_txn_id": "3503878",
+        "exposure_usd": 99.92,
+        "detected_pattern": null,
+        "first_date": "2016-12-01",
+        "last_date": "2016-12-01",
+        "basis": "flagged_only"
+      },
+      "simulated_response_if_asked": {
+        "response": "denies",
+        "text": "Simulated assumption: customer states they did not make this $99.92 purchase and still has the card. Rule: deny -- 2 independent suspicious families (identity_anomaly, direct_network_corroboration) including strong signal(s) direct_shared_origin. Metrics: history 220 prior txns; amount 0.855x median $116.92 (percentile 0.4, normal); ProductCD R established (13 prior); channel online; device New.",
+        "rule": "deny -- 2 independent suspicious families (identity_anomaly, direct_network_corroboration) including strong signal(s) direct_shared_origin"
+      }
+    },
+    {
+      "case_id": "HHG-020",
+      "trigger_type": "risk_score",
+      "window_rows": 84,
+      "behavior_profile": {
+        "flagged_txn_id": "3509359",
+        "flagged_found": true,
+        "flagged_ts": "2016-12-03 06:04:26",
+        "flagged_amount": 125.08,
+        "risk_score_context_only": 0.52,
+        "history_count": 83,
+        "history_span_days": 150.11,
+        "stable_history": true,
+        "amount_median": 107.9,
+        "amount_ratio": 1.159,
+        "amount_percentile": 0.5904,
+        "amount_class": "normal",
+        "flagged_product": "R",
+        "product_prior_count": 0,
+        "product_prior_share": 0.0,
+        "product_class": "unseen",
+        "flagged_channel": "online",
+        "channel_prior_count": 4,
+        "flagged_region": "264.0",
+        "flagged_region_prior_count": 83,
+        "flagged_region_prior_in_person_count": 79,
+        "region_class": "not_applicable",
+        "home_region": "264.0",
+        "home_region_count": 79,
+        "home_region_share": 1.0,
+        "in_person_with_region_count": 79,
+        "online_txn_ids_48h": [],
+        "card_present_txn_ids_48h": [],
+        "is_new_device": true,
+        "device_status": "New",
+        "is_proxy": null,
+        "proxy_type": null,
+        "recurring_band_count": 0,
+        "recurring_band_denominator": 0,
+        "recurring_band_frequency": null,
+        "baseline_online_per_48h": 0.054,
+        "independent_evidence_families": [
+          "behavioral_anomaly",
+          "identity_anomaly"
+        ],
+        "benign_families": [],
+        "suspicious_findings": [
+          "ProductCD R unseen in prior history",
+          "device marked New for this account (id_15) -- not proof: people buy new phones"
+        ],
+        "benign_findings": [
+          "normal amount: 1.159x median $107.9, percentile 0.5904"
+        ],
+        "unavailable_findings": [
+          "CNP: only the flagged online transaction within 48h",
+          "device network: generic device profile: 232 distinct cards on/before cutoff (> 20); contextual only"
+        ]
+      },
+      "signals": {
+        "card_testing": {
+          "fired": false,
+          "reason": "no qualifying sequence contains the flagged transaction",
+          "txn_ids": [],
+          "timestamps": [],
+          "amounts": [],
+          "small_auth_ids": [],
+          "larger_purchase_id": "",
+          "larger_purchase_amount": 0.0,
+          "purchase_over_100_cleared": false
+        },
+        "cnp_burst": {
+          "flagged_online": true,
+          "online_txn_ids": [
+            "3509359"
+          ],
+          "online_count": 1,
+          "excluded_in_person_ids": [],
+          "documented_burst": false,
+          "high_volume_online": false,
+          "baseline_online_per_48h": 0.054,
+          "exceeds_baseline": null,
+          "reason": "only the flagged online transaction within 48h",
+          "temporal_signal": false
+        },
+        "out_of_region": {
+          "fired": false,
+          "reason": "flagged transaction is online; out-of-region requires card-present use",
+          "flagged_channel": "online",
+          "flagged_region": "264.0",
+          "home_region": "264.0",
+          "flagged_region_prior_count": 83,
+          "flagged_region_prior_in_person_count": 79,
+          "home_region_count": 79,
+          "home_region_share": 1.0,
+          "in_person_with_region_count": 79,
+          "home_activity_ids_48h": [],
+          "trip_candidate": false,
+          "evidence_ids": [],
+          "episode_ids": []
+        },
+        "recurrence": {
+          "tier": "none",
+          "reason": "no same-channel, same-ProductCD, amount-matching transaction 25-35 days earlier",
+          "tolerance_usd": 1.25,
+          "monthly_match_ids": [],
+          "second_cycle_match_ids": [],
+          "same_channel_product_prior_count": 0,
+          "band_count": 0,
+          "band_share": null,
+          "collision_count": 0,
+          "collision_rate": null,
+          "proxy_note": "ProductCD, channel and amount are proxies for 'same merchant': this dataset has no merchant-name column."
+        },
+        "device_network": {
+          "available": true,
+          "device_profile_id": "D0c709938649b",
+          "device_profile_label": "Trident/7.0 | Windows 10 | ie 11.0 for desktop | 1920x1080",
+          "total_distinct_cards": 232,
+          "other_card_count": 231,
+          "generic_profile": true,
+          "other_cards_48h": [
+            "C00854-K2",
+            "C02171-K1",
+            "C02716-K2",
+            "C05546-K1",
+            "C07969-K1",
+            "C10390-K1",
+            "C12961-K2"
+          ],
+          "matching_txns_48h": [
+            {
+              "txn_id": "3503256",
+              "ts": "2016-12-01 14:08:41",
+              "amount": 99.91,
+              "risk_score": 0.92,
+              "customer_id": "C02171",
+              "card_id": "C02171-K1"
+            },
+            {
+              "txn_id": "3503412",
+              "ts": "2016-12-01 15:04:14",
+              "amount": 50.09,
+              "risk_score": 0.6,
+              "customer_id": "C10390",
+              "card_id": "C10390-K1"
+            },
+            {
+              "txn_id": "3503835",
+              "ts": "2016-12-01 17:15:29",
+              "amount": 49.93,
+              "risk_score": 0.2,
+              "customer_id": "C12961",
+              "card_id": "C12961-K2"
+            },
+            {
+              "txn_id": "3504950",
+              "ts": "2016-12-01 22:36:38",
+              "amount": 99.94,
+              "risk_score": 0.5,
+              "customer_id": "C07969",
+              "card_id": "C07969-K1"
+            },
+            {
+              "txn_id": "3508296",
+              "ts": "2016-12-02 22:18:39",
+              "amount": 99.98,
+              "risk_score": 0.01,
+              "customer_id": "C05546",
+              "card_id": "C05546-K1"
+            },
+            {
+              "txn_id": "3508330",
+              "ts": "2016-12-02 22:30:03",
+              "amount": 200.09,
+              "risk_score": 0.1,
+              "customer_id": "C02716",
+              "card_id": "C02716-K2"
+            },
+            {
+              "txn_id": "3508342",
+              "ts": "2016-12-02 22:33:51",
+              "amount": 100.05,
+              "risk_score": 0.25,
+              "customer_id": "C05546",
+              "card_id": "C05546-K1"
+            },
+            {
+              "txn_id": "3509470",
+              "ts": "2016-12-03 11:12:35",
+              "amount": 49.98,
+              "risk_score": 0.01,
+              "customer_id": "C00854",
+              "card_id": "C00854-K2"
+            }
+          ],
+          "meaningful_match": false,
+          "corroborated": false,
+          "corroboration_basis": "",
+          "corroborated_card_ids": [],
+          "corroborating_txn_ids": [],
+          "confirmed_fraud_case_ids": [],
+          "reason": "generic device profile: 232 distinct cards on/before cutoff (> 20); contextual only"
+        }
+      },
+      "customer_statement": null,
+      "families_before_statement": {
+        "suspicious": [
+          "behavioral_anomaly",
+          "identity_anomaly"
+        ],
+        "benign": [],
+        "strong_suspicious": [],
+        "detail": {
+          "suspicious:behavioral_anomaly": "ProductCD R never used in 83 prior transactions",
+          "suspicious:identity_anomaly": "device marked New for this account (id_15)"
+        },
+        "single_signal": false
+      },
+      "families": {
+        "suspicious": [
+          "behavioral_anomaly",
+          "identity_anomaly"
+        ],
+        "benign": [],
+        "strong_suspicious": [],
+        "detail": {
+          "suspicious:behavioral_anomaly": "ProductCD R never used in 83 prior transactions",
+          "suspicious:identity_anomaly": "device marked New for this account (id_15)"
+        },
+        "single_signal": false
+      },
+      "episode": {
+        "txn_ids": [
+          "3509359"
+        ],
+        "first_txn_id": "3509359",
+        "exposure_usd": 125.08,
+        "detected_pattern": null,
+        "first_date": "2016-12-03",
+        "last_date": "2016-12-03",
+        "basis": "flagged_only"
+      },
+      "simulated_response_if_asked": {
+        "response": "no_reply",
+        "text": "Simulated assumption: customer did not reply within 24 hours. Rule: no reply -- profile is ambiguous: not fully consistent with history (established ProductCD) but only 2 suspicious families (behavioral_anomaly, identity_anomaly) and no strong signal. Metrics: history 83 prior txns; amount 1.159x median $107.9 (percentile 0.5904, normal); ProductCD R unseen (0 prior); channel online; device New.",
+        "rule": "no reply -- profile is ambiguous: not fully consistent with history (established ProductCD) but only 2 suspicious families (behavioral_anomaly, identity_anomaly) and no strong signal"
+      }
+    }
+  ],
+  "regression_checks": {
+    "HHG-001": [
+      {
+        "fact": "flagged_channel",
+        "expected": "in_person",
+        "actual": "in_person",
+        "ok": true
+      },
+      {
+        "fact": "online_48h",
+        "expected": 0,
+        "actual": 0,
+        "ok": true
+      },
+      {
+        "fact": "amount_ratio_approx",
+        "expected": 0.92,
+        "actual": 0.918,
+        "ok": true
+      },
+      {
+        "fact": "region_prior",
+        "expected": [
+          "444.0",
+          10
+        ],
+        "actual": [
+          "444.0",
+          10
+        ],
+        "ok": true
+      },
+      {
+        "fact": "cnp_documented",
+        "expected": false,
+        "actual": false,
+        "ok": true
+      },
+      {
+        "fact": "oor",
+        "expected": false,
+        "actual": false,
+        "ok": true
+      }
+    ],
+    "HHG-003": [
+      {
+        "fact": "flagged_channel",
+        "expected": "in_person",
+        "actual": "in_person",
+        "ok": true
+      },
+      {
+        "fact": "cnp_documented",
+        "expected": false,
+        "actual": false,
+        "ok": true
+      },
+      {
+        "fact": "recurrence_not_strong",
+        "expected": true,
+        "actual": true,
+        "ok": true
+      }
+    ],
+    "HHG-007": [
+      {
+        "fact": "flagged_channel",
+        "expected": "in_person",
+        "actual": "in_person",
+        "ok": true
+      },
+      {
+        "fact": "region_prior",
+        "expected": [
+          "264.0",
+          2221
+        ],
+        "actual": [
+          "264.0",
+          2221
+        ],
+        "ok": true
+      },
+      {
+        "fact": "cnp_documented",
+        "expected": false,
+        "actual": false,
+        "ok": true
+      },
+      {
+        "fact": "oor",
+        "expected": false,
+        "actual": false,
+        "ok": true
+      }
+    ],
+    "HHG-009": [
+      {
+        "fact": "flagged_channel",
+        "expected": "online",
+        "actual": "online",
+        "ok": true
+      },
+      {
+        "fact": "oor",
+        "expected": false,
+        "actual": false,
+        "ok": true
+      }
+    ],
+    "HHG-012": [
+      {
+        "fact": "flagged_channel",
+        "expected": "in_person",
+        "actual": "in_person",
+        "ok": true
+      },
+      {
+        "fact": "online_48h",
+        "expected": 0,
+        "actual": 0,
+        "ok": true
+      },
+      {
+        "fact": "region_prior",
+        "expected": [
+          "494.0",
+          21
+        ],
+        "actual": [
+          "494.0",
+          21
+        ],
+        "ok": true
+      },
+      {
+        "fact": "cnp_documented",
+        "expected": false,
+        "actual": false,
+        "ok": true
+      },
+      {
+        "fact": "oor",
+        "expected": false,
+        "actual": false,
+        "ok": true
+      }
+    ],
+    "HHG-013": [
+      {
+        "fact": "cnp_documented",
+        "expected": false,
+        "actual": false,
+        "ok": true
+      },
+      {
+        "fact": "cnp_has_no_in_person",
+        "expected": true,
+        "actual": true,
+        "ok": true
+      }
+    ],
+    "HHG-014": [
+      {
+        "fact": "cnp_documented",
+        "expected": false,
+        "actual": false,
+        "ok": true
+      },
+      {
+        "fact": "network_corroborated",
+        "expected": false,
+        "actual": false,
+        "ok": true
+      }
+    ],
+    "HHG-015": [
+      {
+        "fact": "flagged_channel",
+        "expected": "online",
+        "actual": "online",
+        "ok": true
+      },
+      {
+        "fact": "oor",
+        "expected": false,
+        "actual": false,
+        "ok": true
+      },
+      {
+        "fact": "cnp_documented",
+        "expected": false,
+        "actual": false,
+        "ok": true
+      }
+    ],
+    "HHG-018": [
+      {
+        "fact": "flagged_channel",
+        "expected": "in_person",
+        "actual": "in_person",
+        "ok": true
+      },
+      {
+        "fact": "region_prior",
+        "expected": [
+          "126.0",
+          565
+        ],
+        "actual": [
+          "126.0",
+          565
+        ],
+        "ok": true
+      },
+      {
+        "fact": "cnp_documented",
+        "expected": false,
+        "actual": false,
+        "ok": true
+      },
+      {
+        "fact": "oor",
+        "expected": false,
+        "actual": false,
+        "ok": true
+      },
+      {
+        "fact": "recurrence_not_strong",
+        "expected": true,
+        "actual": true,
+        "ok": true
+      }
+    ],
+    "HHG-019": [
+      {
+        "fact": "flagged_channel",
+        "expected": "online",
+        "actual": "online",
+        "ok": true
+      },
+      {
+        "fact": "oor",
+        "expected": false,
+        "actual": false,
+        "ok": true
+      },
+      {
+        "fact": "network_corroborated",
+        "expected": true,
+        "actual": true,
+        "ok": true
+      }
+    ],
+    "HHG-020": [
+      {
+        "fact": "flagged_channel",
+        "expected": "online",
+        "actual": "online",
+        "ok": true
+      },
+      {
+        "fact": "is_new_device",
+        "expected": true,
+        "actual": true,
+        "ok": true
+      },
+      {
+        "fact": "product_class",
+        "expected": "unseen",
+        "actual": "unseen",
+        "ok": true
+      },
+      {
+        "fact": "not_decisive_alone",
+        "expected": true,
+        "actual": true,
+        "ok": true
+      }
+    ]
+  }
+}
