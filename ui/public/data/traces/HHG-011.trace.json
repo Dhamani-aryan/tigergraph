@@ -1,0 +1,1090 @@
+{
+  "schema_version": "1.0",
+  "case_id": "HHG-011",
+  "trigger": {
+    "trigger_type": "customer_report",
+    "trigger_text": "Customer C11923 message: 'I never made this $131.30 purchase. Please check my card.' Refers to 3583368.",
+    "flagged_txn_id": "3583368",
+    "card_id": "C11923-K2",
+    "customer_id": "C11923",
+    "risk_score": null,
+    "opened_at": "2016-12-29 06:27:44"
+  },
+  "cutoff_ts": "2016-12-29 06:27:44",
+  "steps": [
+    {
+      "step": 1,
+      "node": "gather_evidence",
+      "label": "Gather graph evidence",
+      "tool_calls": [
+        {
+          "tool": "card_window",
+          "via": "mcp",
+          "args": {},
+          "result_count": 10341
+        },
+        {
+          "tool": "customer_cards",
+          "via": "mcp",
+          "args": {},
+          "result_count": 1
+        },
+        {
+          "tool": "device_network",
+          "via": "mcp",
+          "args": {},
+          "result_count": 1
+        },
+        {
+          "tool": "device_profile_label",
+          "via": "mcp",
+          "args": {},
+          "result_count": 1
+        },
+        {
+          "tool": "closed_case_lookup",
+          "via": "mcp",
+          "args": {},
+          "result_count": 11
+        },
+        {
+          "tool": "ring_membership",
+          "via": "mcp",
+          "args": {},
+          "result_count": 1
+        },
+        {
+          "tool": "ring_context",
+          "via": "mcp",
+          "args": {},
+          "result_count": 1
+        },
+        {
+          "tool": "closed_case_features",
+          "via": "mcp",
+          "args": {},
+          "result_count": 1
+        },
+        {
+          "tool": "knowledge_docs_by_source",
+          "via": "mcp",
+          "args": {},
+          "result_count": 9
+        }
+      ],
+      "summary": "10341 card transaction(s) in the pre-cutoff window, 2 other card(s) on the device within 48h, 11 closed case(s) on this card."
+    },
+    {
+      "step": 2,
+      "node": "assess",
+      "label": "Initial assessment",
+      "tool_calls": [],
+      "summary": "pattern=card_not_present_new_device, probability=0.88"
+    },
+    {
+      "step": 3,
+      "node": "initial_policy",
+      "label": "Initial policy (R1-R10)",
+      "tool_calls": [],
+      "summary": "Recommended: BLOCK_CARD, CREATE_CASE, FILE_REPORT, MONITOR_CONNECTED_CARDS"
+    },
+    {
+      "step": 4,
+      "node": "write_sar",
+      "label": "Draft SAR narrative",
+      "tool_calls": [],
+      "summary": "965 character narrative drafted."
+    },
+    {
+      "step": 5,
+      "node": "write_case",
+      "label": "Write case memory",
+      "tool_calls": [
+        {
+          "tool": "add_nodes",
+          "via": "mcp",
+          "args": {},
+          "result_count": 1
+        }
+      ],
+      "summary": "Upserted FraudCase CASE-HHG-011 (no embedding generated on the live path)."
+    },
+    {
+      "step": 6,
+      "node": "read_back",
+      "label": "Independent read-back",
+      "tool_calls": [
+        {
+          "tool": "get_node",
+          "via": "mcp",
+          "args": {},
+          "result_count": 1
+        }
+      ],
+      "summary": "Read the case back from the graph; verdict matched."
+    },
+    {
+      "step": 7,
+      "node": "validate",
+      "label": "Answer validation",
+      "tool_calls": [],
+      "summary": "Passed contract and cross-field checks."
+    }
+  ],
+  "probability_timeline": [
+    {
+      "step": 2,
+      "label": "Initial assessment",
+      "fraud_probability": 0.88
+    }
+  ],
+  "signals": [
+    {
+      "name": "card_testing_sequence",
+      "fired": false,
+      "detail": "no qualifying sequence contains the flagged transaction",
+      "entity_ids": []
+    },
+    {
+      "name": "cnp_burst",
+      "fired": false,
+      "detail": "62 online transactions inside one 48h window: high-volume online activity, not the documented 2-4 burst; card baseline 115.38 online per 48h -> within routine volume",
+      "entity_ids": []
+    },
+    {
+      "name": "new_device",
+      "fired": true,
+      "detail": "The flagged transaction's device is marked New for this account (id_15). Not proof on its own.",
+      "entity_ids": []
+    },
+    {
+      "name": "anonymizing_proxy",
+      "fired": false,
+      "detail": "Anonymous/hidden IP proxy on the flagged transaction (id_23 = None).",
+      "entity_ids": []
+    },
+    {
+      "name": "out_of_region",
+      "fired": false,
+      "detail": "flagged transaction is online; out-of-region requires card-present use",
+      "entity_ids": []
+    },
+    {
+      "name": "shared_device",
+      "fired": true,
+      "detail": "2 other cards transacted on this 3-card device profile within 6h of each other at near-identical amounts",
+      "entity_ids": [
+        "C03938-K1",
+        "C05595-K1"
+      ]
+    },
+    {
+      "name": "coordinated_ring",
+      "fired": false,
+      "detail": "Connected component RING-C00001-K1: 3565 cards, 4671 closed cases, prior rate 0.85. Contextual only; never fires R6.",
+      "entity_ids": []
+    },
+    {
+      "name": "recurring_charge",
+      "fired": false,
+      "detail": "Recurrence tier none: no same-channel, same-ProductCD, amount-matching transaction 25-35 days earlier",
+      "entity_ids": []
+    }
+  ],
+  "rules_fired": [
+    {
+      "rule": "Sec 6",
+      "phase": "initial",
+      "explanation": "Sec 6: fraud probability >= 0.85 on two or more independent evidence families (not a single signal, R1)"
+    },
+    {
+      "rule": "Sec 3a",
+      "phase": "initial",
+      "explanation": "Sec 3a"
+    },
+    {
+      "rule": "R6",
+      "phase": "initial",
+      "explanation": "R6: every card sharing the corroborated origin"
+    },
+    {
+      "rule": "R2",
+      "phase": "final",
+      "explanation": "R2: customer denies the transaction"
+    },
+    {
+      "rule": "R2/R6",
+      "phase": "final",
+      "explanation": "R2/R6: cards sharing the corroborated origin"
+    }
+  ],
+  "retrieval": {
+    "prior_cases": [
+      {
+        "case_id": "CC-3683",
+        "outcome": "confirmed_fraud",
+        "pattern": "card_not_present_new_device",
+        "score": 6,
+        "used": true
+      },
+      {
+        "case_id": "CC-2244",
+        "outcome": "confirmed_fraud",
+        "pattern": "card_not_present_new_device",
+        "score": 6,
+        "used": false
+      },
+      {
+        "case_id": "CC-5508",
+        "outcome": "confirmed_fraud",
+        "pattern": "card_not_present_new_device",
+        "score": 6,
+        "used": false
+      },
+      {
+        "case_id": "CC-2742",
+        "outcome": "cleared",
+        "pattern": "none",
+        "score": 6,
+        "used": true
+      },
+      {
+        "case_id": "CC-1139",
+        "outcome": "cleared",
+        "pattern": "none",
+        "score": 6,
+        "used": false
+      },
+      {
+        "case_id": "CC-0749",
+        "outcome": "cleared",
+        "pattern": "none",
+        "score": 6,
+        "used": false
+      }
+    ],
+    "documents": [
+      {
+        "doc_id": "policy-r2",
+        "title": "policy",
+        "section": "R2",
+        "score": null
+      },
+      {
+        "doc_id": "pattern-cnp-new-device",
+        "title": "pattern",
+        "section": "3",
+        "score": null
+      },
+      {
+        "doc_id": "pattern-account-takeover",
+        "title": "pattern",
+        "section": "5",
+        "score": null
+      },
+      {
+        "doc_id": "policy-case-vs-report",
+        "title": "policy",
+        "section": "3a",
+        "score": null
+      },
+      {
+        "doc_id": "policy-r6",
+        "title": "policy",
+        "section": "R6",
+        "score": null
+      }
+    ],
+    "method": "tigergraph_structured_candidates+gpt_rerank",
+    "vector_search_used": false,
+    "fraud_case_memory_used": false,
+    "case_shape": {
+      "trigger_type": "customer_report",
+      "channel": "online",
+      "product": "C",
+      "amount": 131.3,
+      "amount_class": "elevated",
+      "product_class": "established",
+      "is_new_device": true,
+      "region_class": "not_applicable",
+      "card_testing": false,
+      "strict_out_of_region": false,
+      "cnp_documented_burst": false,
+      "network_corroborated": true,
+      "recurrence_tier": "none",
+      "episode_size": 1,
+      "candidate_patterns": [
+        "card_not_present_new_device",
+        "account_takeover"
+      ]
+    },
+    "closed_case_catalog_size": 5565,
+    "candidates": {
+      "confirmed_fraud": [
+        {
+          "case_id": "CC-3683",
+          "structured_score": 6,
+          "matched_features": [
+            "channel",
+            "product",
+            "amount",
+            "device",
+            "episode_size",
+            "pattern_shape"
+          ]
+        },
+        {
+          "case_id": "CC-2244",
+          "structured_score": 6,
+          "matched_features": [
+            "channel",
+            "product",
+            "amount",
+            "device",
+            "episode_size",
+            "pattern_shape"
+          ]
+        },
+        {
+          "case_id": "CC-5508",
+          "structured_score": 6,
+          "matched_features": [
+            "channel",
+            "product",
+            "amount",
+            "device",
+            "episode_size",
+            "pattern_shape"
+          ]
+        },
+        {
+          "case_id": "CC-4621",
+          "structured_score": 6,
+          "matched_features": [
+            "channel",
+            "product",
+            "amount",
+            "device",
+            "episode_size",
+            "pattern_shape"
+          ]
+        },
+        {
+          "case_id": "CC-4657",
+          "structured_score": 6,
+          "matched_features": [
+            "channel",
+            "product",
+            "amount",
+            "device",
+            "episode_size",
+            "pattern_shape"
+          ]
+        },
+        {
+          "case_id": "CC-4766",
+          "structured_score": 6,
+          "matched_features": [
+            "channel",
+            "product",
+            "amount",
+            "device",
+            "episode_size",
+            "pattern_shape"
+          ]
+        },
+        {
+          "case_id": "CC-2494",
+          "structured_score": 6,
+          "matched_features": [
+            "channel",
+            "product",
+            "amount",
+            "device",
+            "episode_size",
+            "pattern_shape"
+          ]
+        },
+        {
+          "case_id": "CC-2667",
+          "structured_score": 6,
+          "matched_features": [
+            "channel",
+            "product",
+            "amount",
+            "device",
+            "episode_size",
+            "pattern_shape"
+          ]
+        }
+      ],
+      "cleared": [
+        {
+          "case_id": "CC-2742",
+          "structured_score": 6,
+          "matched_features": [
+            "channel",
+            "product",
+            "amount",
+            "device",
+            "episode_size",
+            "pattern_shape"
+          ]
+        },
+        {
+          "case_id": "CC-1139",
+          "structured_score": 6,
+          "matched_features": [
+            "channel",
+            "product",
+            "amount",
+            "device",
+            "episode_size",
+            "pattern_shape"
+          ]
+        },
+        {
+          "case_id": "CC-0749",
+          "structured_score": 6,
+          "matched_features": [
+            "channel",
+            "product",
+            "amount",
+            "device",
+            "episode_size",
+            "pattern_shape"
+          ]
+        },
+        {
+          "case_id": "CC-3407",
+          "structured_score": 6,
+          "matched_features": [
+            "channel",
+            "product",
+            "amount",
+            "device",
+            "episode_size",
+            "pattern_shape"
+          ]
+        },
+        {
+          "case_id": "CC-1287",
+          "structured_score": 6,
+          "matched_features": [
+            "channel",
+            "product",
+            "amount",
+            "device",
+            "episode_size",
+            "pattern_shape"
+          ]
+        },
+        {
+          "case_id": "CC-5525",
+          "structured_score": 6,
+          "matched_features": [
+            "channel",
+            "product",
+            "amount",
+            "device",
+            "episode_size",
+            "pattern_shape"
+          ]
+        },
+        {
+          "case_id": "CC-0991",
+          "structured_score": 6,
+          "matched_features": [
+            "channel",
+            "product",
+            "amount",
+            "device",
+            "episode_size",
+            "pattern_shape"
+          ]
+        },
+        {
+          "case_id": "CC-4488",
+          "structured_score": 6,
+          "matched_features": [
+            "channel",
+            "product",
+            "amount",
+            "device",
+            "episode_size",
+            "pattern_shape"
+          ]
+        }
+      ]
+    },
+    "rerank": {
+      "method": "tigergraph_structured_candidates+gpt_rerank",
+      "model_selected": {
+        "confirmed_fraud": [
+          "CC-3683",
+          "CC-2244",
+          "CC-5508"
+        ],
+        "cleared": [
+          "CC-2742",
+          "CC-1139",
+          "CC-0749"
+        ],
+        "documents": [
+          "policy-r2",
+          "pattern-cnp-new-device",
+          "pattern-account-takeover",
+          "policy-case-vs-report",
+          "policy-r6"
+        ]
+      },
+      "rejected_ids": [],
+      "rationale": "Selected cases match online product C, elevated amount near $131, single-transaction episode, new device, and the card-not-present/new-device question. Cleared examples are closest by amount with the same new-phone single online transaction shape. Documents cover customer-denied transactions, CNP new-device pattern, possible account takeover framing, case/report handling for disputes, and network/shared-origin corroboration."
+    }
+  },
+  "subgraph": {
+    "nodes": [
+      {
+        "id": "C11923",
+        "type": "Customer",
+        "label": "C11923",
+        "role": "subject",
+        "attrs": {}
+      },
+      {
+        "id": "C11923-K2",
+        "type": "Card",
+        "label": "C11923-K2",
+        "role": "subject",
+        "attrs": {}
+      },
+      {
+        "id": "3583368",
+        "type": "Transaction",
+        "label": "$131.30",
+        "role": "flagged",
+        "attrs": {
+          "ts": "2016-12-29 03:27:44",
+          "TransactionAmt": 131.3,
+          "channel": "online",
+          "addr1": ""
+        }
+      },
+      {
+        "id": "DEV-01042",
+        "type": "Device",
+        "label": "SM-G610F Build/NRD90M | chrome 66.0 for android",
+        "role": "connected",
+        "attrs": {}
+      },
+      {
+        "id": "C03938-K1",
+        "type": "Card",
+        "label": "C03938-K1",
+        "role": "connected",
+        "attrs": {}
+      },
+      {
+        "id": "C05595-K1",
+        "type": "Card",
+        "label": "C05595-K1",
+        "role": "connected",
+        "attrs": {}
+      },
+      {
+        "id": "CC-3683",
+        "type": "ClosedCase",
+        "label": "CC-3683",
+        "role": "prior_case",
+        "attrs": {}
+      },
+      {
+        "id": "CC-2742",
+        "type": "ClosedCase",
+        "label": "CC-2742",
+        "role": "prior_case",
+        "attrs": {}
+      },
+      {
+        "id": "CASE-HHG-011",
+        "type": "FraudCase",
+        "label": "CASE-HHG-011",
+        "role": "this_case",
+        "attrs": {}
+      }
+    ],
+    "edges": [
+      {
+        "source": "C11923",
+        "target": "C11923-K2",
+        "type": "OWNS"
+      },
+      {
+        "source": "C11923-K2",
+        "target": "3583368",
+        "type": "MADE"
+      },
+      {
+        "source": "3583368",
+        "target": "DEV-01042",
+        "type": "FROM_DEVICE"
+      },
+      {
+        "source": "C03938-K1",
+        "target": "DEV-01042",
+        "type": "FROM_DEVICE"
+      },
+      {
+        "source": "C05595-K1",
+        "target": "DEV-01042",
+        "type": "FROM_DEVICE"
+      },
+      {
+        "source": "C11923-K2",
+        "target": "CASE-HHG-011",
+        "type": "CASE_ON_CARD"
+      }
+    ]
+  },
+  "graph_write": {
+    "written": true,
+    "graph_case_id": "CASE-HHG-011",
+    "read_back_ok": true,
+    "written_at": "2026-09-24 17:28:04"
+  },
+  "validation": {
+    "passed": true,
+    "errors": [],
+    "warnings": [],
+    "semantic_errors": []
+  },
+  "llm": {
+    "provider": "pi/openai-codex",
+    "model": "gpt-5.5",
+    "tokens": 10269
+  },
+  "behavior_profile": {
+    "flagged_txn_id": "3583368",
+    "flagged_found": true,
+    "flagged_ts": "2016-12-29 03:27:44",
+    "flagged_amount": 131.3,
+    "risk_score_context_only": 0.39,
+    "history_count": 10335,
+    "history_span_days": 180.14,
+    "stable_history": true,
+    "amount_median": 28.58,
+    "amount_ratio": 4.594,
+    "amount_percentile": 0.9674,
+    "amount_class": "elevated",
+    "flagged_product": "C",
+    "product_prior_count": 10334,
+    "product_prior_share": 0.9999,
+    "product_class": "established",
+    "flagged_channel": "online",
+    "channel_prior_count": 10335,
+    "flagged_region": null,
+    "flagged_region_prior_count": 0,
+    "flagged_region_prior_in_person_count": 0,
+    "region_class": "not_applicable",
+    "home_region": null,
+    "home_region_count": 0,
+    "home_region_share": null,
+    "in_person_with_region_count": 0,
+    "online_txn_ids_48h": [
+      "3578405",
+      "3578451",
+      "3578471",
+      "3578475",
+      "3578483",
+      "3578486",
+      "3578491",
+      "3578496",
+      "3578506",
+      "3578817",
+      "3578995",
+      "3578997",
+      "3579400",
+      "3579407",
+      "3579576",
+      "3579597",
+      "3580137",
+      "3580202",
+      "3580219",
+      "3580232",
+      "3580348",
+      "3580380",
+      "3580403",
+      "3580417",
+      "3580427",
+      "3580478",
+      "3580544",
+      "3580712",
+      "3580765",
+      "3580776",
+      "3580815",
+      "3580821",
+      "3580907",
+      "3580933",
+      "3580951",
+      "3580992",
+      "3581048",
+      "3581345",
+      "3582082",
+      "3582107",
+      "3582142",
+      "3582175",
+      "3582178",
+      "3582327",
+      "3582338",
+      "3582375",
+      "3582413",
+      "3582602",
+      "3582624",
+      "3582671",
+      "3582738",
+      "3582868",
+      "3582897",
+      "3583101",
+      "3583140",
+      "3583199",
+      "3583229",
+      "3583348",
+      "3583406",
+      "3583411",
+      "3583415",
+      "3583417",
+      "3583435"
+    ],
+    "card_present_txn_ids_48h": [],
+    "is_new_device": true,
+    "device_status": "New",
+    "is_proxy": null,
+    "proxy_type": null,
+    "recurring_band_count": 14,
+    "recurring_band_denominator": 10334,
+    "recurring_band_frequency": 0.0014,
+    "baseline_online_per_48h": 115.3813,
+    "independent_evidence_families": [
+      "identity_anomaly",
+      "direct_network_corroboration",
+      "customer_statement"
+    ],
+    "benign_families": [],
+    "suspicious_findings": [
+      "elevated but not extreme amount: 4.594x median, percentile 0.9674",
+      "device marked New for this account (id_15) -- not proof: people buy new phones",
+      "device network: 2 other cards transacted on this 3-card device profile within 6h of each other at near-identical amounts"
+    ],
+    "benign_findings": [
+      "ProductCD C established (10334 prior, share 0.9999)"
+    ],
+    "unavailable_findings": [
+      "CNP: 62 online transactions inside one 48h window: high-volume online activity, not the documented 2-4 burst; card baseline 115.38 online per 48h -> within routine volume"
+    ]
+  },
+  "signals_detail": {
+    "card_testing": {
+      "fired": false,
+      "reason": "no qualifying sequence contains the flagged transaction",
+      "txn_ids": [],
+      "timestamps": [],
+      "amounts": [],
+      "small_auth_ids": [],
+      "larger_purchase_id": "",
+      "larger_purchase_amount": 0.0,
+      "purchase_over_100_cleared": false
+    },
+    "cnp_burst": {
+      "flagged_online": true,
+      "online_txn_ids": [
+        "3578451",
+        "3578471",
+        "3578475",
+        "3578483",
+        "3578486",
+        "3578491",
+        "3578496",
+        "3578506",
+        "3578817",
+        "3578995",
+        "3578997",
+        "3579400",
+        "3579407",
+        "3579576",
+        "3579597",
+        "3580137",
+        "3580202",
+        "3580219",
+        "3580232",
+        "3580348",
+        "3580380",
+        "3580403",
+        "3580417",
+        "3580427",
+        "3580478",
+        "3580544",
+        "3580712",
+        "3580765",
+        "3580776",
+        "3580815",
+        "3580821",
+        "3580907",
+        "3580933",
+        "3580951",
+        "3580992",
+        "3581048",
+        "3581345",
+        "3582082",
+        "3582107",
+        "3582142",
+        "3582175",
+        "3582178",
+        "3582327",
+        "3582338",
+        "3582375",
+        "3582413",
+        "3582602",
+        "3582624",
+        "3582671",
+        "3582738",
+        "3582868",
+        "3582897",
+        "3583101",
+        "3583140",
+        "3583199",
+        "3583229",
+        "3583348",
+        "3583368",
+        "3583406",
+        "3583411",
+        "3583415",
+        "3583417"
+      ],
+      "online_count": 62,
+      "excluded_in_person_ids": [],
+      "documented_burst": false,
+      "high_volume_online": true,
+      "baseline_online_per_48h": 115.3813,
+      "exceeds_baseline": false,
+      "reason": "62 online transactions inside one 48h window: high-volume online activity, not the documented 2-4 burst; card baseline 115.38 online per 48h -> within routine volume"
+    },
+    "out_of_region": {
+      "fired": false,
+      "reason": "flagged transaction is online; out-of-region requires card-present use",
+      "flagged_channel": "online",
+      "flagged_region": null,
+      "home_region": null,
+      "flagged_region_prior_count": 0,
+      "flagged_region_prior_in_person_count": 0,
+      "home_region_count": 0,
+      "home_region_share": null,
+      "in_person_with_region_count": 0,
+      "home_activity_ids_48h": [],
+      "trip_candidate": false,
+      "evidence_ids": [],
+      "episode_ids": []
+    },
+    "recurrence": {
+      "tier": "none",
+      "reason": "no same-channel, same-ProductCD, amount-matching transaction 25-35 days earlier",
+      "tolerance_usd": 1.31,
+      "monthly_match_ids": [],
+      "second_cycle_match_ids": [
+        "3389493",
+        "3389533",
+        "3389542",
+        "3390485"
+      ],
+      "same_channel_product_prior_count": 10334,
+      "band_count": 14,
+      "band_share": 0.0014,
+      "collision_count": 9,
+      "collision_rate": 0.0009,
+      "proxy_note": "ProductCD, channel and amount are proxies for 'same merchant': this dataset has no merchant-name column."
+    },
+    "device_network": {
+      "available": true,
+      "device_profile_id": "Da1e0c3bdef2c",
+      "device_profile_label": "SM-G610F Build/NRD90M | chrome 66.0 for android",
+      "total_distinct_cards": 3,
+      "other_card_count": 2,
+      "generic_profile": false,
+      "other_cards_48h": [
+        "C03938-K1",
+        "C05595-K1"
+      ],
+      "matching_txns_48h": [
+        {
+          "txn_id": "3582730",
+          "ts": "2016-12-28 22:43:11",
+          "amount": 125.72,
+          "risk_score": 0.68,
+          "customer_id": "C05595",
+          "card_id": "C05595-K1"
+        },
+        {
+          "txn_id": "3582750",
+          "ts": "2016-12-28 22:48:51",
+          "amount": 125.59,
+          "risk_score": 0.22,
+          "customer_id": "C03938",
+          "card_id": "C03938-K1"
+        }
+      ],
+      "meaningful_match": true,
+      "corroborated": true,
+      "corroboration_basis": "near_identical_amounts",
+      "corroborated_card_ids": [
+        "C03938-K1",
+        "C05595-K1"
+      ],
+      "corroborating_txn_ids": [
+        "3582730",
+        "3582750"
+      ],
+      "confirmed_fraud_case_ids": [],
+      "reason": "2 other cards transacted on this 3-card device profile within 6h of each other at near-identical amounts"
+    }
+  },
+  "evidence_families": {
+    "initial": {
+      "suspicious": [
+        "identity_anomaly",
+        "direct_network_corroboration"
+      ],
+      "benign": [],
+      "strong_suspicious": [
+        "direct_shared_origin"
+      ],
+      "detail": {
+        "suspicious:identity_anomaly": "device marked New for this account (id_15)",
+        "suspicious:direct_network_corroboration": "2 other cards transacted on this 3-card device profile within 6h of each other at near-identical amounts"
+      },
+      "single_signal": false
+    },
+    "final": {
+      "suspicious": [
+        "identity_anomaly",
+        "direct_network_corroboration",
+        "customer_statement"
+      ],
+      "benign": [],
+      "strong_suspicious": [
+        "direct_shared_origin"
+      ],
+      "detail": {
+        "suspicious:identity_anomaly": "device marked New for this account (id_15)",
+        "suspicious:direct_network_corroboration": "2 other cards transacted on this 3-card device profile within 6h of each other at near-identical amounts",
+        "suspicious:customer_statement": "customer states they did not make the transaction"
+      },
+      "single_signal": false
+    },
+    "independent_evidence_count": 3,
+    "single_signal": false,
+    "matched_prior_case": null
+  },
+  "simulation": {},
+  "decision": {
+    "initial": {
+      "verdict": "fraud",
+      "fraud_probability": 0.88,
+      "pattern": "card_not_present_new_device",
+      "pattern_description": "",
+      "decisive": true,
+      "settled_by": "probability_and_evidence",
+      "response": null,
+      "supporting_families": [
+        "identity_anomaly",
+        "direct_network_corroboration"
+      ],
+      "reason": "Probability 0.88 >= 0.85 with 2 independent families (identity_anomaly, direct_network_corroboration)."
+    },
+    "final": {
+      "verdict": "fraud",
+      "fraud_probability": 0.88,
+      "pattern": "card_not_present_new_device",
+      "pattern_description": "",
+      "decisive": true,
+      "settled_by": "verification_response",
+      "response": "denies",
+      "supporting_families": [
+        "identity_anomaly",
+        "direct_network_corroboration",
+        "customer_statement"
+      ],
+      "reason": "Customer denied the transaction (R2)."
+    }
+  },
+  "assessment": {
+    "initial": {
+      "pattern": "card_not_present_new_device",
+      "pattern_if_fraud": "card_not_present_new_device",
+      "recommended_verdict": "fraud",
+      "fraud_probability": 0.88,
+      "probability_rationale": "Customer explicitly denies the online transaction, and the transaction used a new device for the account. The same device profile was also used by two other cards within 6 hours at near-identical amounts, providing independent shared-origin corroboration. Benign context exists, including an established product and routine online volume, so probability is not absolute, but the fired evidence supports a fraud recommendation.",
+      "supporting_evidence_families": [
+        "customer_statement",
+        "identity_anomaly",
+        "direct_network_corroboration"
+      ],
+      "contradicting_facts": [
+        "ProductCD C is highly established on this card.",
+        "The 62 online transactions in 48 hours are within the card's routine online baseline.",
+        "Card testing rule did not fire for the flagged transaction.",
+        "Similar cleared cases show that new-device transactions at similar amounts can be legitimate."
+      ],
+      "benign_facts": [
+        "ProductCD C had 10334 prior transactions with 0.9999 prior share.",
+        "Online transaction volume did not exceed the card's 48-hour baseline.",
+        "Out-of-region rule is not applicable because the transaction was online."
+      ],
+      "independent_evidence_count": 3,
+      "evidence_claims": [
+        "Customer C11923 stated they never made the $131.30 purchase.",
+        "Flagged transaction 3583368 was online and used a device marked New for this account.",
+        "Two other cards transacted on the same 3-card device profile within 6 hours at near-identical amounts.",
+        "The episode contains only transaction 3583368 with exposure of $131.30."
+      ],
+      "similar_prior_case_ids": [
+        "CC-3683",
+        "CC-2742"
+      ],
+      "pattern_description": ""
+    },
+    "final": {
+      "pattern": "card_not_present_new_device",
+      "pattern_if_fraud": "card_not_present_new_device",
+      "recommended_verdict": "fraud",
+      "fraud_probability": 0.88,
+      "probability_rationale": "Customer explicitly denies the online transaction, and the transaction used a new device for the account. The same device profile was also used by two other cards within 6 hours at near-identical amounts, providing independent shared-origin corroboration. Benign context exists, including an established product and routine online volume, so probability is not absolute, but the fired evidence supports a fraud recommendation.",
+      "supporting_evidence_families": [
+        "customer_statement",
+        "identity_anomaly",
+        "direct_network_corroboration"
+      ],
+      "contradicting_facts": [
+        "ProductCD C is highly established on this card.",
+        "The 62 online transactions in 48 hours are within the card's routine online baseline.",
+        "Card testing rule did not fire for the flagged transaction.",
+        "Similar cleared cases show that new-device transactions at similar amounts can be legitimate."
+      ],
+      "benign_facts": [
+        "ProductCD C had 10334 prior transactions with 0.9999 prior share.",
+        "Online transaction volume did not exceed the card's 48-hour baseline.",
+        "Out-of-region rule is not applicable because the transaction was online."
+      ],
+      "independent_evidence_count": 3,
+      "evidence_claims": [
+        "Customer C11923 stated they never made the $131.30 purchase.",
+        "Flagged transaction 3583368 was online and used a device marked New for this account.",
+        "Two other cards transacted on the same 3-card device profile within 6 hours at near-identical amounts.",
+        "The episode contains only transaction 3583368 with exposure of $131.30."
+      ],
+      "similar_prior_case_ids": [
+        "CC-3683",
+        "CC-2742"
+      ],
+      "pattern_description": ""
+    }
+  }
+}
