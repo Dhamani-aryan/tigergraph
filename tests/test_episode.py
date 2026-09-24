@@ -102,6 +102,35 @@ def test_detect_out_of_region_false_with_no_other_history():
     assert detect_out_of_region(window, "FLAGGED") is False
 
 
+def test_detect_out_of_region_false_when_no_concurrent_home_activity():
+    # Regression test for the bug found live in the finished 20-case batch:
+    # card_window now returns up to ~400 days of history (see
+    # CARD_WINDOW_LOOKBACK_HOURS), so a card that visited "region 100" eight
+    # months ago and has had no activity there since must NOT be flagged
+    # out-of-region just because the flagged transaction's region differs
+    # from that stale lifetime-majority region -- there is no CONCURRENT
+    # home activity, which is this pattern's own defining condition
+    # ("while their normal activity continues at home").
+    window = [
+        _txn("OLD_HOME", "2016-03-01 08:00:00", 20.0, addr1="100.0"),  # 8+ months before flagged
+        _txn("FLAGGED", "2016-11-11 20:00:00", 90.0, addr1="999.0"),
+    ]
+    assert detect_out_of_region(window, "FLAGGED") is False
+
+
+def test_detect_out_of_region_true_only_when_home_activity_is_concurrent():
+    # Same shape as the positive test above, but with an ADDITIONAL stale
+    # entry far outside the concurrent window -- confirms the concurrent
+    # window is actually being applied, not just accidentally satisfied.
+    window = [
+        _txn("STALE", "2016-01-01 08:00:00", 5.0, addr1="100.0"),
+        _txn("HOME1", "2016-11-10 08:00:00", 20.0, addr1="100.0"),
+        _txn("HOME2", "2016-11-11 08:00:00", 25.0, addr1="100.0"),
+        _txn("FLAGGED", "2016-11-11 20:00:00", 90.0, addr1="999.0"),
+    ]
+    assert detect_out_of_region(window, "FLAGGED") is True
+
+
 def test_detect_recurring_charge_true_for_same_amount_about_a_month_earlier():
     window = [
         _txn("PRIOR", "2016-10-12 09:00:00", 49.99),

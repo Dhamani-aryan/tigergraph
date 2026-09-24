@@ -122,31 +122,53 @@ def cluster_burst_around(window: list[dict[str, Any]], flagged_txn_id: str) -> l
 # --------------------------------------------------------------------------
 # Pattern 4: out-of-region use (README pattern 4, policy R2-R3)
 # --------------------------------------------------------------------------
+OUT_OF_REGION_CONCURRENT_WINDOW_DAYS = 14
+
+
 def detect_out_of_region(window: list[dict[str, Any]], flagged_txn_id: str) -> bool:
     """True when the flagged transaction's billing region (`addr1`) differs
-    from this card's own historical/majority region AND the card has other,
-    concurrent-ish activity in that historical region -- README: "Card-
-    present purchases in a billing region the cardholder has no history in,
-    while their normal activity continues at home." A card that has fully
-    MOVED region (no concurrent home activity) is not this pattern -- it's
-    just a life event or a data artifact, not treated as fraud here.
+    from this card's region AND the card has other CONCURRENT activity
+    (within OUT_OF_REGION_CONCURRENT_WINDOW_DAYS) in its usual region --
+    README: "Card-present purchases in a billing region the cardholder has
+    no history in, while their normal activity continues at home." A card
+    that has fully MOVED region (no concurrent home activity) is not this
+    pattern -- it's just a life event or a data artifact, not fraud here.
+
+    Bug fix (2026-09-24), found live: the original version compared against
+    the MAJORITY region across the card's ENTIRE history (since card_window
+    now returns up to ~400 days of it -- see graph_flow.py's
+    CARD_WINDOW_LOOKBACK_HOURS), with no time bound at all, despite this
+    docstring already describing "concurrent" activity. Confirmed live on
+    the real case pack: this fired on 8 of 20 cases and was the single
+    biggest contributor to a batch where zero cases came back "legitimate"
+    (README explicitly expects about half to be). A billing region that
+    simply happened to differ from the lifetime-majority region eight
+    months ago is not evidence of anything -- addr1 varies for ordinary
+    reasons over a year of activity. Restricting the comparison to a
+    genuinely concurrent window is what actually distinguishes "a trip"
+    (this pattern's own stated non-example) from a real compromise.
     """
     rows = _sorted_by_ts(window)
-    flagged = next((t for t, _ in rows if t.get("id") == flagged_txn_id), None)
-    if flagged is None or not flagged.get("addr1"):
+    flagged = next(((t, ts) for t, ts in rows if t.get("id") == flagged_txn_id), None)
+    if flagged is None or not flagged[0].get("addr1"):
         return False
-    others = [(t, ts) for t, ts in rows if t.get("id") != flagged_txn_id and t.get("addr1")]
-    if not others:
-        return False  # no history at all to compare against -- can't call this "out of region"
+    flagged_row, flagged_ts = flagged
+    concurrent_window = timedelta(days=OUT_OF_REGION_CONCURRENT_WINDOW_DAYS)
+    nearby = [
+        (t, ts) for t, ts in rows
+        if t.get("id") != flagged_txn_id and t.get("addr1") and abs(ts - flagged_ts) <= concurrent_window
+    ]
+    if not nearby:
+        return False  # no CONCURRENT activity to compare against -- can't call this "out of region"
     region_counts: dict[str, int] = {}
-    for t, _ in others:
+    for t, _ in nearby:
         region_counts[t["addr1"]] = region_counts.get(t["addr1"], 0) + 1
     home_region, home_count = max(region_counts.items(), key=lambda kv: kv[1])
-    if flagged["addr1"] == home_region:
+    if flagged_row["addr1"] == home_region:
         return False
-    # "normal activity continues at home": at least one home-region
-    # transaction still exists near the flagged one (not just historically,
-    # at some point before the window closed).
+    # "normal activity continues at home": a nearby-in-time home-region
+    # transaction actually exists, not just somewhere in the card's
+    # lifetime history.
     return home_count >= 1
 
 
