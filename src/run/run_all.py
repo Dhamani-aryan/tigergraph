@@ -16,7 +16,8 @@ INTER_CASE_PAUSE_S = 5
 import pandas as pd
 
 from src.run.dataset_index import _default_data_dir, load_dataset_index
-from src.run.run_case import run_single_case
+from src.run.run_case import run_single_case_with_context
+from src.run.trace_writer import build_trace
 from src.run.validate_outputs import validate_answer
 from src.tg_client import INVESTIGATION_ALLOWED_TOOLS, TigerGraphMCP
 
@@ -100,6 +101,10 @@ async def run_all(
     out_dir.mkdir(parents=True, exist_ok=True)
     index = load_dataset_index(base)
     runs_path = Path(runs_dir)
+    traces_dir = runs_path / "traces"
+    traces_dir.mkdir(parents=True, exist_ok=True)
+    llm_provider = os.environ.get("LLM_BACKEND", "groq")
+    llm_model = _llm_info()["model"]
 
     summary_cases: list[dict] = []
     errors: dict[str, str] = {}
@@ -116,7 +121,7 @@ async def run_all(
             case_id = row["case_id"]
             print(f"--- {case_id} ---", flush=True)
             try:
-                answer = await run_single_case(tg, row)
+                answer, context = await run_single_case_with_context(tg, row)
             except Exception as e:  # noqa: BLE001 -- see docstring: one bad case must not kill the batch
                 print(f"  FAILED: {e}", flush=True)
                 errors[case_id] = str(e)
@@ -135,6 +140,21 @@ async def run_all(
                 f"written_to_graph={answer.case.written_to_graph}, tool_calls={answer.tool_calls})",
                 flush=True,
             )
+
+            # Trace fix (2026-09-24): powers the UI's Investigation/Graph
+            # tabs (ui/src/contracts/trace.ts) -- see trace_writer.py's own
+            # module docstring. One bad trace must not cost the case its
+            # already-written, already-valid answer file.
+            try:
+                trace = build_trace(
+                    row, answer, context, validation_errors=violations,
+                    llm_provider=llm_provider, llm_model=llm_model,
+                )
+                trace_path = traces_dir / f"{case_id}.trace.json"
+                trace_path.write_text(json.dumps(trace, indent=2), encoding="utf-8")
+                print(f"  wrote {trace_path}", flush=True)
+            except Exception as e:  # noqa: BLE001
+                print(f"  TRACE FAILED (answer is still valid): {e}", flush=True)
 
             summary_cases.append({
                 "case_id": case_id,

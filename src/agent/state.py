@@ -9,6 +9,7 @@ class InvestigationState(TypedDict, total=False):
     cutoff_ts: str  # case_row["opened_at"]; every graph lookup that can see other transactions is bounded to this
     evidence: list[dict[str, Any]]
     assessment: dict[str, Any]  # LLM output: pattern, probability, claims, similar_cases
+    initial_assessment: dict[str, Any]  # snapshot of `assessment` right after assess_node, before reassess_node can overwrite it
     single_signal: bool
     shared_device: bool
     shared_region: bool

@@ -21,6 +21,18 @@ GRAPH_NAME = "FraudInvestigation"
 
 
 async def run_single_case(tg: TigerGraphMCP, case_row: dict) -> AnswerFile:
+    """Back-compat wrapper (existing tests/callers use this exact signature)
+    -- discards the trace context. Use run_single_case_with_context when
+    you also need runs/latest/traces/<case_id>.trace.json (see run_all.py)."""
+    answer, _ctx = await run_single_case_with_context(tg, case_row)
+    return answer
+
+
+async def run_single_case_with_context(tg: TigerGraphMCP, case_row: dict) -> tuple[AnswerFile, dict]:
+    """Same investigation as run_single_case, but also returns a `context`
+    dict (final_state plus the few extra values -- written_at -- that
+    only exist as locals in this function) for src.run.trace_writer to
+    build a trace file from, without re-running the investigation."""
     start = time.monotonic()
     token_tracker.reset()  # each case's `tokens` field should reflect only its own calls
     app = build_graph(tg)
@@ -67,7 +79,7 @@ async def run_single_case(tg: TigerGraphMCP, case_row: dict) -> AnswerFile:
     pattern_description = assessment.get("pattern_description", "") if assessment["pattern"] == "undocumented" else ""
 
     graph_case_id = f"CASE-{case_row['case_id']}"
-    written = await _write_case_to_graph(
+    written, written_at = await _write_case_to_graph(
         tg, graph_case_id, case_row, assessment, verdict, status, exposure_usd
     )
 
@@ -107,17 +119,33 @@ async def run_single_case(tg: TigerGraphMCP, case_row: dict) -> AnswerFile:
 
     sar = _build_sar(case_row, sar_info, narrative, episode, connected_card_ids, flagged_txn_id, exposure_usd)
 
-    return AnswerFile(
+    answer = AnswerFile(
         case_id=case_row["case_id"],
         case=case_record,
         evidence_requests=evidence_requests,
         next_best_actions=next_best_actions,
         sar=sar,
         stop_reason=final_state["stop_reason"],
-        tool_calls=final_state["tool_calls"],
+        # Consistency fix (2026-09-24), caught by cross-checking a trace
+        # against its own answer file (ui/src/contracts/validate.ts's
+        # crossCheckAnswerTrace): final_state["tool_calls"] only counts
+        # calls made INSIDE the LangGraph flow (gather_evidence + the
+        # bounded followup) -- the graph write and its independent
+        # read-back happen afterward, in this function, and were never
+        # counted at all. +3 (add_nodes, upsert_vectors, get_node) matches
+        # what _write_case_to_graph always attempts.
+        tool_calls=final_state["tool_calls"] + 3,
         tokens=token_tracker.total,  # 0 on the ollama fallback backend, real usage on Groq
         latency_s=round(time.monotonic() - start, 1),
     )
+    context = {
+        "final_state": final_state,
+        "written_at": written_at,
+        "graph_case_id": graph_case_id,
+        "episode": episode,
+        "connected_card_ids": connected_card_ids,
+    }
+    return answer, context
 
 
 def _grounded_similar_cases(final_state: dict, llm_ids: list[str]) -> list[str]:
@@ -349,7 +377,10 @@ def _build_sar(
 async def _write_case_to_graph(
     tg: TigerGraphMCP, graph_case_id: str, case_row: dict, assessment: dict,
     verdict: str, status: str, exposure_usd: float,
-) -> bool:
+) -> tuple[bool, str]:
+    """Returns (written, written_at) -- written_at is exposed so the trace
+    writer can report it even when the write later fails the read-back
+    check (still useful for diagnosing WHEN the write was attempted)."""
     summary_text = (
         f"Case {graph_case_id} on card {case_row['card_id']}: pattern "
         f"{assessment['pattern']}, probability {assessment['fraud_probability']:.2f}. "
@@ -401,7 +432,7 @@ async def _write_case_to_graph(
         # rather than raising -- a graph outage shouldn't crash the whole batch
         # run for the other 19 cases. The read-back below is the real signal;
         # this except only guards the write calls themselves.
-        return False
+        return False, written_at
 
     # Reliability fix (2026-09-23): a successful `add_nodes` response is not
     # proof the case is actually readable back out of the graph (the old
@@ -416,6 +447,7 @@ async def _write_case_to_graph(
         # FraudCase has no `primary_id_as_attribute` (confirmed live -- see
         # src/schema/build_schema.py), so `case_id` itself is only readable
         # as the vertex's own `v_id`, not inside `attributes`.
-        return data.get("v_id") == graph_case_id and attrs.get("verdict") == verdict
+        ok = data.get("v_id") == graph_case_id and attrs.get("verdict") == verdict
+        return ok, written_at
     except Exception:  # noqa: BLE001
-        return False
+        return False, written_at

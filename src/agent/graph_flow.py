@@ -510,7 +510,13 @@ async def assess_node(state: InvestigationState) -> InvestigationState:
     if override is not None:
         dumped["pattern"] = override
         dumped["pattern_description"] = ""  # only "undocumented" carries a description
-    return {**state, "assessment": dumped}
+    # Trace-writer fix (2026-09-24): reassess_node (below) completely
+    # OVERWRITES state["assessment"], so by the time run_case.py builds the
+    # answer, the pre-reassessment probability is gone -- there was no way
+    # to show a probability TIMELINE (initial -> reassessed) at all.
+    # assess_node runs exactly once per case (never looped), so recording
+    # it here, once, is safe and can't be clobbered by a later assess call.
+    return {**state, "assessment": dumped, "initial_assessment": dumped}
 
 
 def stopping_check(state: InvestigationState) -> str:
