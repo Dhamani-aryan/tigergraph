@@ -82,12 +82,30 @@ def test_confirmed_fraud_closed_after_cutoff_is_ignored():
     assert not res.corroborated
 
 
-def test_prior_case_family_is_chosen_from_retrieval_not_llm_citation():
-    knowledge = {"similar_cases": [
-        {"id": "CC-2", "type": "ClosedCase", "outcome": "cleared", "distance": 0.05},
-        {"id": "CC-1", "type": "ClosedCase", "outcome": "confirmed_fraud", "distance": 0.08},
-        {"id": "CC-3", "type": "ClosedCase", "outcome": "confirmed_fraud", "distance": 0.30},
-    ]}
-    assert graph_flow._closest_prior_case(knowledge)["id"] == "CC-2"
-    assert graph_flow._closest_prior_case({"similar_cases": [{"id": "CC-3", "type": "ClosedCase", "distance": 0.3}]}) is None
+def test_prior_case_family_is_chosen_deterministically_not_by_llm_citation():
+    from src.graph.vector_search import matched_prior_case
+
+    full = {"full_match": True, "matched_features": ["channel", "amount"], "shared_anomalies": ["new_device"]}
+    only_cleared = {"confirmed_fraud": [{"id": "CC-1", "full_match": False}],
+                    "cleared": [{"id": "CC-2", "pattern": "none", **full}]}
+    assert matched_prior_case(only_cleared)["id"] == "CC-2"
+    both = {"confirmed_fraud": [{"id": "CC-1", **full}], "cleared": [{"id": "CC-2", **full}]}
+    assert matched_prior_case(both) is None  # history does not discriminate
     assert not hasattr(graph_flow, "_with_prior_case")
+
+
+def test_generic_full_match_without_shared_anomaly_is_not_an_evidence_family():
+    """Live smoke finding: an in-person case with a normal profile fully
+    matched generic account_takeover history on channel/product/amount and
+    gained a spurious suspicious family."""
+    from src.graph.vector_search import closed_case_candidates, matched_prior_case
+
+    shape = {"channel": "in_person", "product": "W", "amount": 77.0, "amount_class": "normal",
+             "is_new_device": None, "episode_size": 1, "candidate_patterns": ["account_takeover"],
+             "strict_out_of_region": False, "card_testing": False, "cnp_documented_burst": False}
+    catalog = [{"id": "CC-1", "type": "ClosedCase", "outcome": "confirmed_fraud", "pattern": "account_takeover",
+                "channels": ["in_person"], "products": ["W"], "max_amount": 70.0, "n_txns": 1, "analyst_notes": ""}]
+    cands = closed_case_candidates(catalog, shape)
+    assert cands["confirmed_fraud"][0]["full_match"] is True
+    assert cands["confirmed_fraud"][0]["shared_anomalies"] == []
+    assert matched_prior_case(cands) is None

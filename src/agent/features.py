@@ -97,11 +97,6 @@ BENIGN_GEOGRAPHIC = "geographic_consistency"
 BENIGN_CUSTOMER = "customer_confirmation"
 BENIGN_PRIOR_CASE = "closely_matched_cleared_case"
 
-# A vector hit only counts as a "closely matched" prior case below this
-# cosine distance. Measured on this dataset: generic trigger prose lands
-# every ClosedCase at ~0.17-0.19, so anything near that band is topical
-# similarity, not a matched case.
-CLOSE_PRIOR_CASE_MAX_DISTANCE = 0.10
 
 
 # --------------------------------------------------------------------------
@@ -981,8 +976,8 @@ def compute_evidence_families(
     if matched_prior_case:
         fraud_case = matched_prior_case.get("outcome") == "confirmed_fraud"
         add("suspicious" if fraud_case else "benign", FAMILY_PRIOR_CASE if fraud_case else BENIGN_PRIOR_CASE,
-            f"{matched_prior_case.get('id')} ({matched_prior_case.get('outcome')}) at distance "
-            f"{matched_prior_case.get('distance')}")
+            f"{matched_prior_case.get('id')} ({matched_prior_case.get('outcome')}) matches every structured "
+            f"feature ({', '.join(matched_prior_case.get('matched_features') or [])}); no opposite-outcome case does")
 
     strong = []
     if card_testing.fired:

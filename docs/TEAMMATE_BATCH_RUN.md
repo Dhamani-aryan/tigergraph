@@ -68,6 +68,11 @@ asyncio.run(main())
 
 ## 6. Run the batch
 
+Ollama is **not** required for a batch run. Retrieval is TigerGraph structured
+candidate retrieval followed by reranking with the configured reasoning model
+(GPT-5.5 via Pi); no embedding is generated and no vector search runs. Ollama is
+only needed if you re-run the knowledge-ingestion scripts.
+
 ```bash
 python -m scripts.run_batch
 ```

@@ -72,14 +72,14 @@ def _resolve_tigergraph_mcp_command() -> str:
 # `tigergraph-mcp --help`) restricts the SERVER PROCESS itself to exactly
 # this list -- every tool investigation.py's whole call path actually uses:
 # card_window/device_neighbors/region_neighbors/closed_case_lookup/
-# ring_membership/device_profile_label (run_installed_query, plus one-time
-# gsql installs), retrieve_knowledge (search_top_k_similarity), and the
-# case write-back + read-back receipt (add_nodes, upsert_vectors, get_node).
+# ring_membership/device_profile_label/device_network/ring_context and the
+# structured retrieval queries closed_case_features/knowledge_docs_by_source
+# (run_installed_query, plus one-time gsql installs), and the case write-back
+# + read-back receipt (add_nodes, get_node). Task 14: vector search and
+# vector upsert are not on the live path, so they are not allowed here.
 INVESTIGATION_ALLOWED_TOOLS = (
     "tigergraph__gsql,"
     "tigergraph__run_installed_query,"
-    "tigergraph__search_top_k_similarity,"
-    "tigergraph__upsert_vectors,"
     "tigergraph__add_nodes,"
     "tigergraph__get_node"
 )

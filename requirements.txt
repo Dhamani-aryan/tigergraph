@@ -3,7 +3,7 @@ mcp>=1.2.0
 python-dotenv
 langgraph>=0.2.0
 openai>=1.40.0
-ollama
+ollama  # optional: ingestion-time embeddings and LLM_BACKEND=ollama only; never used by live investigations
 pydantic>=2.0
 pandas
 pypdf

@@ -10,7 +10,6 @@ from pydantic import BaseModel, Field
 from src.agent.decision import is_decisive, resolve_decision
 from src.agent.episode import build_episode
 from src.agent.features import (
-    CLOSE_PRIOR_CASE_MAX_DISTANCE,
     BehaviorProfile,
     CardTestingResult,
     CnpBurstResult,
@@ -41,7 +40,13 @@ from src.graph.queries import (
     ring_context,
     ring_membership,
 )
-from src.graph.vector_search import build_similarity_query, retrieve_knowledge
+from src.graph.vector_search import (
+    PER_OUTCOME_K,
+    RETRIEVAL_METHOD,
+    build_case_shape,
+    matched_prior_case,
+    retrieve_knowledge,
+)
 from src.policy.engine import apply_policy
 from src.policy.models import Findings
 from src.tg_client import TigerGraphMCP
@@ -269,6 +274,85 @@ def _families(
     )
 
 
+class RetrievalRerankOutput(BaseModel):
+    """GPT-5.5 selection over the bounded, balanced TigerGraph candidates."""
+
+    confirmed_fraud_case_ids: list[str] = Field(description="Up to 3 materially similar confirmed_fraud candidates, best first.")
+    cleared_case_ids: list[str] = Field(description="Up to 3 materially similar cleared candidates, best first.")
+    document_ids: list[str] = Field(description="Up to 5 relevant policy/pattern documents, most relevant first.")
+    rationale: str
+
+
+def _rerank_prompt(row: dict[str, Any], shape: dict[str, Any], knowledge: dict[str, Any]) -> str:
+    def brief(c: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "id": c["id"], "outcome": c.get("outcome"), "pattern": c.get("pattern"), "channels": c.get("channels"),
+            "products": c.get("products"), "max_amount": c.get("max_amount"), "n_txns": c.get("n_txns"),
+            "new_device_txns": c.get("n_new_device"), "structured_score": c.get("structured_score"),
+            "matched_features": c.get("matched_features"), "notes": _clip_strings(c.get("analyst_notes"), 240),
+        }
+
+    cands = knowledge.get("closed_case_candidates") or {}
+    docs = [
+        {"id": d["id"], "section": d.get("section"), "text": _clip_strings(d.get("text"), 200)}
+        for d in knowledge.get("knowledge_candidates") or []
+    ]
+    return (
+        "Rank prior closed cases and policy documents for a fraud investigation. You are only selecting retrieval "
+        "context; do not assess this case's verdict. Select from the candidates below only.\n"
+        f"Current case shape (deterministic features): {json.dumps(shape, default=str)}\n"
+        f"Trigger type: {row.get('trigger_type')}\n"
+        f"confirmed_fraud candidates: {json.dumps([brief(c) for c in cands.get('confirmed_fraud', [])], default=str)}\n"
+        f"cleared candidates: {json.dumps([brief(c) for c in cands.get('cleared', [])], default=str)}\n"
+        f"documents: {json.dumps(docs)}\n"
+        f"Pick up to {PER_OUTCOME_K} materially similar confirmed_fraud cases and up to {PER_OUTCOME_K} materially "
+        "similar cleared cases (similar channel, product, amount, device status, episode shape and the question the "
+        "case turns on). Leave a list short or empty rather than padding it with dissimilar cases. Pick up to 5 "
+        "documents that apply to this case."
+    )
+
+
+async def _rerank_retrieval(row: dict[str, Any], shape: dict[str, Any], knowledge: dict[str, Any]) -> dict[str, Any]:
+    """Bounded GPT-5.5/Pi rerank of the structured candidates. Output ids are
+    validated against the candidate set and capped per outcome, so the model
+    can only choose among (never add to) TigerGraph's candidates."""
+    cands = knowledge.get("closed_case_candidates") or {}
+    by_outcome = {o: {c["id"]: c for c in cs} for o, cs in cands.items()}
+    docs = {d["id"]: d for d in knowledge.get("knowledge_candidates") or []}
+    if not any(by_outcome.values()) and not docs:
+        return knowledge
+    result = await generate_structured(_rerank_prompt(row, shape, knowledge), RetrievalRerankOutput)
+
+    def pick(ids: list[str], pool: dict[str, Any], cap: int) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for i in ids:
+            if i in pool and pool[i] not in out:
+                out.append(pool[i])
+        return out[:cap]
+
+    fraud = pick(result.confirmed_fraud_case_ids, by_outcome.get("confirmed_fraud", {}), PER_OUTCOME_K)
+    cleared = pick(result.cleared_case_ids, by_outcome.get("cleared", {}), PER_OUTCOME_K)
+    chosen_docs = pick(result.document_ids, docs, 5)
+    selected = {c["id"] for c in fraud + cleared} | {d["id"] for d in chosen_docs}
+    return {
+        **knowledge,
+        "similar_cases": [{**c, "rerank_rank": i + 1} for i, c in enumerate(fraud)]
+        + [{**c, "rerank_rank": i + 1} for i, c in enumerate(cleared)],
+        "knowledge": chosen_docs,
+        "rerank": {
+            "method": RETRIEVAL_METHOD,
+            "model_selected": {
+                "confirmed_fraud": [c["id"] for c in fraud], "cleared": [c["id"] for c in cleared],
+                "documents": [d["id"] for d in chosen_docs],
+            },
+            "rejected_ids": sorted(
+                set(result.confirmed_fraud_case_ids + result.cleared_case_ids + result.document_ids) - selected
+            ),
+            "rationale": result.rationale,
+        },
+    }
+
+
 async def gather_evidence_node(tg: TigerGraphMCP, state: InvestigationState) -> InvestigationState:
     row = state["case_row"]
     card_id = row["card_id"]
@@ -323,16 +407,19 @@ async def gather_evidence_node(tg: TigerGraphMCP, state: InvestigationState) -> 
     ring_ctx = {**ring_ctx, "cluster_prior_fraud_rate": ring.get("cluster_prior_fraud_rate")}
     evidence.append({"type": "ring_context", "data": ring_ctx})
 
-    query_text = build_similarity_query(
+    # TigerGraph structured candidates -> GPT-5.5/Pi rerank (no embeddings,
+    # no vector search on the live path; see src/graph/vector_search.py).
+    shape = build_case_shape(
         str(row.get("trigger_type", "")), profile, card_testing, cnp, region, network, recurrence,
+        episode_size=len(episode.txn_ids),
     )
-    knowledge = await retrieve_knowledge(tg, query_text, top_k=5)
-    knowledge["query_text"] = query_text
+    knowledge = await retrieve_knowledge(tg, shape)
+    tool_calls += 3  # closed_case_features + knowledge_docs_by_source x2 (process-cached after first use)
+    knowledge = await _rerank_retrieval(row, shape, knowledge)
     evidence.append({"type": "knowledge", "data": knowledge})
-    tool_calls += 1
 
     statement = _customer_statement(row, recurrence)
-    matched = _closest_prior_case(knowledge)
+    matched = matched_prior_case(knowledge["closed_case_candidates"])
     signals = {
         "card_testing": _dump(card_testing),
         "cnp_burst": _dump(cnp),
@@ -548,9 +635,10 @@ def _observations(state: InvestigationState) -> dict[str, Any]:
              "notes": _clip_strings(c.get("analyst_notes"), 160)}
             for c in closed[:5]
         ],
-        "similar_closed_cases (balanced: up to 3 confirmed_fraud + 3 cleared)": [
+        "similar_closed_cases (TigerGraph structured candidates, GPT-5.5 reranked; up to 3 per outcome)": [
             {"id": c.get("id"), "outcome": c.get("outcome"), "pattern": c.get("pattern"),
-             "distance": c.get("distance"), "notes": _clip_strings(c.get("analyst_notes"), 160)}
+             "structured_score": f"{c.get('structured_score')}/{c.get('applicable_features')}",
+             "matched_features": c.get("matched_features"), "notes": _clip_strings(c.get("analyst_notes"), 160)}
             for c in knowledge.get("similar_cases") or []
         ],
         "policy_and_pattern_documents": [
@@ -586,24 +674,6 @@ def _assessment_prompt(state: InvestigationState) -> str:
         "similar_prior_case_ids only from the closed cases listed above that you actually relied on. If (and only if) "
         "pattern or pattern_if_fraud is undocumented, fill pattern_description with two or three sentences."
     )
-
-
-def _closest_prior_case(knowledge: dict[str, Any]) -> dict[str, Any] | None:
-    """A prior ClosedCase is an evidence family only when it is materially
-    similar: the closest retrieved hit at cosine distance <= 
-    CLOSE_PRIOR_CASE_MAX_DISTANCE. Chosen deterministically from retrieval,
-    never from which case the LLM decided to cite, so the model cannot add
-    an evidence family (and so steer the simulator or Sec 6) by citation.
-    Merely existing on the same card never counts."""
-    close = [
-        h for h in knowledge.get("similar_cases") or []
-        if h.get("type") == "ClosedCase" and h.get("distance") is not None
-        and h["distance"] <= CLOSE_PRIOR_CASE_MAX_DISTANCE
-    ]
-    if not close:
-        return None
-    best = min(close, key=lambda h: (h["distance"], str(h.get("id"))))
-    return {k: best.get(k) for k in ("id", "outcome", "pattern", "distance")}
 
 
 async def assess_node(state: InvestigationState) -> InvestigationState:

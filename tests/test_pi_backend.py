@@ -113,7 +113,9 @@ async def test_groq_backend_still_uses_groq(monkeypatch):
 @pytest.mark.asyncio
 async def test_ollama_backend_still_uses_ollama(monkeypatch):
     monkeypatch.setattr(llm_module, "LLM_BACKEND", "ollama")
-    monkeypatch.setattr(llm_module.ollama, "chat", lambda **kw: {"message": {"content": '{"pattern": "ato"}'}})
+    import ollama
+
+    monkeypatch.setattr(ollama, "chat", lambda **kw: {"message": {"content": '{"pattern": "ato"}'}})
     monkeypatch.setattr(llm_module, "_pi_chat", lambda *a, **k: pytest.fail("pi used on ollama backend"))
     result = await llm_module.generate_structured("Classify.", _PatternSchema)
     assert result.pattern == "ato"

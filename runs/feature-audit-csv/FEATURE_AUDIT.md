@@ -1,6 +1,6 @@
 # Task 14 feature audit (no LLM)
 
-Source: `csv`. Generated 2026-09-24 15:57:23 UTC. Deterministic layer only: no LLM call, no graph write. Baselines use strictly-prior transactions; the risk score is context only.
+Source: `csv`. Generated 2026-09-24 16:43:30 UTC. Deterministic layer only: no LLM call, no graph write. Baselines use strictly-prior transactions; the risk score is context only.
 
 ## Summary
 

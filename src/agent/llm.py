@@ -5,7 +5,6 @@ import os
 import time
 from dataclasses import dataclass, field
 
-import ollama
 import openai
 from pydantic import BaseModel, ValidationError
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
@@ -239,6 +238,8 @@ async def _chat_raw(messages: list[dict], schema: type[BaseModel]) -> str:
             response_format={"type": "json_object"},
         )
         return response.choices[0].message.content or "{}"
+    import ollama  # optional local backend only (LLM_BACKEND=ollama); never imported on the pi path
+
     response = ollama.chat(model=OLLAMA_MODEL, messages=messages, format=schema.model_json_schema())
     return response["message"]["content"]
 

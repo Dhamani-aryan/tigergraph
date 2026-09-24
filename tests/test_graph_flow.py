@@ -43,8 +43,9 @@ def _patch_evidence_functions(
     async def _fake_ring_context(tg, cluster_id):
         return ring_ctx or {"ring_cluster_id": cluster_id, "n_cards": 1, "n_closed_cases": 1, "n_confirmed": 1}
 
-    async def _fake_retrieve_knowledge(tg, query_text, top_k=5):
-        return {"knowledge": [], "similar_cases": [], "closed_case_pool_size": 0}
+    async def _fake_retrieve_knowledge(tg, shape):
+        return {"knowledge": [], "similar_cases": [], "knowledge_candidates": [],
+                "closed_case_candidates": {"confirmed_fraud": [], "cleared": []}}
 
     monkeypatch.setattr(graph_flow, "card_window", _fake_card_window)
     monkeypatch.setattr(graph_flow, "customer_cards", _fake_customer_cards)

@@ -97,7 +97,8 @@ def _build_steps(final_state: dict, evidence_by_type: dict) -> list[dict]:
             tool("closed_case_lookup", closed_cases),
             tool("ring_membership", ring),
             tool("ring_context", evidence_by_type.get("ring_context")),
-            tool("retrieve_knowledge", evidence_by_type.get("knowledge")),
+            tool("closed_case_features", (evidence_by_type.get("knowledge") or {}).get("closed_case_candidates")),
+            tool("knowledge_docs_by_source", (evidence_by_type.get("knowledge") or {}).get("knowledge_candidates")),
         ],
     )
 
@@ -273,7 +274,9 @@ def _build_retrieval(final_state: dict, answer: AnswerFile) -> dict:
             "case_id": c.get("id", ""),
             "outcome": c.get("outcome", ""),
             "pattern": c.get("pattern", ""),
-            "score": c.get("distance"),
+            # Structured match score (matched/applicable features), not a
+            # vector distance: no vector search runs on the live path.
+            "score": c.get("structured_score", c.get("distance")),
             "used": c.get("id") in used_ids,
         }
         for c in (knowledge.get("similar_cases") or [])
@@ -284,7 +287,7 @@ def _build_retrieval(final_state: dict, answer: AnswerFile) -> dict:
             "doc_id": d.get("id", ""),
             "title": d.get("source", "") or d.get("id", ""),
             "section": d.get("section", ""),
-            "score": d.get("distance"),
+            "score": d.get("distance"),  # None: documents are selected by source/section, not vectors
         }
         for d in (knowledge.get("knowledge") or [])
         if d.get("id")
@@ -292,9 +295,17 @@ def _build_retrieval(final_state: dict, answer: AnswerFile) -> dict:
     return {
         "prior_cases": prior_cases,
         "documents": documents,
-        "query_text": knowledge.get("query_text", ""),
-        "closed_case_pool_size": knowledge.get("closed_case_pool_size"),
+        "method": knowledge.get("retrieval_method", ""),
+        "vector_search_used": bool(knowledge.get("vector_search_used", False)),
         "fraud_case_memory_used": False,
+        "case_shape": knowledge.get("case_shape", {}),
+        "closed_case_catalog_size": knowledge.get("closed_case_catalog_size"),
+        "candidates": {
+            o: [{"case_id": c.get("id"), "structured_score": c.get("structured_score"),
+                 "matched_features": c.get("matched_features")} for c in cs]
+            for o, cs in (knowledge.get("closed_case_candidates") or {}).items()
+        },
+        "rerank": knowledge.get("rerank", {}),
     }
 
 
@@ -368,9 +379,8 @@ def build_trace(
         })
     steps.append({
         "step": len(steps) + 1, "node": NODE_WRITE_CASE, "label": "Write case memory",
-        "tool_calls": [{"tool": "add_nodes", "via": "mcp", "args": {}, "result_count": 1},
-                       {"tool": "upsert_vectors", "via": "mcp", "args": {}, "result_count": 1}],
-        "summary": f"Upserted FraudCase {context.get('graph_case_id', '')} and its embedding.",
+        "tool_calls": [{"tool": "add_nodes", "via": "mcp", "args": {}, "result_count": 1}],
+        "summary": f"Upserted FraudCase {context.get('graph_case_id', '')} (no embedding generated on the live path).",
     })
     steps.append({
         "step": len(steps) + 1, "node": NODE_READ_BACK, "label": "Independent read-back",

@@ -124,9 +124,9 @@ async def run_single_case_with_context(tg: TigerGraphMCP, case_row: dict) -> tup
         # calls made INSIDE the LangGraph flow (gather_evidence + the
         # bounded followup) -- the graph write and its independent
         # read-back happen afterward, in this function, and were never
-        # counted at all. +3 (add_nodes, upsert_vectors, get_node) matches
-        # what _write_case_to_graph always attempts.
-        tool_calls=final_state["tool_calls"] + 3,
+        # counted at all. +2 (add_nodes, get_node) matches what
+        # _write_case_to_graph attempts (no vector upsert without an embedding).
+        tool_calls=final_state["tool_calls"] + 2,
         tokens=token_tracker.total,  # 0 on the ollama fallback backend, real usage on Groq
         latency_s=round(time.monotonic() - start, 1),
     )
@@ -391,7 +391,7 @@ def _build_sar(
 
 async def _write_case_to_graph(
     tg: TigerGraphMCP, graph_case_id: str, case_row: dict, assessment: dict,
-    verdict: str, status: str, exposure_usd: float,
+    verdict: str, status: str, exposure_usd: float, embedding: list[float] | None = None,
 ) -> tuple[bool, str]:
     """Returns (written, written_at) -- written_at is exposed so the trace
     writer can report it even when the write later fails the read-back
@@ -433,15 +433,12 @@ async def _write_case_to_graph(
                 ],
             },
         )
-        # Embed and upsert immediately -- this is what makes case memory real within
-        # the same 20-case batch run: a later case's retrieve_knowledge call (Task 10)
-        # searches the `FraudCase` vertex type and will find this one, not just
-        # pre-loaded ClosedCase history. See spec §6 step 8.
-        from src.ingestion.embeddings import embed  # local import: keeps run_case.py
-                                                       # decoupled from ingestion until
-                                                       # the write path actually needs it
-        vector = embed([summary_text])[0]
-        await tg.upsert_vectors("FraudCase", "embedding", [{"vertex_id": graph_case_id, "vector": vector}])
+        # Task 14: no embedding is generated on the case path (no embedding
+        # service is required for a live run, and FraudCase memory is not
+        # retrieved as benchmark evidence). A caller that already holds a
+        # compatible vector may still pass `embedding` to store it.
+        if embedding is not None:
+            await tg.upsert_vectors("FraudCase", "embedding", [{"vertex_id": graph_case_id, "vector": embedding}])
     except Exception:  # noqa: BLE001
         # Fail LOUD to the caller's log, but still report written_to_graph=False
         # rather than raising -- a graph outage shouldn't crash the whole batch

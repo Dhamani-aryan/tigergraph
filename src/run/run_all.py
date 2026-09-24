@@ -124,6 +124,10 @@ async def run_all(
         errors = {cid: msg for cid, msg in errors.items() if cid not in run_ids}
 
     async with TigerGraphMCP(allowed_tools=INVESTIGATION_ALLOWED_TOOLS) as tg:
+        from src.graph.queries import prewarm_live_queries
+
+        prewarmed = await prewarm_live_queries(tg)
+        print(f"Pre-installed {len(prewarmed)} live queries before the first case.", flush=True)
         for i, row in enumerate(cases):
             if i > 0:
                 await asyncio.sleep(INTER_CASE_PAUSE_S)

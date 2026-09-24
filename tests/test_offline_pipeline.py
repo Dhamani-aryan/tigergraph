@@ -13,12 +13,17 @@ from src.run.dataset_index import DatasetIndex
 from src.run.trace_writer import build_trace
 from src.run.validate_outputs import validate_semantics
 from tests.test_features import CUTOFF, _ts, history, txn
+from tests.test_retrieval_and_queries import _FakeTg as _RetrievalTg
 
 CARD = "C00001-K1"
 
 
-class _FakeTg:
+class _FakeTg(_RetrievalTg):
+    """Structured-retrieval installed queries (inherited) plus the case
+    write + read-back. Any vector search / vector upsert fails the test."""
+
     def __init__(self):
+        super().__init__()
         self.written: dict = {}
 
     async def call(self, tool, args):
@@ -30,8 +35,6 @@ class _FakeTg:
             return {"data": {"v_id": self.written.get("case_id"), "attributes": {"verdict": self.written.get("verdict")}}}
         raise AssertionError(tool)
 
-    async def upsert_vectors(self, *a, **k):
-        return {"success": True}
 
 
 def _install(monkeypatch, window, *, device=None, probability=0.5, pattern="none",
@@ -51,15 +54,15 @@ def _install(monkeypatch, window, *, device=None, probability=0.5, pattern="none
     async def _label(*a, **k):
         return "X | Android | Chrome | 1080x1920" if device else ""
 
-    async def _knowledge(tg, query_text, top_k=5):
-        return {"knowledge": [], "similar_cases": [], "closed_case_pool_size": 0}
-
     async def _no_tool(prompt, tools, max_tool_calls=1):
         return ToolCallResult(tool_name=None, final_text="sufficient")
 
     async def _structured(prompt, schema, max_retries=2):
         if prompts is not None:
             prompts.append(prompt)
+        if schema is graph_flow.RetrievalRerankOutput:
+            return schema(confirmed_fraud_case_ids=["CC-0001", "CC-NOT-A-CANDIDATE"], cleared_case_ids=["CC-0005"],
+                          document_ids=["policy-r1"], rationale="scripted")
         if schema is graph_flow.AssessmentOutput:
             return schema(
                 pattern=pattern, pattern_if_fraud=pattern_if_fraud, recommended_verdict="uncertain",
@@ -71,12 +74,15 @@ def _install(monkeypatch, window, *, device=None, probability=0.5, pattern="none
     for name, fn in (("card_window", _card_window), ("customer_cards", _empty_list), ("device_network", _device),
                      ("device_profile_label", _label), ("closed_case_lookup", _empty_list),
                      ("ring_membership", _empty_dict), ("ring_context", _empty_dict),
-                     ("retrieve_knowledge", _knowledge), ("generate_with_tools", _no_tool),
+                     ("generate_with_tools", _no_tool),
                      ("generate_structured", _structured)):
         monkeypatch.setattr(graph_flow, name, fn)
     monkeypatch.setattr(sar_writer, "generate_structured", _structured)
     import src.ingestion.embeddings as embeddings
-    monkeypatch.setattr(embeddings, "embed", lambda texts: [[0.0] for _ in texts])
+    monkeypatch.setattr(embeddings, "embed", lambda texts: pytest.fail("embed() called on the case path"))
+    from src.graph import queries
+    monkeypatch.setattr(queries, "_CLOSED_CASE_CACHE", None)
+    monkeypatch.setattr(queries, "_KNOWLEDGE_CACHE", {})
 
 
 def _row(trigger="risk_score", text="Real-time model scored transaction F ($41.00) at 0.9."):
@@ -215,7 +221,8 @@ async def test_prompt_carries_structured_observations_and_rules(monkeypatch):
     prompts: list[str] = []
     _install(monkeypatch, BENIGN_IN_PERSON, probability=0.45, prompts=prompts)
     await _run(BENIGN_IN_PERSON, _row())
-    first = prompts[0]
+    first = next(p for p in prompts if "STRUCTURED OBSERVATIONS" in p)
+    assert prompts[0].startswith("Rank prior closed cases")  # rerank runs before the assessment
     assert "risk_score is the alert trigger, not a verdict" in first
     assert "behavior_profile" in first and "evidence_families" in first
     assert "graph_context_only" in first
@@ -242,3 +249,66 @@ async def test_corroborated_device_populates_only_corroborated_cards(monkeypatch
         assert answer.case.connected_card_ids == ["C00002-K1", "C00003-K1"]
         assert "FILE_REPORT" in [a.action for a in answer.next_best_actions.final]
     assert violations == []
+
+
+@pytest.mark.asyncio
+async def test_case_path_makes_no_ollama_request_or_command(monkeypatch):
+    """The complete case path (evidence, structured retrieval, rerank,
+    assessment, simulation, policy, SAR, graph write + read-back) opens no
+    connection to localhost:11434, launches no `ollama` command, and never
+    imports the ollama package or calls embed()."""
+    import socket
+    import subprocess
+    import sys
+
+    attempts: list = []
+    real_create = socket.create_connection
+    real_connect = socket.socket.connect
+
+    def _guard_addr(addr):
+        if isinstance(addr, tuple) and len(addr) >= 2 and int(addr[1]) == 11434:
+            attempts.append(addr)
+            raise AssertionError(f"connection to Ollama port attempted: {addr}")
+
+    def _create(addr, *a, **k):
+        _guard_addr(addr)
+        return real_create(addr, *a, **k)
+
+    def _connect(self, addr):
+        _guard_addr(addr)
+        return real_connect(self, addr)
+
+    real_popen = subprocess.Popen.__init__
+
+    def _popen(self, args, *a, **k):
+        cmd = " ".join(args) if isinstance(args, (list, tuple)) else str(args)
+        if "ollama" in cmd.lower():
+            attempts.append(cmd)
+            raise AssertionError(f"ollama command launched: {cmd}")
+        return real_popen(self, args, *a, **k)
+
+    monkeypatch.setattr(socket, "create_connection", _create)
+    monkeypatch.setattr(socket.socket, "connect", _connect)
+    monkeypatch.setattr(subprocess.Popen, "__init__", _popen)
+    monkeypatch.setitem(sys.modules, "ollama", None)  # any `import ollama` now raises ImportError
+
+    window = BENIGN_IN_PERSON
+    _install(monkeypatch, window, probability=0.45)
+    answer, ctx, trace, violations = await _run(window, _row())
+    assert attempts == []
+    assert answer.case.written_to_graph is True
+    assert trace["retrieval"]["vector_search_used"] is False
+    assert trace["retrieval"]["method"] == "tigergraph_structured_candidates+gpt_rerank"
+    assert violations == []
+
+
+@pytest.mark.asyncio
+async def test_rerank_can_only_select_tigergraph_candidates(monkeypatch):
+    window = history(30, channel="online", product="C", addr1=None, step_hours=48) + [txn("F", 0, 99.0, id_15="New")]
+    _install(monkeypatch, window, probability=0.5)
+    answer, ctx, trace, violations = await _run(window, _row())
+    knowledge = next(e["data"] for e in ctx["final_state"]["evidence"] if e["type"] == "knowledge")
+    ids = [c["id"] for c in knowledge["similar_cases"]]
+    assert ids == ["CC-0001", "CC-0005"]
+    assert "CC-NOT-A-CANDIDATE" in knowledge["rerank"]["rejected_ids"]
+    assert all(c["type"] == "ClosedCase" for c in knowledge["similar_cases"])

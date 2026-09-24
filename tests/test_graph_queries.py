@@ -268,15 +268,19 @@ async def test_ring_membership_singleton_card_has_own_ring():
 
 
 @pytest.mark.asyncio
-async def test_retrieve_knowledge_returns_policy_and_case_hits():
+async def test_retrieve_knowledge_returns_structured_candidates_live():
+    # Task 14: structured TigerGraph retrieval (no embeddings, no vector search).
+    shape = {"trigger_type": "risk_score", "channel": "online", "product": "C", "amount": 100.0,
+             "amount_class": "normal", "is_new_device": True, "episode_size": 1, "card_testing": False,
+             "network_corroborated": False, "candidate_patterns": ["card_not_present_new_device"]}
     async with TigerGraphMCP() as tg:
-        result = await retrieve_knowledge(tg, "card testing small authorizations", top_k=3)
-        assert "knowledge" in result and "similar_cases" in result
-        assert len(result["knowledge"]) > 0
-        # FraudCase's index is confirmed empty until Task 12/13 writes to
-        # it; similar_cases is dominated by ClosedCase hits, not required
-        # to be non-empty from FraudCase specifically.
-        assert len(result["similar_cases"]) > 0
+        result = await retrieve_knowledge(tg, shape)
+        assert result["vector_search_used"] is False
+        assert result["closed_case_catalog_size"] == 5565
+        cands = result["closed_case_candidates"]
+        assert cands["confirmed_fraud"] and cands["cleared"]
+        assert all(c["id"].startswith("CC-") for c in cands["confirmed_fraud"] + cands["cleared"])
+        assert any(d["id"] == "pattern-cnp-new-device" for d in result["knowledge_candidates"])
 
 
 @pytest.mark.asyncio

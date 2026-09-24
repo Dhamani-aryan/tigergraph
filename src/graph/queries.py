@@ -117,6 +117,7 @@ GRAPH_NAME = "FraudInvestigation"
 #    failure mode and the retry mitigation applied to every call site below.
 
 _INSTALLED_QUERIES: set[str] = set()
+REST_1005_MAX_RETRIES = 5
 
 
 async def _ensure_installed(tg: TigerGraphMCP, query_name: str, create_and_install_gsql: str) -> None:
@@ -168,13 +169,22 @@ async def _run_installed_query(tg: TigerGraphMCP, query_name: str, params: dict[
     retry instead of a hard, unhandled RuntimeError reaching Task 12's
     evidence-gathering node.
     """
-    try:
-        return await tg.run_installed_query(query_name, params)
-    except RuntimeError as e:
-        if "is disabled" in str(e) or "REST-1005" in str(e):
-            await asyncio.sleep(3)
+    # Task 14 live finding: installing a NEW query (device_network on the
+    # first online case of a batch) left other endpoints (ring_membership)
+    # disabled for longer than the old single 3s retry, failing 3 of 5 smoke
+    # cases. run_all now pre-installs every live query before the first case
+    # (prewarm_live_queries); this retry is the remaining safety net.
+    delay = 5.0
+    for attempt in range(REST_1005_MAX_RETRIES + 1):
+        try:
             return await tg.run_installed_query(query_name, params)
-        raise
+        except RuntimeError as e:
+            transient = "is disabled" in str(e) or "REST-1005" in str(e)
+            if not transient or attempt == REST_1005_MAX_RETRIES:
+                raise
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 40.0)
+    raise AssertionError("unreachable")
 
 
 def _print_results(run_result: dict[str, Any]) -> list[dict[str, Any]]:
@@ -595,6 +605,104 @@ async def ring_context(tg: TigerGraphMCP, cluster_id: str) -> dict:
 
 
 # --------------------------------------------------------------------------
+# Structured retrieval (Task 14: no embeddings on the live case path)
+# --------------------------------------------------------------------------
+# The investigation no longer embeds a query text: live runs have no
+# embedding service (GPT-5.5 through Pi is a chat model, not an embeddings
+# endpoint), and the stored ClosedCase/KnowledgeDoc vectors can only be
+# queried with the model that produced them. Candidates are retrieved by
+# structure instead: each ClosedCase with the channel, ProductCD, amounts
+# and device status of the transactions it INVOLVES, and KnowledgeDoc rows by
+# their known source. Both sets are immutable benchmark data, so a process
+# fetches each once and filters/scores them in Python (graph_flow reranks the
+# bounded candidate set with GPT-5.5).
+CLOSED_CASE_FEATURES_GSQL = f"""
+USE GRAPH {GRAPH_NAME}
+CREATE OR REPLACE QUERY closed_case_features() FOR GRAPH {GRAPH_NAME} {{
+    SetAccum<STRING> @channels;
+    SetAccum<STRING> @products;
+    SumAccum<INT> @n_new_device;
+    SumAccum<INT> @n_involved;
+    MaxAccum<DOUBLE> @max_amount;
+    MinAccum<DOUBLE> @min_amount;
+    AllCases = {{ClosedCase.*}};
+    Cases = SELECT cc FROM AllCases:cc -(INVOLVES)-> Transaction:t
+            ACCUM cc.@channels += t.channel, cc.@products += t.ProductCD, cc.@n_involved += 1,
+                  cc.@max_amount += t.TransactionAmt, cc.@min_amount += t.TransactionAmt,
+                  IF t.id_15 == "New" THEN cc.@n_new_device += 1 END;
+    PRINT Cases[Cases.outcome, Cases.pattern, Cases.exposure_usd, Cases.n_txns, Cases.analyst_notes,
+                Cases.@channels, Cases.@products, Cases.@n_new_device, Cases.@n_involved,
+                Cases.@max_amount, Cases.@min_amount] AS cases;
+}}
+INSTALL QUERY closed_case_features
+""".strip()
+
+KNOWLEDGE_BY_SOURCE_GSQL = f"""
+USE GRAPH {GRAPH_NAME}
+CREATE OR REPLACE QUERY knowledge_docs_by_source(STRING doc_source) FOR GRAPH {GRAPH_NAME} {{
+    AllDocs = {{KnowledgeDoc.*}};
+    Docs = SELECT d FROM AllDocs:d WHERE d.source == doc_source;
+    PRINT Docs[Docs.source, Docs.section, Docs.text] AS docs;
+}}
+INSTALL QUERY knowledge_docs_by_source
+""".strip()
+
+_CLOSED_CASE_CACHE: list[dict[str, Any]] | None = None
+_KNOWLEDGE_CACHE: dict[str, list[dict[str, Any]]] = {}
+
+
+def parse_closed_case_features(print_results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for block in print_results or []:
+        for r in _flatten_vertices(block.get("cases") or [], "Cases") if isinstance(block, dict) else []:
+            rows.append({
+                "id": r.get("id"),
+                "type": "ClosedCase",
+                "outcome": r.get("outcome"),
+                "pattern": r.get("pattern"),
+                "exposure_usd": r.get("exposure_usd"),
+                "n_txns": r.get("n_txns"),
+                "analyst_notes": r.get("analyst_notes") or "",
+                "channels": sorted(_accum(r, "channels") or []),
+                "products": sorted(_accum(r, "products") or []),
+                "n_new_device": int(_accum(r, "n_new_device") or 0),
+                "n_involved": int(_accum(r, "n_involved") or 0),
+                "max_amount": _accum(r, "max_amount"),
+                "min_amount": _accum(r, "min_amount"),
+            })
+    rows.sort(key=lambda r: str(r["id"]))
+    return rows
+
+
+async def closed_case_features(tg: TigerGraphMCP) -> list[dict[str, Any]]:
+    """Every ClosedCase with structured features of its involved
+    transactions. Cached per process (ClosedCase history is immutable)."""
+    global _CLOSED_CASE_CACHE
+    if _CLOSED_CASE_CACHE is None:
+        await _ensure_installed(tg, "closed_case_features", CLOSED_CASE_FEATURES_GSQL)
+        result = await _run_installed_query(tg, "closed_case_features", {})
+        _CLOSED_CASE_CACHE = parse_closed_case_features(_print_results(result))
+    return _CLOSED_CASE_CACHE
+
+
+async def knowledge_docs_by_source(tg: TigerGraphMCP, doc_source: str) -> list[dict[str, Any]]:
+    """KnowledgeDoc rows with a given `source` ("policy", "pattern", ...),
+    cached per process."""
+    if doc_source not in _KNOWLEDGE_CACHE:
+        await _ensure_installed(tg, "knowledge_docs_by_source", KNOWLEDGE_BY_SOURCE_GSQL)
+        result = await _run_installed_query(tg, "knowledge_docs_by_source", {"doc_source": doc_source})
+        docs = []
+        for block in _print_results(result):
+            if isinstance(block, dict):
+                docs.extend(_flatten_vertices(block.get("docs") or [], "Docs"))
+        _KNOWLEDGE_CACHE[doc_source] = sorted(
+            ({"id": d.get("id"), "type": "KnowledgeDoc", **{k: v for k, v in d.items() if k != "id"}} for d in docs),
+            key=lambda d: str(d["id"]),
+        )
+    return _KNOWLEDGE_CACHE[doc_source]
+
+
+# --------------------------------------------------------------------------
 # device_profile_label
 # --------------------------------------------------------------------------
 DEVICE_PROFILE_LABEL_GSQL = f"""
@@ -965,3 +1073,32 @@ async def dispatch_followup_tool(
             cutoff_ts=cutoff_ts,
         )
     raise ValueError(f"Unknown follow-up tool: {name}")
+
+
+# Every installed query the live case path uses, so a batch can install them
+# all BEFORE the first case (an install can briefly disable other endpoints).
+LIVE_QUERIES: dict[str, str] = {
+    "card_window": CARD_WINDOW_GSQL,
+    "customer_cards": CUSTOMER_CARDS_GSQL,
+    "device_profile_label": DEVICE_PROFILE_LABEL_GSQL,
+    "device_network": DEVICE_NETWORK_GSQL,
+    "closed_case_lookup_by_card": CLOSED_CASE_BY_CARD_GSQL,
+    "ring_membership": RING_MEMBERSHIP_GSQL,
+    "ring_context": RING_CONTEXT_GSQL,
+    "closed_case_features": CLOSED_CASE_FEATURES_GSQL,
+    "knowledge_docs_by_source": KNOWLEDGE_BY_SOURCE_GSQL,
+    "region_neighbors": REGION_NEIGHBORS_GSQL,
+    "closed_case_lookup_by_region": CLOSED_CASE_BY_REGION_GSQL,
+}
+
+
+async def prewarm_live_queries(tg: TigerGraphMCP, settle_s: float = 20.0) -> list[str]:
+    """Install every live query once, then wait for endpoints to settle."""
+    installed = []
+    for name, gsql in LIVE_QUERIES.items():
+        if name not in _INSTALLED_QUERIES:
+            await _ensure_installed(tg, name, gsql)
+            installed.append(name)
+    if installed and settle_s:
+        await asyncio.sleep(settle_s)
+    return installed
