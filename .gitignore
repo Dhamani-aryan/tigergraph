@@ -29,3 +29,14 @@ data/vectors/
 
 # Isolated worktrees (subagent-driven-development)
 .worktrees/
+
+# Task 14 batch output -- regenerable via `python -m scripts.run_batch`.
+# Deliberately NOT committed yet: the current local copies were produced
+# across several runs, some of them before two confirmed calibration bugs
+# were fixed (a baseline-noise cluster rate shown as real evidence, and
+# detect_out_of_region comparing against a card's whole lifetime history --
+# see the git log). Un-ignore this once a single clean run has produced
+# all 20 files with the fixed code, since the README wants cases/ committed
+# as the actual submission.
+cases/
+runs/
