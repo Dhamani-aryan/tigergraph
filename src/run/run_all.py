@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -17,6 +19,26 @@ from src.run.dataset_index import _default_data_dir, load_dataset_index
 from src.run.run_case import run_single_case
 from src.run.validate_outputs import validate_answer
 from src.tg_client import INVESTIGATION_ALLOWED_TOOLS, TigerGraphMCP
+
+
+def _git_commit() -> str:
+    """Best-effort short commit hash -- the UI's batch_summary contract
+    (ui/src/contracts/summary.ts, from the frontend team) uses this for
+    traceability. Never fatal: an unclean checkout or a missing git binary
+    just yields ''."""
+    try:
+        return subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, timeout=5, cwd=Path(__file__).resolve().parents[2],
+        ).stdout.strip()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _llm_info() -> dict[str, str]:
+    backend = os.environ.get("LLM_BACKEND", "groq")
+    model = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b") if backend == "groq" else "qwen3:4b-instruct"
+    return {"provider": backend, "model": model}
 
 
 def _load_case_pack(data_dir: Path) -> list[dict]:
@@ -143,8 +165,20 @@ async def run_all(
         verdict_counts[c["verdict"]] = verdict_counts.get(c["verdict"], 0) + 1
         pattern_counts[c["pattern"]] = pattern_counts.get(c["pattern"], 0) + 1
 
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     batch_summary = {
-        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        # Added 2026-09-24 to match the UI's contract (ui/src/contracts/
+        # summary.ts): run_id/git_commit/llm were REQUIRED fields there but
+        # this function never produced them, so BatchSummarySchema.safeParse
+        # would fail on every real run -- non-fatal (the UI degrades to
+        # `summary: undefined`), but it meant the whole Overview KPI strip
+        # would silently vanish even though every individual case file was
+        # fine. Found by reading the frontend's actual Zod schema, not
+        # guessed.
+        "run_id": generated_at,
+        "git_commit": _git_commit(),
+        "llm": _llm_info(),
+        "generated_at": generated_at,
         "cases_total": len(full_cases),
         "cases_completed": len(summary_cases),
         "cases_failed": len(errors),
