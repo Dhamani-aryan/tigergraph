@@ -110,6 +110,46 @@ def _flagged_amount(row: dict[str, Any]) -> float:
     return _amount_from_trigger_text(row.get("trigger_text", ""))
 
 
+def _redact_baseline_cluster_rate(data: Any) -> Any:
+    """Critical answer-quality fix (2026-09-24), found live by hand-checking
+    the finished batch: EVERY evidence type that carries a Card's
+    `cluster_prior_fraud_rate` (ring_membership, customer_cards,
+    device_neighbors' shared_cards) was passing the RAW rate straight
+    through into both the LLM prompt and the answer file's evidence list --
+    completely bypassing `CLUSTER_FRAUD_RATE_COORDINATED_THRESHOLD` (0.95),
+    the exact guard this module's own top-of-file comment documents as
+    existing BECAUSE the dataset-wide baseline confirmed-fraud rate among
+    closed cases is ~83.83%, and a single ~3,565-card supercluster sits at
+    0.847 -- indistinguishable from that baseline, not a real ring.
+
+    Confirmed live: 18 of the 20 batch cases carried a "cluster ... prior
+    confirmed-fraud rate of 0.85" claim (17 of them citing that exact same
+    supercluster), presented to the LLM with no indication it's noise --
+    which is very plausibly why every single case in that run scored
+    fraud_probability >= 0.55 and none came back "legitimate", despite the
+    README's own expectation that about half the case pack should. A
+    number below the coordinated threshold is not weak evidence of a ring;
+    it is evidence AGAINST one (this card looks like every other card), so
+    it's redacted here rather than shown with a caveat a small model might
+    still latch onto.
+
+    Applied to every evidence payload that can carry this field, recursively
+    (device_neighbors nests it inside a list of per-card dicts), replacing
+    a sub-threshold rate with `None` -- never deleting the key outright, so
+    the LLM and run_case.py's evidence builder can still see that the field
+    was checked and found to be baseline, not simply absent."""
+    if isinstance(data, dict):
+        out = dict(data)
+        rate = out.get("cluster_prior_fraud_rate")
+        if isinstance(rate, (int, float)) and rate < CLUSTER_FRAUD_RATE_COORDINATED_THRESHOLD:
+            out["cluster_prior_fraud_rate"] = None
+            out["ring_cluster_id"] = None
+        return {k: _redact_baseline_cluster_rate(v) for k, v in out.items()}
+    if isinstance(data, list):
+        return [_redact_baseline_cluster_rate(v) for v in data]
+    return data
+
+
 def _clip_strings(value: Any, max_text_len: int) -> Any:
     """Recursively clip long string values inside dicts/lists so a single
     verbose field (e.g. a closed case's `analyst_notes` or a knowledge doc
@@ -235,11 +275,11 @@ async def gather_evidence_node(tg: TigerGraphMCP, state: InvestigationState) -> 
     recurring_charge_detected = detect_recurring_charge(window, flagged_txn_id)
 
     cards = await customer_cards(tg, row["customer_id"])
-    evidence.append({"type": "customer_cards", "data": cards})
+    evidence.append({"type": "customer_cards", "data": _redact_baseline_cluster_rate(cards)})
     tool_calls += 1
 
     neighbors = await device_neighbors(tg, str(row["flagged_txn_id"]), cutoff_ts=cutoff_ts)
-    evidence.append({"type": "device_neighbors", "data": neighbors})
+    evidence.append({"type": "device_neighbors", "data": _redact_baseline_cluster_rate(neighbors)})
     tool_calls += 1
 
     device_label = await device_profile_label(tg, str(row["flagged_txn_id"]))
@@ -251,7 +291,7 @@ async def gather_evidence_node(tg: TigerGraphMCP, state: InvestigationState) -> 
     tool_calls += 1
 
     ring = await ring_membership(tg, card_id)
-    evidence.append({"type": "ring_membership", "data": ring})
+    evidence.append({"type": "ring_membership", "data": _redact_baseline_cluster_rate(ring)})
     tool_calls += 1
 
     knowledge = await retrieve_knowledge(
