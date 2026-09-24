@@ -1,0 +1,135 @@
+{
+  "case_id": "HHG-012",
+  "case": {
+    "status": "closed_legitimate",
+    "verdict": "legitimate",
+    "fraud_probability": 0.15,
+    "pattern": "out_of_region_use",
+    "pattern_description": "",
+    "affected_txn_ids": [],
+    "first_suspicious_txn_id": "",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 0.0,
+    "evidence": [
+      {
+        "claim": "The flagged transaction's billing region differs from this card's usual region, while activity in the usual region continues.",
+        "source": "graph",
+        "ref": "query:card_window(card_id=C05876-K2)",
+        "entity_ids": [
+          "3553342"
+        ]
+      },
+      {
+        "claim": "2 closed case(s) connect to this card, device, or region.",
+        "source": "graph",
+        "ref": "query:closed_case_lookup(card_id=C05876-K2)",
+        "entity_ids": [
+          "CC-0003",
+          "CC-2370"
+        ]
+      },
+      {
+        "claim": "out-of-region use detected",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3553342"
+        ]
+      },
+      {
+        "claim": "card-testing sequence detected: False",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3553342"
+        ]
+      },
+      {
+        "claim": "burst of related online transactions detected: False",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3553342"
+        ]
+      },
+      {
+        "claim": "flagged transaction is from a device marked NEW for this account: False",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3553342"
+        ]
+      },
+      {
+        "claim": "flagged transaction is behind an anonymizing/hidden proxy: False",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3553342"
+        ]
+      },
+      {
+        "claim": "customer confirms purchase and spending pattern is consistent",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3553342"
+        ]
+      },
+      {
+        "claim": "Customer confirms they made this $30.91 purchase. (Simulated: amount is in line with their typical spending pattern.)",
+        "source": "customer",
+        "ref": "evidence_request:1",
+        "entity_ids": [
+          "3553342"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-0003",
+      "CC-2534",
+      "CC-3245",
+      "CC-3751"
+    ],
+    "summary": "Reviewed and closed as legitimate activity (pattern: out_of_region_use, probability 0.15). out-of-region use detected card-testing sequence detected: False burst of related online transactions detected: False",
+    "written_to_graph": true,
+    "graph_case_id": "CASE-HHG-012"
+  },
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 3,
+      "assumed_response": "Customer confirms they made this $30.91 purchase. (Simulated: amount is in line with their typical spending pattern.)"
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CLOSE_NO_FRAUD",
+        "route": "auto",
+        "reason": "R8"
+      }
+    ],
+    "final": [
+      {
+        "action": "CLOSE_NO_FRAUD",
+        "route": "auto",
+        "reason": "R3"
+      }
+    ],
+    "what_changed": "Simulated evidence response changed the recommended actions."
+  },
+  "sar": {
+    "file": false,
+    "reason": "R3: customer confirmed the transaction as their own.",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0.0,
+    "activity_dates": []
+  },
+  "stop_reason": "Simulated customer response settled the verdict.",
+  "tool_calls": 10,
+  "tokens": 0,
+  "latency_s": 164.0
+}

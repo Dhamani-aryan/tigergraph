@@ -1,0 +1,127 @@
+{
+  "case_id": "HHG-018",
+  "case": {
+    "status": "escalated",
+    "verdict": "uncertain",
+    "fraud_probability": 0.95,
+    "pattern": "out_of_region_use",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3491361"
+    ],
+    "first_suspicious_txn_id": "3491361",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 39.08,
+    "evidence": [
+      {
+        "claim": "The flagged transaction's billing region differs from this card's usual region, while activity in the usual region continues.",
+        "source": "graph",
+        "ref": "query:card_window(card_id=C02354-K2)",
+        "entity_ids": [
+          "3491361"
+        ]
+      },
+      {
+        "claim": "20 closed case(s) connect to this card, device, or region.",
+        "source": "graph",
+        "ref": "query:closed_case_lookup(card_id=C02354-K2)",
+        "entity_ids": [
+          "CC-5558",
+          "CC-0454",
+          "CC-0631",
+          "CC-2051",
+          "CC-3537",
+          "CC-0255",
+          "CC-3634",
+          "CC-2432",
+          "CC-2589",
+          "CC-0405"
+        ]
+      },
+      {
+        "claim": "out-of-region-use-detected",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3491361"
+        ]
+      },
+      {
+        "claim": "customer-denies-transaction",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3491361"
+        ]
+      },
+      {
+        "claim": "closed-case-with-out-of-region-use-pattern",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3491361"
+        ]
+      },
+      {
+        "claim": "Customer reported this transaction as unrecognized: \"Customer C02354 message: 'I never made this $39.08 purchase. Please check my card.' Refers to 3491361.\"",
+        "source": "customer",
+        "ref": "trigger:customer_report",
+        "entity_ids": [
+          "3491361"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-0631"
+    ],
+    "summary": "Out Of Region Use identified at probability 0.95, spanning 1 transaction totaling $39.08. out-of-region-use-detected customer-denies-transaction closed-case-with-out-of-region-use-pattern",
+    "written_to_graph": true,
+    "graph_case_id": "CASE-HHG-018"
+  },
+  "evidence_requests": [],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "Sec 3a"
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R7"
+      },
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R7"
+      },
+      {
+        "action": "WARN_CUSTOMER",
+        "route": "auto",
+        "reason": "R7"
+      }
+    ],
+    "what_changed": "The customer's own report matched a charge recurring monthly on this card (R7), which changed the recommendation away from a block."
+  },
+  "sar": {
+    "file": false,
+    "reason": "R7: disputed charge matches the customer's own recurring pattern.",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0.0,
+    "activity_dates": []
+  },
+  "stop_reason": "Customer's own report already establishes a recurring-charge pattern (R7); no further evidence needed.",
+  "tool_calls": 10,
+  "tokens": 0,
+  "latency_s": 107.3
+}

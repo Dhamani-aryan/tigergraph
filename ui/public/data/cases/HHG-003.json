@@ -1,0 +1,165 @@
+{
+  "case_id": "HHG-003",
+  "case": {
+    "status": "closed_legitimate",
+    "verdict": "legitimate",
+    "fraud_probability": 0.15,
+    "pattern": "account_takeover",
+    "pattern_description": "",
+    "affected_txn_ids": [],
+    "first_suspicious_txn_id": "",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 0.0,
+    "evidence": [
+      {
+        "claim": "6 closed case(s) connect to this card, device, or region.",
+        "source": "graph",
+        "ref": "query:closed_case_lookup(card_id=C08623-K2)",
+        "entity_ids": [
+          "CC-3327",
+          "CC-1589",
+          "CC-2935",
+          "CC-4957",
+          "CC-2817",
+          "CC-3682"
+        ]
+      },
+      {
+        "claim": "Customer C08623 reported no $49.00 purchase",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3530164"
+        ]
+      },
+      {
+        "claim": "No card-testing sequence detected",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3530164"
+        ]
+      },
+      {
+        "claim": "No burst of related online transactions",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3530164"
+        ]
+      },
+      {
+        "claim": "No out-of-region use detected",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3530164"
+        ]
+      },
+      {
+        "claim": "No new device usage detected",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3530164"
+        ]
+      },
+      {
+        "claim": "No anonymizing proxy detected",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3530164"
+        ]
+      },
+      {
+        "claim": "No device neighbors found",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3530164"
+        ]
+      },
+      {
+        "claim": "Customer has a ring cluster with no prior fraud",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3530164"
+        ]
+      },
+      {
+        "claim": "Closed case CC-3327 shows account takeover pattern",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3530164"
+        ]
+      },
+      {
+        "claim": "Knowledge doc indicates card-not-present fraud pattern",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3530164"
+        ]
+      },
+      {
+        "claim": "Customer reported this transaction as unrecognized: \"Customer C08623 message: 'I never made this $49.00 purchase. Please check my card.' Refers to 3530164.\"",
+        "source": "customer",
+        "ref": "trigger:customer_report",
+        "entity_ids": [
+          "3530164"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-3327",
+      "CC-2935"
+    ],
+    "summary": "Reviewed and closed as legitimate activity (pattern: account_takeover, probability 0.15). Customer C08623 reported no $49.00 purchase No card-testing sequence detected No burst of related online transactions",
+    "written_to_graph": true,
+    "graph_case_id": "CASE-HHG-003"
+  },
+  "evidence_requests": [],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CLOSE_NO_FRAUD",
+        "route": "auto",
+        "reason": "R8"
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R7"
+      },
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R7"
+      },
+      {
+        "action": "WARN_CUSTOMER",
+        "route": "auto",
+        "reason": "R7"
+      }
+    ],
+    "what_changed": "The customer's own report matched a charge recurring monthly on this card (R7), which changed the recommendation away from a block."
+  },
+  "sar": {
+    "file": false,
+    "reason": "R7: disputed charge matches the customer's own recurring pattern.",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0.0,
+    "activity_dates": []
+  },
+  "stop_reason": "Customer's own report already establishes a recurring-charge pattern (R7); no further evidence needed.",
+  "tool_calls": 10,
+  "tokens": 0,
+  "latency_s": 123.2
+}

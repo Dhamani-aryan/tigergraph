@@ -1,0 +1,143 @@
+{
+  "case_id": "HHG-009",
+  "case": {
+    "status": "closed_fraud",
+    "verdict": "fraud",
+    "fraud_probability": 0.85,
+    "pattern": "card_not_present_fraud",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3581141"
+    ],
+    "first_suspicious_txn_id": "3581141",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 30.02,
+    "evidence": [
+      {
+        "claim": "Behavior profile (online channel): 46 prior transactions; amount $30.02 is 0.601x the prior median $49.97 (percentile 0.3043, normal); ProductCD S used 39 times before (established).",
+        "source": "graph",
+        "ref": "query:card_window(card_id=C08299-K1, reference_txn_id=3581141); features:behavior_profile",
+        "entity_ids": [
+          "3581141"
+        ]
+      },
+      {
+        "claim": "The flagged transaction's device is already Found for this account (id_15).",
+        "source": "graph",
+        "ref": "query:card_window(card_id=C08299-K1, reference_txn_id=3581141)",
+        "entity_ids": [
+          "3581141"
+        ]
+      },
+      {
+        "claim": "Connected component RING-C00001-K1: 3565 cards, 4671 closed case(s) behind a prior confirmed-fraud rate of 0.8469278812408447 -- contextual graph information, not evidence of a ring.",
+        "source": "graph",
+        "ref": "context:ring_membership(card_id=C08299-K1)",
+        "entity_ids": [
+          "C08299-K1"
+        ]
+      },
+      {
+        "claim": "Customer C08299 stated they never made the $30.02 purchase on transaction 3581141.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3581141"
+        ]
+      },
+      {
+        "claim": "Transaction 3581141 was an online purchase for $30.02.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3581141"
+        ]
+      },
+      {
+        "claim": "The episode contains only transaction 3581141 with exposure of $30.02.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3581141"
+        ]
+      },
+      {
+        "claim": "The card had 46 prior transactions over 176.65 days with stable history.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3581141"
+        ]
+      },
+      {
+        "claim": "The flagged product was established in prior card history.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3581141"
+        ]
+      },
+      {
+        "claim": "No same-channel, same-product, amount-matching recurrence was found 25-35 days earlier.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3581141"
+        ]
+      },
+      {
+        "claim": "Customer's own report on file: \"Customer C08299 message: 'I never made this $30.02 purchase. Please check my card.' Refers to 3581141.\"",
+        "source": "customer",
+        "ref": "trigger:customer_report",
+        "entity_ids": [
+          "3581141"
+        ]
+      }
+    ],
+    "similar_prior_cases": [],
+    "summary": "Card Not Present Fraud at probability 0.85, spanning 1 transaction totaling $30.02. Customer denied the transaction (R2). Customer C08299 stated they never made the $30.02 purchase on transaction 3581141. Transaction 3581141 was an online purchase for $30.02.",
+    "written_to_graph": true,
+    "graph_case_id": "CASE-HHG-009"
+  },
+  "evidence_requests": [],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1: single signal at probability 0.62 < 0.70, verify before any block"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "Sec 3a"
+      }
+    ],
+    "final": [
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2: customer denies the transaction"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R2"
+      }
+    ],
+    "what_changed": "The customer's own report, already on file at the time the case opened, established non-recognition of the charge (R2), which changed the recommendation. Probability 0.62 -> 0.85."
+  },
+  "sar": {
+    "file": false,
+    "reason": "No filing criteria met (Sec 3a).",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0.0,
+    "activity_dates": []
+  },
+  "stop_reason": "The customer's own report, already on file, states they did not make the transaction (R2); no simulated follow-up since the customer already answered.",
+  "tool_calls": 12,
+  "tokens": 9000,
+  "latency_s": 49.4
+}

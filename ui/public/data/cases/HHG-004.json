@@ -1,0 +1,185 @@
+{
+  "case_id": "HHG-004",
+  "case": {
+    "status": "closed_fraud",
+    "verdict": "fraud",
+    "fraud_probability": 0.85,
+    "pattern": "card_not_present_new_device",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3583227",
+      "3580804"
+    ],
+    "first_suspicious_txn_id": "3580804",
+    "connected_card_ids": [
+      "C02222-K1",
+      "C03095-K2",
+      "C04248-K2",
+      "C05031-K2",
+      "C07518-K2"
+    ],
+    "connected_device_profiles": [
+      "firefox 47.0"
+    ],
+    "exposure_usd": 221.19,
+    "evidence": [
+      {
+        "claim": "2 related online transaction(s) within 48 hours of the flagged transaction on card C08106-K1.",
+        "source": "graph",
+        "ref": "query:card_window(card_id=C08106-K1, hours=48)",
+        "entity_ids": [
+          "3583227",
+          "3580804"
+        ]
+      },
+      {
+        "claim": "The flagged transaction's device fingerprint is marked New for this account (id_15).",
+        "source": "graph",
+        "ref": "query:card_window(card_id=C08106-K1)",
+        "entity_ids": [
+          "3583227"
+        ]
+      },
+      {
+        "claim": "The flagged transaction's device fingerprint is shared with 5 other card(s): C02222-K1, C03095-K2, C04248-K2, C05031-K2, C07518-K2.",
+        "source": "graph",
+        "ref": "query:device_neighbors(transaction_id=3583227)",
+        "entity_ids": [
+          "C02222-K1",
+          "C03095-K2",
+          "C04248-K2",
+          "C05031-K2",
+          "C07518-K2"
+        ]
+      },
+      {
+        "claim": "4 closed case(s) connect to this card, device, or region.",
+        "source": "graph",
+        "ref": "query:closed_case_lookup(card_id=C08106-K1)",
+        "entity_ids": [
+          "CC-0696",
+          "CC-3778",
+          "CC-1736",
+          "CC-2121"
+        ]
+      },
+      {
+        "claim": "flagged transaction is from a device marked NEW for this account (id_15): True",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3583227",
+          "3580804"
+        ]
+      },
+      {
+        "claim": "burst of related online transactions detected: True",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3583227",
+          "3580804"
+        ]
+      },
+      {
+        "claim": "card-testing sequence detected: False",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3583227",
+          "3580804"
+        ]
+      },
+      {
+        "claim": "out-of-region use detected: False",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3583227",
+          "3580804"
+        ]
+      },
+      {
+        "claim": "Customer reported this transaction as unrecognized: \"Customer C08106 message: 'I never made this $128.33 purchase. Please check my card.' Refers to 3583227.\"",
+        "source": "customer",
+        "ref": "trigger:customer_report",
+        "entity_ids": [
+          "3583227"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-3778",
+      "CC-1736"
+    ],
+    "summary": "Card Not Present New Device identified at probability 0.85, spanning 2 transactions totaling $221.19. flagged transaction is from a device marked NEW for this account (id_15): True burst of related online transactions detected: True card-testing sequence detected: False Connects to 5 other card(s).",
+    "written_to_graph": true,
+    "graph_case_id": "CASE-HHG-004"
+  },
+  "evidence_requests": [],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R6"
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "R6"
+      },
+      {
+        "action": "MONITOR_CONNECTED_CARDS",
+        "route": "auto",
+        "reason": "R6"
+      }
+    ],
+    "final": [
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R2"
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "R2"
+      },
+      {
+        "action": "MONITOR_CONNECTED_CARDS",
+        "route": "auto",
+        "reason": "R2/R6"
+      }
+    ],
+    "what_changed": "The customer's own report, already on file at the time the case opened, established non-recognition of the charge (R2), which changed the recommendation."
+  },
+  "sar": {
+    "file": true,
+    "reason": "R2: exposure exceeds $1,000 or activity connects to a shared origin.",
+    "narrative": "Customer C08106, using card C08106-K1, reported a $128.33 purchase they did not make, referencing transaction ID 3583227. This transaction occurred on December 28, 2016, and was flagged as card_not_present_new_device due to the device being marked as new for this account (id_15). A burst of related online transactions was detected during the same period, from December 28 to 29, 2016, involving connected cards C02222-K1, C03095-K2, C04248-K2, C05031-K2, and C07518-K2. The total exposure from these transactions is $221.19, with the transaction 3583227 being the primary concern. The activity took place across online channels with no evidence of out-of-region use or card-testing sequences. The fraud probability is 0.85, and the device being new for the account increases the risk of unauthorized use. The customer's message confirms they did not authorize the transaction, suggesting potential fraud.",
+    "subjects": [
+      "C08106",
+      "C08106-K1",
+      "C02222-K1",
+      "C03095-K2",
+      "C04248-K2",
+      "C05031-K2",
+      "C07518-K2"
+    ],
+    "total_amount_usd": 221.19,
+    "activity_dates": [
+      "2016-12-28",
+      "2016-12-29"
+    ]
+  },
+  "stop_reason": "Customer's own report already establishes non-recognition of the charge (R2); no simulated follow-up needed since the customer already stated this unprompted.",
+  "tool_calls": 10,
+  "tokens": 0,
+  "latency_s": 132.3
+}

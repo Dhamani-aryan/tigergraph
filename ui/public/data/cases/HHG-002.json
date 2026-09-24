@@ -1,0 +1,113 @@
+{
+  "case_id": "HHG-002",
+  "case": {
+    "status": "closed_fraud",
+    "verdict": "fraud",
+    "fraud_probability": 0.99,
+    "pattern": "none",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3478782"
+    ],
+    "first_suspicious_txn_id": "3478782",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 292.36,
+    "evidence": [
+      {
+        "claim": "1 closed case(s) connect to this card, device, or region.",
+        "source": "graph",
+        "ref": "query:closed_case_lookup(card_id=C11891-K1)",
+        "entity_ids": [
+          "CC-4160"
+        ]
+      },
+      {
+        "claim": "customer states they did not make the $292.36 purchase",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3478782"
+        ]
+      },
+      {
+        "claim": "transaction amount is 6.2x their typical transaction",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3478782"
+        ]
+      },
+      {
+        "claim": "customer still has the card",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3478782"
+        ]
+      },
+      {
+        "claim": "Customer states they did not make this $292.36 purchase and still has the card. (Simulated: amount is 6.2x their typical transaction.)",
+        "source": "customer",
+        "ref": "evidence_request:1",
+        "entity_ids": [
+          "3478782"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-3482",
+      "CC-2757",
+      "CC-3761"
+    ],
+    "summary": "None identified at probability 0.99, spanning 1 transaction totaling $292.36. customer states they did not make the $292.36 purchase transaction amount is 6.2x their typical transaction customer still has the card",
+    "written_to_graph": true,
+    "graph_case_id": "CASE-HHG-002"
+  },
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 3,
+      "assumed_response": "Customer states they did not make this $292.36 purchase and still has the card. (Simulated: amount is 6.2x their typical transaction.)"
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "Sec 3a"
+      }
+    ],
+    "final": [
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R2"
+      }
+    ],
+    "what_changed": "Simulated evidence response changed the recommended actions."
+  },
+  "sar": {
+    "file": false,
+    "reason": "No filing criteria met.",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0.0,
+    "activity_dates": []
+  },
+  "stop_reason": "Simulated customer response settled the verdict.",
+  "tool_calls": 10,
+  "tokens": 0,
+  "latency_s": 119.1
+}

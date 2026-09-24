@@ -1,0 +1,185 @@
+{
+  "case_id": "HHG-006",
+  "case": {
+    "status": "closed_fraud",
+    "verdict": "fraud",
+    "fraud_probability": 0.92,
+    "pattern": "card_not_present_new_device",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3476682",
+      "3476665",
+      "3476633",
+      "3476602"
+    ],
+    "first_suspicious_txn_id": "3476602",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 1906.07,
+    "evidence": [
+      {
+        "claim": "4 related online transaction(s) within 48 hours of the flagged transaction on card C07297-K1.",
+        "source": "graph",
+        "ref": "query:card_window(card_id=C07297-K1, hours=48)",
+        "entity_ids": [
+          "3476682",
+          "3476665",
+          "3476633",
+          "3476602"
+        ]
+      },
+      {
+        "claim": "The flagged transaction's device fingerprint is marked New for this account (id_15).",
+        "source": "graph",
+        "ref": "query:card_window(card_id=C07297-K1)",
+        "entity_ids": [
+          "3476682"
+        ]
+      },
+      {
+        "claim": "flagged transaction is from a device marked NEW for this account",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3476682",
+          "3476665",
+          "3476633",
+          "3476602"
+        ]
+      },
+      {
+        "claim": "burst of related online transactions detected",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3476682",
+          "3476665",
+          "3476633",
+          "3476602"
+        ]
+      },
+      {
+        "claim": "card-testing sequence detected: False",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3476682",
+          "3476665",
+          "3476633",
+          "3476602"
+        ]
+      },
+      {
+        "claim": "out-of-region use detected: False",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3476682",
+          "3476665",
+          "3476633",
+          "3476602"
+        ]
+      },
+      {
+        "claim": "episode transactions include 3476682, 3476665, 3476633, 3476602",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3476682",
+          "3476665",
+          "3476633",
+          "3476602"
+        ]
+      },
+      {
+        "claim": "episode exposure so far: $1906.07",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3476682",
+          "3476665",
+          "3476633",
+          "3476602"
+        ]
+      },
+      {
+        "claim": "knowledge doc pattern-cnp-fraud matches card-not-present fraud",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3476682",
+          "3476665",
+          "3476633",
+          "3476602"
+        ]
+      },
+      {
+        "claim": "Customer reported this transaction as unrecognized: \"Customer C07297 message: 'I never made this $482.12 purchase. Please check my card.' Refers to 3476682.\"",
+        "source": "customer",
+        "ref": "trigger:customer_report",
+        "entity_ids": [
+          "3476682"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-2695",
+      "CC-4734",
+      "CC-4027"
+    ],
+    "summary": "Card Not Present New Device identified at probability 0.92, spanning 4 transactions totaling $1906.07. flagged transaction is from a device marked NEW for this account burst of related online transactions detected card-testing sequence detected: False",
+    "written_to_graph": true,
+    "graph_case_id": "CASE-HHG-006"
+  },
+  "evidence_requests": [],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "Sec 3a"
+      }
+    ],
+    "final": [
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R2"
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "R2"
+      }
+    ],
+    "what_changed": "The customer's own report, already on file at the time the case opened, established non-recognition of the charge (R2), which changed the recommendation."
+  },
+  "sar": {
+    "file": true,
+    "reason": "R2: exposure exceeds $1,000 or activity connects to a shared origin.",
+    "narrative": "Customer C07297, using card C07297-K1, conducted four card-not-present transactions on November 21, 2016, with transaction IDs 3476682, 3476665, 3476633, and 3476602. All transactions occurred on a single date and were detected as part of a card-not-present new device pattern. The device associated with transaction 3476682 was flagged as new for this account, indicating a potential unauthorized device. A burst of related online transactions was detected, suggesting a coordinated activity. The fraud probability for this episode was 0.92, and evidence confirmed a card-testing sequence was detected. Customer C07297 reported that they never made the $482.12 purchase (transaction 3476682), prompting a manual review. The total exposure from these transactions was $1906.07, and the pattern matches known card-not-present fraud behavior. This activity is suspicious due to the use of a new device, the high exposure, and the customer's explicit denial of making one of the transactions.",
+    "subjects": [
+      "C07297",
+      "C07297-K1"
+    ],
+    "total_amount_usd": 1906.07,
+    "activity_dates": [
+      "2016-11-21",
+      "2016-11-21"
+    ]
+  },
+  "stop_reason": "Customer's own report already establishes non-recognition of the charge (R2); no simulated follow-up needed since the customer already stated this unprompted.",
+  "tool_calls": 10,
+  "tokens": 0,
+  "latency_s": 139.2
+}
