@@ -1,0 +1,135 @@
+{
+  "case_id": "HHG-002",
+  "case": {
+    "status": "closed_fraud",
+    "verdict": "fraud",
+    "fraud_probability": 0.93,
+    "pattern": "card_not_present_fraud",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3478782"
+    ],
+    "first_suspicious_txn_id": "3478782",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 292.36,
+    "evidence": [
+      {
+        "claim": "1 closed case(s) connect to this card, device, or region.",
+        "source": "graph",
+        "ref": "query:closed_case_lookup(card_id=C11891-K1)",
+        "entity_ids": [
+          "CC-4160"
+        ]
+      },
+      {
+        "claim": "Customer states they did not make the $292.36 purchase and still has the card, consistent with unauthorized card-not-present use rather than lost/stolen physical card use.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3478782"
+        ]
+      },
+      {
+        "claim": "Real-time model score is elevated at 0.79 for the $292.36 online transaction.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3478782"
+        ]
+      },
+      {
+        "claim": "Transaction is online/card-not-present and the amount is approximately 2.9x the customer's typical transaction size.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3478782"
+        ]
+      },
+      {
+        "claim": "Same customer/card has a prior closed confirmed card-not-present fraud case CC-4160.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3478782"
+        ]
+      },
+      {
+        "claim": "Deterministic signals do not show card testing, burst activity, new device, hidden proxy, or out-of-region use.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3478782"
+        ]
+      },
+      {
+        "claim": "Episode contains only the flagged transaction with exposure of $292.36.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3478782"
+        ]
+      },
+      {
+        "claim": "Customer states they did not make this $292.36 purchase and still has the card. (Simulated: amount is 2.9x their typical transaction.)",
+        "source": "customer",
+        "ref": "evidence_request:1",
+        "entity_ids": [
+          "3478782"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-4160"
+    ],
+    "summary": "Card Not Present Fraud identified at probability 0.93, spanning 1 transaction totaling $292.36. Customer states they did not make the $292.36 purchase and still has the card, consistent with unauthorized card-not-present use rather than lost/stolen physical card use. Real-time model score is elevated at 0.79 for the $292.36 online transaction. Transaction is online/card-not-present and the amount is approximately 2.9x the customer's typical transaction size.",
+    "written_to_graph": true,
+    "graph_case_id": "CASE-HHG-002"
+  },
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 3,
+      "assumed_response": "Customer states they did not make this $292.36 purchase and still has the card. (Simulated: amount is 2.9x their typical transaction.)"
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "Sec 3a"
+      }
+    ],
+    "final": [
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R2"
+      }
+    ],
+    "what_changed": "Simulated evidence response changed the recommended actions."
+  },
+  "sar": {
+    "file": false,
+    "reason": "No filing criteria met.",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0.0,
+    "activity_dates": []
+  },
+  "stop_reason": "Simulated customer response settled the verdict.",
+  "tool_calls": 10,
+  "tokens": 3537,
+  "latency_s": 131.1
+}

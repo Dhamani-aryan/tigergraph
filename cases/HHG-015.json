@@ -1,0 +1,225 @@
+{
+  "case_id": "HHG-015",
+  "case": {
+    "status": "closed_fraud",
+    "verdict": "fraud",
+    "fraud_probability": 0.86,
+    "pattern": "out_of_region_use",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3464869",
+      "3462404",
+      "3462387",
+      "3462385"
+    ],
+    "first_suspicious_txn_id": "3462385",
+    "connected_card_ids": [
+      "C00681-K1",
+      "C01155-K2",
+      "C02881-K1",
+      "C11227-K2",
+      "C11413-K1"
+    ],
+    "connected_device_profiles": [
+      "Trident/7.0 | Windows 8.1 | ie 11.0 for desktop | 1680x1050"
+    ],
+    "exposure_usd": 2140.94,
+    "evidence": [
+      {
+        "claim": "4 related online transaction(s) within 48 hours of the flagged transaction on card C03042-K1.",
+        "source": "graph",
+        "ref": "query:card_window(card_id=C03042-K1, hours=48)",
+        "entity_ids": [
+          "3464869",
+          "3462404",
+          "3462387",
+          "3462385"
+        ]
+      },
+      {
+        "claim": "The flagged transaction's device fingerprint is marked New for this account (id_15).",
+        "source": "graph",
+        "ref": "query:card_window(card_id=C03042-K1)",
+        "entity_ids": [
+          "3464869"
+        ]
+      },
+      {
+        "claim": "The flagged transaction's billing region differs from this card's usual region, while activity in the usual region continues.",
+        "source": "graph",
+        "ref": "query:card_window(card_id=C03042-K1)",
+        "entity_ids": [
+          "3464869"
+        ]
+      },
+      {
+        "claim": "The flagged transaction's device fingerprint is shared with 5 other card(s): C00681-K1, C01155-K2, C02881-K1, C11227-K2, C11413-K1.",
+        "source": "graph",
+        "ref": "query:device_neighbors(transaction_id=3464869)",
+        "entity_ids": [
+          "C00681-K1",
+          "C01155-K2",
+          "C02881-K1",
+          "C11227-K2",
+          "C11413-K1"
+        ]
+      },
+      {
+        "claim": "3 closed case(s) connect to this card, device, or region.",
+        "source": "graph",
+        "ref": "query:closed_case_lookup(card_id=C03042-K1)",
+        "entity_ids": [
+          "CC-3886",
+          "CC-1313",
+          "CC-0615"
+        ]
+      },
+      {
+        "claim": "Flagged transaction is online/card-not-present for $599.94 with model score 0.77.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3464869",
+          "3462404",
+          "3462387",
+          "3462385"
+        ]
+      },
+      {
+        "claim": "Transaction is part of a same-episode cluster of 4 related transactions totaling $2140.94 exposure.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3464869",
+          "3462404",
+          "3462387",
+          "3462385"
+        ]
+      },
+      {
+        "claim": "Burst of related online transactions detected.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3464869",
+          "3462404",
+          "3462387",
+          "3462385"
+        ]
+      },
+      {
+        "claim": "Device is marked NEW for this account.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3464869",
+          "3462404",
+          "3462387",
+          "3462385"
+        ]
+      },
+      {
+        "claim": "Out-of-region use detected while home activity continues.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3464869",
+          "3462404",
+          "3462387",
+          "3462385"
+        ]
+      },
+      {
+        "claim": "No card-testing sequence detected.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3464869",
+          "3462404",
+          "3462387",
+          "3462385"
+        ]
+      },
+      {
+        "claim": "Prior closed cases for this customer include confirmed fraud with card_not_present_new_device pattern.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3464869",
+          "3462404",
+          "3462387",
+          "3462385"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-3886",
+      "CC-0615",
+      "CC-3473"
+    ],
+    "summary": "Out Of Region Use identified at probability 0.86, spanning 4 transactions totaling $2140.94. Flagged transaction is online/card-not-present for $599.94 with model score 0.77. Transaction is part of a same-episode cluster of 4 related transactions totaling $2140.94 exposure. Burst of related online transactions detected. Connects to 5 other card(s).",
+    "written_to_graph": true,
+    "graph_case_id": "CASE-HHG-015"
+  },
+  "evidence_requests": [],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R6"
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "R6"
+      },
+      {
+        "action": "MONITOR_CONNECTED_CARDS",
+        "route": "auto",
+        "reason": "R6"
+      }
+    ],
+    "final": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R6"
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "R6"
+      },
+      {
+        "action": "MONITOR_CONNECTED_CARDS",
+        "route": "auto",
+        "reason": "R6"
+      }
+    ],
+    "what_changed": "nothing"
+  },
+  "sar": {
+    "file": true,
+    "reason": "R6: shared device/region/email links this to other cards.",
+    "narrative": "Customer C03042 and card C03042-K1 generated a real-time alert involving transaction 3464869, an online/card-not-present transaction for $599.94 scored 0.77 by the model. The activity occurred during the episode dated 2016-11-16 to 2016-11-17 and included transactions 3464869, 3462404, 3462387, and 3462385. The four related transactions created total exposure of $2140.94. The activity was conducted through the online/card-not-present channel, with a burst of related online transactions detected. The device used was marked NEW for this account. The episode is associated with out-of-region use while home activity continued. Connected cards identified in the episode are C00681-K1, C01155-K2, C02881-K1, C11227-K2, and C11413-K1. Merchant details were not provided in the source facts. The activity is suspicious because it combines out-of-region use, a new device, clustered online transactions, and a high fraud probability of 0.86. Suspicion is further supported by prior closed cases for this customer that included confirmed fraud with a card_not_present_new_device pattern, although no card-testing sequence was detected.",
+    "subjects": [
+      "C03042",
+      "C03042-K1",
+      "C00681-K1",
+      "C01155-K2",
+      "C02881-K1",
+      "C11227-K2",
+      "C11413-K1"
+    ],
+    "total_amount_usd": 2140.94,
+    "activity_dates": [
+      "2016-11-16",
+      "2016-11-17"
+    ]
+  },
+  "stop_reason": "Fraud probability reached a decisive threshold with sufficient evidence.",
+  "tool_calls": 10,
+  "tokens": 3806,
+  "latency_s": 118.1
+}

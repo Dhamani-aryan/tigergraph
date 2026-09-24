@@ -1,0 +1,119 @@
+{
+  "case_id": "HHG-009",
+  "case": {
+    "status": "closed_fraud",
+    "verdict": "fraud",
+    "fraud_probability": 0.78,
+    "pattern": "out_of_region_use",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3581141"
+    ],
+    "first_suspicious_txn_id": "3581141",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 30.02,
+    "evidence": [
+      {
+        "claim": "The flagged transaction's billing region differs from this card's usual region, while activity in the usual region continues.",
+        "source": "graph",
+        "ref": "query:card_window(card_id=C08299-K1)",
+        "entity_ids": [
+          "3581141"
+        ]
+      },
+      {
+        "claim": "Customer denies transaction 3581141 for $30.02.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3581141"
+        ]
+      },
+      {
+        "claim": "Deterministic signal shows out-of-region use: new billing region while home activity continues.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3581141"
+        ]
+      },
+      {
+        "claim": "Fraud episode contains only transaction 3581141 with exposure of $30.02.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3581141"
+        ]
+      },
+      {
+        "claim": "No card-testing sequence or burst of related online transactions detected.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3581141"
+        ]
+      },
+      {
+        "claim": "Flagged transaction was not from a new device and not behind an anonymizing proxy.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3581141"
+        ]
+      },
+      {
+        "claim": "Customer reported this transaction as unrecognized: \"Customer C08299 message: 'I never made this $30.02 purchase. Please check my card.' Refers to 3581141.\"",
+        "source": "customer",
+        "ref": "trigger:customer_report",
+        "entity_ids": [
+          "3581141"
+        ]
+      }
+    ],
+    "similar_prior_cases": [],
+    "summary": "Out Of Region Use identified at probability 0.78, spanning 1 transaction totaling $30.02. Customer denies transaction 3581141 for $30.02. Deterministic signal shows out-of-region use: new billing region while home activity continues. Fraud episode contains only transaction 3581141 with exposure of $30.02.",
+    "written_to_graph": true,
+    "graph_case_id": "CASE-HHG-009"
+  },
+  "evidence_requests": [],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "Sec 3a"
+      }
+    ],
+    "final": [
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R2"
+      }
+    ],
+    "what_changed": "The customer's own report, already on file at the time the case opened, established non-recognition of the charge (R2), which changed the recommendation."
+  },
+  "sar": {
+    "file": false,
+    "reason": "No filing criteria met.",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0.0,
+    "activity_dates": []
+  },
+  "stop_reason": "Customer's own report already establishes non-recognition of the charge (R2); no simulated follow-up needed since the customer already stated this unprompted.",
+  "tool_calls": 10,
+  "tokens": 2844,
+  "latency_s": 113.4
+}

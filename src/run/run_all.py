@@ -38,6 +38,14 @@ def _git_commit() -> str:
 
 def _llm_info() -> dict[str, str]:
     backend = os.environ.get("LLM_BACKEND", "groq")
+    if backend == "pi":
+        # Provenance comes from the running Pi bridge's own `ready` frame (the
+        # provider/model it actually resolved from Pi's authenticated catalog),
+        # not from what .env asked for.
+        from src.agent.pi_bridge import bridge_provenance
+
+        info = bridge_provenance()
+        return {"provider": info["provider"], "model": info["model"]}
     model = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b") if backend == "groq" else "qwen3:4b-instruct"
     return {"provider": backend, "model": model}
 
@@ -103,8 +111,9 @@ async def run_all(
     runs_path = Path(runs_dir)
     traces_dir = runs_path / "traces"
     traces_dir.mkdir(parents=True, exist_ok=True)
-    llm_provider = os.environ.get("LLM_BACKEND", "groq")
-    llm_model = _llm_info()["model"]
+    llm_info = _llm_info()
+    llm_provider = llm_info["provider"]
+    llm_model = llm_info["model"]
 
     summary_cases: list[dict] = []
     errors: dict[str, str] = {}
@@ -197,7 +206,7 @@ async def run_all(
         # guessed.
         "run_id": generated_at,
         "git_commit": _git_commit(),
-        "llm": _llm_info(),
+        "llm": llm_info,
         "generated_at": generated_at,
         "cases_total": len(full_cases),
         "cases_completed": len(summary_cases),
@@ -221,6 +230,10 @@ async def run_all(
     runs_path = Path(runs_dir)
     runs_path.mkdir(parents=True, exist_ok=True)
     (runs_path / "batch_summary.json").write_text(json.dumps(batch_summary, indent=2), encoding="utf-8")
+    if os.environ.get("LLM_BACKEND", "groq") == "pi":
+        from src.agent.pi_bridge import close_bridge
+
+        close_bridge()
 
     print(
         f"\nBatch complete: {len(summary_cases)}/{len(full_cases)} produced, "

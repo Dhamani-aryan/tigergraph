@@ -1,0 +1,162 @@
+{
+  "case_id": "HHG-010",
+  "case": {
+    "status": "closed_fraud",
+    "verdict": "fraud",
+    "fraud_probability": 0.94,
+    "pattern": "card_not_present_new_device",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3506725"
+    ],
+    "first_suspicious_txn_id": "3506725",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 1000.03,
+    "evidence": [
+      {
+        "claim": "The flagged transaction's device fingerprint is marked New for this account (id_15).",
+        "source": "graph",
+        "ref": "query:card_window(card_id=C10434-K1)",
+        "entity_ids": [
+          "3506725"
+        ]
+      },
+      {
+        "claim": "1 closed case(s) connect to this card, device, or region.",
+        "source": "graph",
+        "ref": "query:closed_case_lookup(card_id=C10434-K1)",
+        "entity_ids": [
+          "CC-0873"
+        ]
+      },
+      {
+        "claim": "Customer states they did not make the $1,000.03 purchase and still has the card, consistent with unauthorized card-not-present use.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3506725"
+        ]
+      },
+      {
+        "claim": "Flagged transaction is online for $1,000.03 with model risk score 0.90.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3506725"
+        ]
+      },
+      {
+        "claim": "Transaction amount is approximately 10.0x the customer's typical transaction amount.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3506725"
+        ]
+      },
+      {
+        "claim": "Device is marked NEW for this account.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3506725"
+        ]
+      },
+      {
+        "claim": "No card-testing sequence or burst of related online transactions detected.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3506725"
+        ]
+      },
+      {
+        "claim": "No anonymizing proxy, out-of-region use, or fraud ring membership detected.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3506725"
+        ]
+      },
+      {
+        "claim": "Episode contains only the flagged transaction with exposure of $1,000.03.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3506725"
+        ]
+      },
+      {
+        "claim": "Customer states they did not make this $1000.03 purchase and still has the card. (Simulated: amount is 10.0x their typical transaction from a device new to this account.)",
+        "source": "customer",
+        "ref": "evidence_request:1",
+        "entity_ids": [
+          "3506725"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-0882"
+    ],
+    "summary": "Card Not Present New Device identified at probability 0.94, spanning 1 transaction totaling $1000.03. Customer states they did not make the $1,000.03 purchase and still has the card, consistent with unauthorized card-not-present use. Flagged transaction is online for $1,000.03 with model risk score 0.90. Transaction amount is approximately 10.0x the customer's typical transaction amount.",
+    "written_to_graph": true,
+    "graph_case_id": "CASE-HHG-010"
+  },
+  "evidence_requests": [
+    {
+      "type": "customer_validation",
+      "asked_after_step": 3,
+      "assumed_response": "Customer states they did not make this $1000.03 purchase and still has the card. (Simulated: amount is 10.0x their typical transaction from a device new to this account.)"
+    }
+  ],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "Sec 3a"
+      }
+    ],
+    "final": [
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R2"
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "R2"
+      }
+    ],
+    "what_changed": "Simulated evidence response changed the recommended actions."
+  },
+  "sar": {
+    "file": true,
+    "reason": "R2: exposure exceeds $1,000 or activity connects to a shared origin.",
+    "narrative": "On 2016-12-02, customer C10434’s card C10434-K1 was used in transaction 3506725 for an online card-not-present purchase of $1,000.03. The episode contains only this flagged transaction, with total exposure of $1,000.03 and no connected cards identified. The transaction was conducted through the online channel using a device marked as new for this account. No merchant name or physical location was provided for the transaction. The real-time model scored the transaction at 0.90, and the overall fraud probability for the episode is 0.94. The amount is approximately 10.0 times the customer’s typical transaction amount. The customer states they did not make the $1,000.03 purchase and still has the card, which is consistent with unauthorized card-not-present use. No card-testing sequence or burst of related online transactions was detected. No anonymizing proxy, out-of-region use, or fraud ring membership was detected. The activity is suspicious because it combines a high-risk online card-not-present purchase, a new device, an unusually large amount, and a customer denial while the card remains in the customer’s possession.",
+    "subjects": [
+      "C10434",
+      "C10434-K1"
+    ],
+    "total_amount_usd": 1000.03,
+    "activity_dates": [
+      "2016-12-02",
+      "2016-12-02"
+    ]
+  },
+  "stop_reason": "Simulated customer response settled the verdict.",
+  "tool_calls": 10,
+  "tokens": 4259,
+  "latency_s": 127.3
+}

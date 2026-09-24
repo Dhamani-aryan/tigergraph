@@ -1,0 +1,371 @@
+{
+  "schema_version": "1.0",
+  "case_id": "HHG-009",
+  "trigger": {
+    "trigger_type": "customer_report",
+    "trigger_text": "Customer C08299 message: 'I never made this $30.02 purchase. Please check my card.' Refers to 3581141.",
+    "flagged_txn_id": "3581141",
+    "card_id": "C08299-K1",
+    "customer_id": "C08299",
+    "risk_score": null,
+    "opened_at": "2016-12-28 17:10:53"
+  },
+  "cutoff_ts": "2016-12-28 17:10:53",
+  "steps": [
+    {
+      "step": 1,
+      "node": "gather_evidence",
+      "label": "Gather graph evidence",
+      "tool_calls": [
+        {
+          "tool": "card_window",
+          "via": "mcp",
+          "args": {},
+          "result_count": 47
+        },
+        {
+          "tool": "customer_cards",
+          "via": "mcp",
+          "args": {},
+          "result_count": 1
+        },
+        {
+          "tool": "device_neighbors",
+          "via": "mcp",
+          "args": {},
+          "result_count": 0
+        },
+        {
+          "tool": "device_profile_label",
+          "via": "mcp",
+          "args": {},
+          "result_count": 0
+        },
+        {
+          "tool": "closed_case_lookup",
+          "via": "mcp",
+          "args": {},
+          "result_count": 0
+        },
+        {
+          "tool": "ring_membership",
+          "via": "mcp",
+          "args": {},
+          "result_count": 1
+        },
+        {
+          "tool": "retrieve_knowledge",
+          "via": "mcp",
+          "args": {},
+          "result_count": 1
+        }
+      ],
+      "summary": "47 card transaction(s) in the pre-cutoff window, 0 device-sharing card(s), 0 connected closed case(s)."
+    },
+    {
+      "step": 2,
+      "node": "assess",
+      "label": "Initial assessment",
+      "tool_calls": [],
+      "summary": "pattern=out_of_region_use, probability=0.78"
+    },
+    {
+      "step": 3,
+      "node": "initial_policy",
+      "label": "Initial policy (R1-R10)",
+      "tool_calls": [],
+      "summary": "Recommended: VERIFY_WITH_CUSTOMER, CREATE_CASE"
+    },
+    {
+      "step": 4,
+      "node": "write_case",
+      "label": "Write case memory",
+      "tool_calls": [
+        {
+          "tool": "add_nodes",
+          "via": "mcp",
+          "args": {},
+          "result_count": 1
+        },
+        {
+          "tool": "upsert_vectors",
+          "via": "mcp",
+          "args": {},
+          "result_count": 1
+        }
+      ],
+      "summary": "Upserted FraudCase CASE-HHG-009 and its embedding."
+    },
+    {
+      "step": 5,
+      "node": "read_back",
+      "label": "Independent read-back",
+      "tool_calls": [
+        {
+          "tool": "get_node",
+          "via": "mcp",
+          "args": {},
+          "result_count": 1
+        }
+      ],
+      "summary": "Read the case back from the graph; verdict matched."
+    },
+    {
+      "step": 6,
+      "node": "validate",
+      "label": "Answer validation",
+      "tool_calls": [],
+      "summary": "Passed contract and cross-field checks."
+    }
+  ],
+  "probability_timeline": [
+    {
+      "step": 2,
+      "label": "Initial assessment",
+      "fraud_probability": 0.78
+    }
+  ],
+  "signals": [
+    {
+      "name": "card_testing_sequence",
+      "fired": false,
+      "detail": "Three or more small online authorizations within an hour, then a larger purchase.",
+      "entity_ids": []
+    },
+    {
+      "name": "cnp_burst",
+      "fired": false,
+      "detail": "Two to four related online transactions within 48 hours of the flagged one.",
+      "entity_ids": []
+    },
+    {
+      "name": "new_device",
+      "fired": false,
+      "detail": "The flagged transaction's device is marked New for this account (id_15).",
+      "entity_ids": []
+    },
+    {
+      "name": "anonymizing_proxy",
+      "fired": false,
+      "detail": "The flagged transaction was made through a hidden/anonymizing IP proxy (id_23).",
+      "entity_ids": []
+    },
+    {
+      "name": "out_of_region",
+      "fired": true,
+      "detail": "Billing region differs from this card's usual region, with concurrent home-region activity.",
+      "entity_ids": []
+    },
+    {
+      "name": "shared_device",
+      "fired": false,
+      "detail": "Device fingerprint shared with other cards within the cardinality cap (not a generic collision).",
+      "entity_ids": []
+    },
+    {
+      "name": "coordinated_ring",
+      "fired": false,
+      "detail": "Card cluster's confirmed-fraud rate (0.85) clears the 0.95 coordination threshold, well above this dataset's ~84% baseline.",
+      "entity_ids": []
+    },
+    {
+      "name": "recurring_charge",
+      "fired": false,
+      "detail": "A prior transaction of the same amount recurs roughly monthly on this card (R7).",
+      "entity_ids": []
+    }
+  ],
+  "rules_fired": [
+    {
+      "rule": "R1",
+      "phase": "initial",
+      "explanation": "R1"
+    },
+    {
+      "rule": "Sec 3a",
+      "phase": "initial",
+      "explanation": "Sec 3a"
+    },
+    {
+      "rule": "R2",
+      "phase": "final",
+      "explanation": "R2"
+    }
+  ],
+  "retrieval": {
+    "prior_cases": [
+      {
+        "case_id": "CC-3931",
+        "outcome": "cleared",
+        "pattern": "none",
+        "score": 0.2079898,
+        "used": false
+      },
+      {
+        "case_id": "CC-3761",
+        "outcome": "cleared",
+        "pattern": "none",
+        "score": 0.2108529,
+        "used": false
+      },
+      {
+        "case_id": "CC-3639",
+        "outcome": "cleared",
+        "pattern": "none",
+        "score": 0.2063826,
+        "used": false
+      },
+      {
+        "case_id": "CC-3640",
+        "outcome": "cleared",
+        "pattern": "none",
+        "score": 0.2112105,
+        "used": false
+      },
+      {
+        "case_id": "CC-3847",
+        "outcome": "confirmed_fraud",
+        "pattern": "card_not_present_new_device",
+        "score": 0.2124219,
+        "used": false
+      },
+      {
+        "case_id": "CASE-HHG-004",
+        "outcome": "",
+        "pattern": "card_not_present_new_device",
+        "score": 0.2408549,
+        "used": false
+      },
+      {
+        "case_id": "CASE-HHG-017",
+        "outcome": "",
+        "pattern": "card_not_present_fraud",
+        "score": 0.2404956,
+        "used": false
+      },
+      {
+        "case_id": "CASE-HHG-002",
+        "outcome": "",
+        "pattern": "card_not_present_fraud",
+        "score": 0.2466733,
+        "used": false
+      },
+      {
+        "case_id": "CASE-HHG-003",
+        "outcome": "",
+        "pattern": "card_not_present_fraud",
+        "score": 0.2588363,
+        "used": false
+      },
+      {
+        "case_id": "CASE-HHG-008",
+        "outcome": "",
+        "pattern": "card_not_present_fraud",
+        "score": 0.2620896,
+        "used": false
+      }
+    ],
+    "documents": [
+      {
+        "doc_id": "pattern-cnp-fraud",
+        "title": "pattern",
+        "section": "2",
+        "score": 0.2507426
+      },
+      {
+        "doc_id": "policy-r2",
+        "title": "policy",
+        "section": "R2",
+        "score": 0.3228908
+      },
+      {
+        "doc_id": "pattern-card-testing",
+        "title": "pattern",
+        "section": "1",
+        "score": 0.3392927
+      },
+      {
+        "doc_id": "fincen-sar-narrative-complete-40",
+        "title": "regulatory",
+        "section": "40",
+        "score": 0.3400312
+      },
+      {
+        "doc_id": "pattern-cnp-new-device",
+        "title": "pattern",
+        "section": "3",
+        "score": 0.3377762
+      }
+    ]
+  },
+  "subgraph": {
+    "nodes": [
+      {
+        "id": "C08299",
+        "type": "Customer",
+        "label": "C08299",
+        "role": "subject",
+        "attrs": {}
+      },
+      {
+        "id": "C08299-K1",
+        "type": "Card",
+        "label": "C08299-K1",
+        "role": "subject",
+        "attrs": {}
+      },
+      {
+        "id": "3581141",
+        "type": "Transaction",
+        "label": "$30.02",
+        "role": "flagged",
+        "attrs": {
+          "ts": "2016-12-28 12:10:53",
+          "TransactionAmt": 30.02,
+          "channel": "online",
+          "addr1": "203.0"
+        }
+      },
+      {
+        "id": "CASE-HHG-009",
+        "type": "FraudCase",
+        "label": "CASE-HHG-009",
+        "role": "this_case",
+        "attrs": {}
+      }
+    ],
+    "edges": [
+      {
+        "source": "C08299",
+        "target": "C08299-K1",
+        "type": "OWNS"
+      },
+      {
+        "source": "C08299-K1",
+        "target": "3581141",
+        "type": "MADE"
+      },
+      {
+        "source": "C08299-K1",
+        "target": "CASE-HHG-009",
+        "type": "CASE_ON_CARD"
+      }
+    ]
+  },
+  "graph_write": {
+    "written": true,
+    "graph_case_id": "CASE-HHG-009",
+    "read_back_ok": true,
+    "written_at": "2026-09-24 12:19:48"
+  },
+  "validation": {
+    "passed": true,
+    "errors": [],
+    "warnings": []
+  },
+  "llm": {
+    "provider": "pi/openai-codex",
+    "model": "gpt-5.5",
+    "tokens": 2844
+  }
+}

@@ -1,0 +1,167 @@
+{
+  "case_id": "HHG-013",
+  "case": {
+    "status": "closed_fraud",
+    "verdict": "fraud",
+    "fraud_probability": 0.86,
+    "pattern": "card_not_present_new_device",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3526826",
+      "3526747",
+      "3526677",
+      "3526538"
+    ],
+    "first_suspicious_txn_id": "3526538",
+    "connected_card_ids": [],
+    "connected_device_profiles": [],
+    "exposure_usd": 197.38,
+    "evidence": [
+      {
+        "claim": "4 related online transaction(s) within 48 hours of the flagged transaction on card C07671-K2.",
+        "source": "graph",
+        "ref": "query:card_window(card_id=C07671-K2, hours=48)",
+        "entity_ids": [
+          "3526826",
+          "3526747",
+          "3526677",
+          "3526538"
+        ]
+      },
+      {
+        "claim": "The flagged transaction's device fingerprint is marked New for this account (id_15).",
+        "source": "graph",
+        "ref": "query:card_window(card_id=C07671-K2)",
+        "entity_ids": [
+          "3526826"
+        ]
+      },
+      {
+        "claim": "4 closed case(s) connect to this card, device, or region.",
+        "source": "graph",
+        "ref": "query:closed_case_lookup(card_id=C07671-K2)",
+        "entity_ids": [
+          "CC-4294",
+          "CC-3216",
+          "CC-1475",
+          "CC-3761"
+        ]
+      },
+      {
+        "claim": "Transaction 3526826 is online and scored 0.76 by the real-time fraud model.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3526826",
+          "3526747",
+          "3526677",
+          "3526538"
+        ]
+      },
+      {
+        "claim": "Flagged transaction used a device marked NEW for this account.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3526826",
+          "3526747",
+          "3526677",
+          "3526538"
+        ]
+      },
+      {
+        "claim": "Rule-based episode links transactions 3526826, 3526747, 3526677, and 3526538 with total exposure of $197.38.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3526826",
+          "3526747",
+          "3526677",
+          "3526538"
+        ]
+      },
+      {
+        "claim": "Burst of related online transactions detected.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3526826",
+          "3526747",
+          "3526677",
+          "3526538"
+        ]
+      },
+      {
+        "claim": "Card-testing sequence not detected and no out-of-region use detected.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3526826",
+          "3526747",
+          "3526677",
+          "3526538"
+        ]
+      },
+      {
+        "claim": "Closed prior case CC-3216 involved the same customer/card with confirmed card-not-present new-device fraud.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3526826",
+          "3526747",
+          "3526677",
+          "3526538"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-3216",
+      "CC-2757",
+      "CC-2165",
+      "CC-3473"
+    ],
+    "summary": "Card Not Present New Device identified at probability 0.86, spanning 4 transactions totaling $197.38. Transaction 3526826 is online and scored 0.76 by the real-time fraud model. Flagged transaction used a device marked NEW for this account. Rule-based episode links transactions 3526826, 3526747, 3526677, and 3526538 with total exposure of $197.38.",
+    "written_to_graph": true,
+    "graph_case_id": "CASE-HHG-013"
+  },
+  "evidence_requests": [],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "Sec 3a"
+      }
+    ],
+    "final": [
+      {
+        "action": "VERIFY_WITH_CUSTOMER",
+        "route": "auto",
+        "reason": "R1"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "Sec 3a"
+      }
+    ],
+    "what_changed": "nothing"
+  },
+  "sar": {
+    "file": false,
+    "reason": "No filing criteria met.",
+    "narrative": "",
+    "subjects": [],
+    "total_amount_usd": 0.0,
+    "activity_dates": []
+  },
+  "stop_reason": "Fraud probability reached a decisive threshold with sufficient evidence.",
+  "tool_calls": 10,
+  "tokens": 3109,
+  "latency_s": 110.8
+}

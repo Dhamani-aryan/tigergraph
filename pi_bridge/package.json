@@ -1,0 +1,18 @@
+{
+  "name": "tigergraph-pi-bridge",
+  "private": true,
+  "version": "0.1.0",
+  "description": "JSONL stdin/stdout bridge from the Python fraud agent to Pi's openai-codex provider (ChatGPT Plus/Pro OAuth).",
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "login": "node bridge.mjs login",
+    "models": "node bridge.mjs models"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "0.87.1",
+    "@earendil-works/pi-coding-agent": "0.87.1"
+  }
+}

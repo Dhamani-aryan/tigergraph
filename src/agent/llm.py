@@ -13,6 +13,10 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 LLM_BACKEND = os.environ.get("LLM_BACKEND", "groq")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 OLLAMA_MODEL = "qwen3:4b-instruct"
+# LLM_BACKEND=pi: ChatGPT Plus/Pro via Pi's openai-codex OAuth provider, through
+# the persistent Node bridge in src/agent/pi_bridge.py (PI_PROVIDER / PI_MODEL).
+PI_MAX_ATTEMPTS = 3
+PI_MAX_RATE_LIMIT_WAIT_S = 60.0
 
 _SYSTEM_PROMPT = (
     "You are a fraud investigation assistant. Respond with ONLY a single JSON "
@@ -52,6 +56,9 @@ class TokenTracker:
     def add_from_response(self, response: "openai.types.chat.ChatCompletion") -> None:
         if response.usage is not None:
             self.total += response.usage.total_tokens
+
+    def add_tokens(self, count: int) -> None:
+        self.total += int(count)
 
 
 token_tracker = TokenTracker()
@@ -113,6 +120,64 @@ def _groq_chat(messages: list[dict], **kwargs) -> "openai.types.chat.ChatComplet
         raise _RateLimited from exc
 
 
+def _pi_chat(messages: list[dict], tools: list[dict] | None = None):
+    """One Pi completion. `messages` uses the same OpenAI-style role/content
+    dicts as the Groq path; a leading system message becomes Pi's system
+    prompt. Retries only transient failures (a short rate-limit window, a
+    bridge timeout, or the bridge dying -- a fresh bridge is started on the
+    next attempt); auth, model and malformed-response errors fail at once.
+    Tokens are counted from Pi's own usage report for every completed call,
+    including ones whose content is later rejected by schema validation."""
+    from src.agent import pi_bridge
+
+    system = messages[0]["content"] if messages and messages[0]["role"] == "system" else _SYSTEM_PROMPT
+    convo = [m for m in messages if m["role"] != "system"]
+    for attempt in range(1, PI_MAX_ATTEMPTS + 1):
+        try:
+            completion = pi_bridge.get_bridge().complete(system, convo, tools=tools)
+        except pi_bridge.PiBridgeError as exc:
+            transient = exc.kind in ("timeout", "exited") or (
+                exc.kind == "rate_limit"
+                and (exc.retry_after_s is None or exc.retry_after_s <= PI_MAX_RATE_LIMIT_WAIT_S)
+            )
+            print(f"    [pi {exc.kind}] attempt {attempt}/{PI_MAX_ATTEMPTS}: {exc}", flush=True)
+            if not transient or attempt == PI_MAX_ATTEMPTS:
+                raise
+            time.sleep(min(exc.retry_after_s or 5.0 * attempt, PI_MAX_RATE_LIMIT_WAIT_S))
+            continue
+        token_tracker.add_tokens(completion.total_tokens)
+        return completion
+    raise AssertionError("unreachable")
+
+
+def _strip_json_fence(raw: str) -> str:
+    """The Codex Responses endpoint has no json_object response_format, so a
+    reply occasionally arrives wrapped in a ```json fence. Only the fence is
+    removed; the content still has to parse and pass schema validation."""
+    text = raw.strip()
+    if text.startswith("```") and text.endswith("```"):
+        text = text[3:-3].strip()
+        if text[:4].lower() == "json":
+            text = text[4:].lstrip()
+    return text
+
+
+def _openai_tools_to_pi(tools: list[dict]) -> list[dict]:
+    """OpenAI-style function schemas -> Pi tool definitions (name, description,
+    JSON-schema parameters). Declarations only: Pi never executes them."""
+    converted = []
+    for tool in tools:
+        fn = tool.get("function", tool) if tool.get("type", "function") == "function" else None
+        if not fn or not fn.get("name"):
+            raise ValueError(f"unsupported tool schema for the pi backend: {tool!r}")
+        converted.append({
+            "name": fn["name"],
+            "description": fn.get("description", ""),
+            "parameters": fn.get("parameters") or {"type": "object", "properties": {}},
+        })
+    return converted
+
+
 async def generate_structured(
     prompt: str, schema: type[BaseModel], max_retries: int = 2
 ) -> BaseModel:
@@ -166,6 +231,8 @@ async def generate_structured(
 
 
 async def _chat_raw(messages: list[dict], schema: type[BaseModel]) -> str:
+    if LLM_BACKEND == "pi":
+        return _strip_json_fence(_pi_chat(messages).text) or "{}"
     if LLM_BACKEND == "groq":
         response = _groq_chat(
             messages,
@@ -196,6 +263,17 @@ async def generate_with_tools(
         },
         {"role": "user", "content": prompt},
     ]
+    if LLM_BACKEND == "pi":
+        pi_tools = _openai_tools_to_pi(tools)
+        completion = _pi_chat(messages, tools=pi_tools)
+        if completion.tool_calls:
+            call = completion.tool_calls[0]
+            allowed = {t["name"] for t in pi_tools}
+            if call.name not in allowed:
+                # Never hand an undeclared tool name on to dispatch.
+                raise RuntimeError(f"Pi requested undeclared tool {call.name!r}; allowed: {sorted(allowed)}")
+            return ToolCallResult(tool_name=call.name, tool_arguments=dict(call.arguments))
+        return ToolCallResult(tool_name=None, final_text=completion.text)
     if LLM_BACKEND != "groq":
         return ToolCallResult(tool_name=None, final_text="(tool-calling round skipped on ollama backend)")
 

@@ -40,3 +40,11 @@ data/vectors/
 # as the actual submission.
 cases/
 runs/
+
+# Pi bridge (Node) dependencies -- restored from pi_bridge/package-lock.json via `npm ci`
+pi_bridge/node_modules/
+# Never keep a Pi credential inside the repo (Pi's store is ~/.pi/agent/auth.json)
+auth.json
+
+# Isolated smoke-test outputs (Task 14 Pi smoke run)
+cases-smoke-pi/

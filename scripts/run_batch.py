@@ -14,7 +14,9 @@ partial rerun (e.g. after a rate-limit failure, or after a bug fix that
 only needs to be re-verified on a few cases) doesn't have to redo
 everything and doesn't silently drop cases already on disk.
 
-Requires GROQ_API_KEY (or LLM_BACKEND=ollama) and TG_* in .env, and a
+Requires GROQ_API_KEY (or LLM_BACKEND=ollama, or LLM_BACKEND=pi with
+PI_PROVIDER/PI_MODEL and a Pi OpenAI Codex login -- see pi_bridge/README.md)
+and TG_* in .env, and a
 reachable TigerGraph workspace -- see src/run/run_all.py's own docstring
 for exactly which MCP tools this needs (INVESTIGATION_ALLOWED_TOOLS).
 

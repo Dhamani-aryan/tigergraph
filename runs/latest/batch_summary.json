@@ -1,0 +1,588 @@
+{
+  "run_id": "2026-09-24T12:40:45Z",
+  "git_commit": "82440c6",
+  "llm": {
+    "provider": "pi/openai-codex",
+    "model": "gpt-5.5"
+  },
+  "generated_at": "2026-09-24T12:40:45Z",
+  "cases_total": 20,
+  "cases_completed": 20,
+  "cases_failed": 0,
+  "cases_valid": 20,
+  "cases_written_to_graph": 20,
+  "verdicts": {
+    "fraud": 20
+  },
+  "patterns": {
+    "out_of_region_use": 6,
+    "card_not_present_fraud": 5,
+    "card_not_present_new_device": 9
+  },
+  "sar_filed": 7,
+  "actions_changed": 14,
+  "total_exposure_usd": 9207.12,
+  "total_tool_calls": 203,
+  "total_tokens": 71611,
+  "avg_latency_s": 138.8,
+  "errors": {},
+  "cases": [
+    {
+      "case_id": "HHG-019",
+      "trigger_type": "risk_score",
+      "customer_id": "C07987",
+      "card_id": "C07987-K2",
+      "opened_at": "2016-12-01 22:28:53",
+      "verdict": "fraud",
+      "fraud_probability": 0.9,
+      "pattern": "out_of_region_use",
+      "status": "closed_fraud",
+      "exposure_usd": 216.83,
+      "sar_file": true,
+      "initial_actions": [
+        "CREATE_CASE",
+        "FILE_REPORT",
+        "MONITOR_CONNECTED_CARDS"
+      ],
+      "final_actions": [
+        "CREATE_CASE",
+        "FILE_REPORT",
+        "MONITOR_CONNECTED_CARDS"
+      ],
+      "actions_changed": false,
+      "validation_passed": true,
+      "written_to_graph": true,
+      "tool_calls": 10,
+      "tokens": 3940,
+      "latency_s": 287.5
+    },
+    {
+      "case_id": "HHG-001",
+      "trigger_type": "risk_score",
+      "customer_id": "C12382",
+      "card_id": "C12382-K1",
+      "opened_at": "2016-12-05 01:55:28",
+      "verdict": "fraud",
+      "fraud_probability": 0.88,
+      "pattern": "out_of_region_use",
+      "status": "closed_fraud",
+      "exposure_usd": 392.96,
+      "sar_file": true,
+      "initial_actions": [
+        "CREATE_CASE",
+        "FILE_REPORT",
+        "MONITOR_CONNECTED_CARDS"
+      ],
+      "final_actions": [
+        "CREATE_CASE",
+        "FILE_REPORT",
+        "MONITOR_CONNECTED_CARDS"
+      ],
+      "actions_changed": false,
+      "validation_passed": true,
+      "written_to_graph": true,
+      "tool_calls": 11,
+      "tokens": 4324,
+      "latency_s": 330.7
+    },
+    {
+      "case_id": "HHG-002",
+      "trigger_type": "risk_score",
+      "customer_id": "C11891",
+      "card_id": "C11891-K1",
+      "opened_at": "2016-11-22 23:27:07",
+      "verdict": "fraud",
+      "fraud_probability": 0.93,
+      "pattern": "card_not_present_fraud",
+      "status": "closed_fraud",
+      "exposure_usd": 292.36,
+      "sar_file": false,
+      "initial_actions": [
+        "VERIFY_WITH_CUSTOMER",
+        "CREATE_CASE"
+      ],
+      "final_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "actions_changed": true,
+      "validation_passed": true,
+      "written_to_graph": true,
+      "tool_calls": 10,
+      "tokens": 3537,
+      "latency_s": 131.1
+    },
+    {
+      "case_id": "HHG-003",
+      "trigger_type": "customer_report",
+      "customer_id": "C08623",
+      "card_id": "C08623-K2",
+      "opened_at": "2016-12-10 15:01:21",
+      "verdict": "fraud",
+      "fraud_probability": 0.88,
+      "pattern": "card_not_present_fraud",
+      "status": "closed_fraud",
+      "exposure_usd": 308.45,
+      "sar_file": false,
+      "initial_actions": [
+        "VERIFY_WITH_CUSTOMER",
+        "CREATE_CASE"
+      ],
+      "final_actions": [
+        "CREATE_CASE",
+        "VERIFY_WITH_CUSTOMER",
+        "WARN_CUSTOMER"
+      ],
+      "actions_changed": true,
+      "validation_passed": true,
+      "written_to_graph": true,
+      "tool_calls": 10,
+      "tokens": 3140,
+      "latency_s": 118.6
+    },
+    {
+      "case_id": "HHG-004",
+      "trigger_type": "customer_report",
+      "customer_id": "C08106",
+      "card_id": "C08106-K1",
+      "opened_at": "2016-12-29 07:53:54",
+      "verdict": "fraud",
+      "fraud_probability": 0.92,
+      "pattern": "card_not_present_new_device",
+      "status": "closed_fraud",
+      "exposure_usd": 221.19,
+      "sar_file": true,
+      "initial_actions": [
+        "CREATE_CASE",
+        "FILE_REPORT",
+        "MONITOR_CONNECTED_CARDS"
+      ],
+      "final_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE",
+        "FILE_REPORT",
+        "MONITOR_CONNECTED_CARDS"
+      ],
+      "actions_changed": true,
+      "validation_passed": true,
+      "written_to_graph": true,
+      "tool_calls": 10,
+      "tokens": 3742,
+      "latency_s": 120.1
+    },
+    {
+      "case_id": "HHG-005",
+      "trigger_type": "risk_score",
+      "customer_id": "C02923",
+      "card_id": "C02923-K1",
+      "opened_at": "2016-12-08 03:38:37",
+      "verdict": "fraud",
+      "fraud_probability": 0.92,
+      "pattern": "card_not_present_new_device",
+      "status": "closed_fraud",
+      "exposure_usd": 100.07,
+      "sar_file": false,
+      "initial_actions": [
+        "VERIFY_WITH_CUSTOMER",
+        "CREATE_CASE"
+      ],
+      "final_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "actions_changed": true,
+      "validation_passed": true,
+      "written_to_graph": true,
+      "tool_calls": 10,
+      "tokens": 4040,
+      "latency_s": 118.5
+    },
+    {
+      "case_id": "HHG-006",
+      "trigger_type": "customer_report",
+      "customer_id": "C07297",
+      "card_id": "C07297-K1",
+      "opened_at": "2016-11-22 02:30:00",
+      "verdict": "fraud",
+      "fraud_probability": 0.95,
+      "pattern": "card_not_present_new_device",
+      "status": "closed_fraud",
+      "exposure_usd": 1906.07,
+      "sar_file": true,
+      "initial_actions": [
+        "VERIFY_WITH_CUSTOMER",
+        "CREATE_CASE"
+      ],
+      "final_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE",
+        "FILE_REPORT"
+      ],
+      "actions_changed": true,
+      "validation_passed": true,
+      "written_to_graph": true,
+      "tool_calls": 10,
+      "tokens": 3437,
+      "latency_s": 118.3
+    },
+    {
+      "case_id": "HHG-007",
+      "trigger_type": "risk_score",
+      "customer_id": "C09933",
+      "card_id": "C09933-K2",
+      "opened_at": "2016-12-05 03:46:14",
+      "verdict": "fraud",
+      "fraud_probability": 0.86,
+      "pattern": "card_not_present_fraud",
+      "status": "closed_fraud",
+      "exposure_usd": 382.96,
+      "sar_file": false,
+      "initial_actions": [
+        "VERIFY_WITH_CUSTOMER",
+        "CREATE_CASE"
+      ],
+      "final_actions": [
+        "VERIFY_WITH_CUSTOMER",
+        "CREATE_CASE"
+      ],
+      "actions_changed": false,
+      "validation_passed": true,
+      "written_to_graph": true,
+      "tool_calls": 11,
+      "tokens": 3732,
+      "latency_s": 120.3
+    },
+    {
+      "case_id": "HHG-008",
+      "trigger_type": "customer_report",
+      "customer_id": "C13171",
+      "card_id": "C13171-K2",
+      "opened_at": "2016-12-20 03:08:56",
+      "verdict": "fraud",
+      "fraud_probability": 0.92,
+      "pattern": "card_not_present_fraud",
+      "status": "closed_fraud",
+      "exposure_usd": 187.46,
+      "sar_file": false,
+      "initial_actions": [
+        "VERIFY_WITH_CUSTOMER",
+        "CREATE_CASE"
+      ],
+      "final_actions": [
+        "CREATE_CASE",
+        "VERIFY_WITH_CUSTOMER",
+        "WARN_CUSTOMER"
+      ],
+      "actions_changed": true,
+      "validation_passed": true,
+      "written_to_graph": true,
+      "tool_calls": 10,
+      "tokens": 3108,
+      "latency_s": 110.9
+    },
+    {
+      "case_id": "HHG-009",
+      "trigger_type": "customer_report",
+      "customer_id": "C08299",
+      "card_id": "C08299-K1",
+      "opened_at": "2016-12-28 17:10:53",
+      "verdict": "fraud",
+      "fraud_probability": 0.78,
+      "pattern": "out_of_region_use",
+      "status": "closed_fraud",
+      "exposure_usd": 30.02,
+      "sar_file": false,
+      "initial_actions": [
+        "VERIFY_WITH_CUSTOMER",
+        "CREATE_CASE"
+      ],
+      "final_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "actions_changed": true,
+      "validation_passed": true,
+      "written_to_graph": true,
+      "tool_calls": 10,
+      "tokens": 2844,
+      "latency_s": 113.4
+    },
+    {
+      "case_id": "HHG-010",
+      "trigger_type": "risk_score",
+      "customer_id": "C10434",
+      "card_id": "C10434-K1",
+      "opened_at": "2016-12-02 18:18:27",
+      "verdict": "fraud",
+      "fraud_probability": 0.94,
+      "pattern": "card_not_present_new_device",
+      "status": "closed_fraud",
+      "exposure_usd": 1000.03,
+      "sar_file": true,
+      "initial_actions": [
+        "VERIFY_WITH_CUSTOMER",
+        "CREATE_CASE"
+      ],
+      "final_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE",
+        "FILE_REPORT"
+      ],
+      "actions_changed": true,
+      "validation_passed": true,
+      "written_to_graph": true,
+      "tool_calls": 10,
+      "tokens": 4259,
+      "latency_s": 127.3
+    },
+    {
+      "case_id": "HHG-011",
+      "trigger_type": "customer_report",
+      "customer_id": "C11923",
+      "card_id": "C11923-K2",
+      "opened_at": "2016-12-29 06:27:44",
+      "verdict": "fraud",
+      "fraud_probability": 0.93,
+      "pattern": "card_not_present_new_device",
+      "status": "closed_fraud",
+      "exposure_usd": 191.75,
+      "sar_file": true,
+      "initial_actions": [
+        "CREATE_CASE",
+        "FILE_REPORT",
+        "MONITOR_CONNECTED_CARDS"
+      ],
+      "final_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE",
+        "FILE_REPORT",
+        "MONITOR_CONNECTED_CARDS"
+      ],
+      "actions_changed": true,
+      "validation_passed": true,
+      "written_to_graph": true,
+      "tool_calls": 10,
+      "tokens": 4007,
+      "latency_s": 126.4
+    },
+    {
+      "case_id": "HHG-012",
+      "trigger_type": "risk_score",
+      "customer_id": "C05876",
+      "card_id": "C05876-K2",
+      "opened_at": "2016-12-18 05:00:31",
+      "verdict": "fraud",
+      "fraud_probability": 0.9,
+      "pattern": "out_of_region_use",
+      "status": "closed_fraud",
+      "exposure_usd": 196.73,
+      "sar_file": false,
+      "initial_actions": [
+        "VERIFY_WITH_CUSTOMER",
+        "CREATE_CASE"
+      ],
+      "final_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "actions_changed": true,
+      "validation_passed": true,
+      "written_to_graph": true,
+      "tool_calls": 11,
+      "tokens": 4208,
+      "latency_s": 135.0
+    },
+    {
+      "case_id": "HHG-013",
+      "trigger_type": "risk_score",
+      "customer_id": "C07671",
+      "card_id": "C07671-K2",
+      "opened_at": "2016-12-09 05:39:29",
+      "verdict": "fraud",
+      "fraud_probability": 0.86,
+      "pattern": "card_not_present_new_device",
+      "status": "closed_fraud",
+      "exposure_usd": 197.38,
+      "sar_file": false,
+      "initial_actions": [
+        "VERIFY_WITH_CUSTOMER",
+        "CREATE_CASE"
+      ],
+      "final_actions": [
+        "VERIFY_WITH_CUSTOMER",
+        "CREATE_CASE"
+      ],
+      "actions_changed": false,
+      "validation_passed": true,
+      "written_to_graph": true,
+      "tool_calls": 10,
+      "tokens": 3109,
+      "latency_s": 110.8
+    },
+    {
+      "case_id": "HHG-014",
+      "trigger_type": "analyst_request",
+      "customer_id": "C13487",
+      "card_id": "C13487-K1",
+      "opened_at": "2016-11-22 20:11:00",
+      "verdict": "fraud",
+      "fraud_probability": 0.88,
+      "pattern": "card_not_present_new_device",
+      "status": "closed_fraud",
+      "exposure_usd": 142.0,
+      "sar_file": false,
+      "initial_actions": [
+        "VERIFY_WITH_CUSTOMER",
+        "CREATE_CASE"
+      ],
+      "final_actions": [
+        "VERIFY_WITH_CUSTOMER",
+        "CREATE_CASE"
+      ],
+      "actions_changed": false,
+      "validation_passed": true,
+      "written_to_graph": true,
+      "tool_calls": 10,
+      "tokens": 2907,
+      "latency_s": 114.0
+    },
+    {
+      "case_id": "HHG-015",
+      "trigger_type": "risk_score",
+      "customer_id": "C03042",
+      "card_id": "C03042-K1",
+      "opened_at": "2016-11-17 19:03:36",
+      "verdict": "fraud",
+      "fraud_probability": 0.86,
+      "pattern": "out_of_region_use",
+      "status": "closed_fraud",
+      "exposure_usd": 2140.94,
+      "sar_file": true,
+      "initial_actions": [
+        "CREATE_CASE",
+        "FILE_REPORT",
+        "MONITOR_CONNECTED_CARDS"
+      ],
+      "final_actions": [
+        "CREATE_CASE",
+        "FILE_REPORT",
+        "MONITOR_CONNECTED_CARDS"
+      ],
+      "actions_changed": false,
+      "validation_passed": true,
+      "written_to_graph": true,
+      "tool_calls": 10,
+      "tokens": 3806,
+      "latency_s": 118.1
+    },
+    {
+      "case_id": "HHG-016",
+      "trigger_type": "customer_report",
+      "customer_id": "C09988",
+      "card_id": "C09988-K1",
+      "opened_at": "2016-12-12 01:39:08",
+      "verdict": "fraud",
+      "fraud_probability": 0.82,
+      "pattern": "card_not_present_new_device",
+      "status": "closed_fraud",
+      "exposure_usd": 59.67,
+      "sar_file": false,
+      "initial_actions": [
+        "VERIFY_WITH_CUSTOMER",
+        "CREATE_CASE"
+      ],
+      "final_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "actions_changed": true,
+      "validation_passed": true,
+      "written_to_graph": true,
+      "tool_calls": 10,
+      "tokens": 3083,
+      "latency_s": 116.4
+    },
+    {
+      "case_id": "HHG-017",
+      "trigger_type": "risk_score",
+      "customer_id": "C04570",
+      "card_id": "C04570-K1",
+      "opened_at": "2016-11-12 00:46:24",
+      "verdict": "fraud",
+      "fraud_probability": 0.86,
+      "pattern": "card_not_present_fraud",
+      "status": "closed_fraud",
+      "exposure_usd": 300.14,
+      "sar_file": false,
+      "initial_actions": [
+        "VERIFY_WITH_CUSTOMER",
+        "CREATE_CASE"
+      ],
+      "final_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "actions_changed": true,
+      "validation_passed": true,
+      "written_to_graph": true,
+      "tool_calls": 10,
+      "tokens": 3557,
+      "latency_s": 119.0
+    },
+    {
+      "case_id": "HHG-018",
+      "trigger_type": "customer_report",
+      "customer_id": "C02354",
+      "card_id": "C02354-K2",
+      "opened_at": "2016-11-27 14:41:26",
+      "verdict": "fraud",
+      "fraud_probability": 0.92,
+      "pattern": "out_of_region_use",
+      "status": "closed_fraud",
+      "exposure_usd": 815.03,
+      "sar_file": false,
+      "initial_actions": [
+        "VERIFY_WITH_CUSTOMER",
+        "CREATE_CASE"
+      ],
+      "final_actions": [
+        "CREATE_CASE",
+        "VERIFY_WITH_CUSTOMER",
+        "WARN_CUSTOMER"
+      ],
+      "actions_changed": true,
+      "validation_passed": true,
+      "written_to_graph": true,
+      "tool_calls": 10,
+      "tokens": 3169,
+      "latency_s": 115.7
+    },
+    {
+      "case_id": "HHG-020",
+      "trigger_type": "risk_score",
+      "customer_id": "C12265",
+      "card_id": "C12265-K2",
+      "opened_at": "2016-12-03 12:04:26",
+      "verdict": "fraud",
+      "fraud_probability": 0.86,
+      "pattern": "card_not_present_new_device",
+      "status": "closed_fraud",
+      "exposure_usd": 125.08,
+      "sar_file": false,
+      "initial_actions": [
+        "VERIFY_WITH_CUSTOMER",
+        "CREATE_CASE"
+      ],
+      "final_actions": [
+        "BLOCK_CARD",
+        "CREATE_CASE"
+      ],
+      "actions_changed": true,
+      "validation_passed": true,
+      "written_to_graph": true,
+      "tool_calls": 10,
+      "tokens": 3662,
+      "latency_s": 123.0
+    }
+  ]
+}

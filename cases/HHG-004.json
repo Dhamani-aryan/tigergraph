@@ -1,0 +1,203 @@
+{
+  "case_id": "HHG-004",
+  "case": {
+    "status": "closed_fraud",
+    "verdict": "fraud",
+    "fraud_probability": 0.92,
+    "pattern": "card_not_present_new_device",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3583227",
+      "3580804"
+    ],
+    "first_suspicious_txn_id": "3580804",
+    "connected_card_ids": [
+      "C02222-K1",
+      "C03095-K2",
+      "C04248-K2",
+      "C05031-K2",
+      "C07518-K2"
+    ],
+    "connected_device_profiles": [
+      "firefox 47.0"
+    ],
+    "exposure_usd": 221.19,
+    "evidence": [
+      {
+        "claim": "2 related online transaction(s) within 48 hours of the flagged transaction on card C08106-K1.",
+        "source": "graph",
+        "ref": "query:card_window(card_id=C08106-K1, hours=48)",
+        "entity_ids": [
+          "3583227",
+          "3580804"
+        ]
+      },
+      {
+        "claim": "The flagged transaction's device fingerprint is marked New for this account (id_15).",
+        "source": "graph",
+        "ref": "query:card_window(card_id=C08106-K1)",
+        "entity_ids": [
+          "3583227"
+        ]
+      },
+      {
+        "claim": "The flagged transaction's device fingerprint is shared with 5 other card(s): C02222-K1, C03095-K2, C04248-K2, C05031-K2, C07518-K2.",
+        "source": "graph",
+        "ref": "query:device_neighbors(transaction_id=3583227)",
+        "entity_ids": [
+          "C02222-K1",
+          "C03095-K2",
+          "C04248-K2",
+          "C05031-K2",
+          "C07518-K2"
+        ]
+      },
+      {
+        "claim": "4 closed case(s) connect to this card, device, or region.",
+        "source": "graph",
+        "ref": "query:closed_case_lookup(card_id=C08106-K1)",
+        "entity_ids": [
+          "CC-0696",
+          "CC-3778",
+          "CC-2121",
+          "CC-1736"
+        ]
+      },
+      {
+        "claim": "Customer explicitly denies transaction 3583227 for $128.33.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3583227",
+          "3580804"
+        ]
+      },
+      {
+        "claim": "Rule-based episode links transactions 3583227 and 3580804 with total exposure $221.19.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3583227",
+          "3580804"
+        ]
+      },
+      {
+        "claim": "Related online transaction burst detected.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3583227",
+          "3580804"
+        ]
+      },
+      {
+        "claim": "Flagged transaction used a device marked NEW for this account.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3583227",
+          "3580804"
+        ]
+      },
+      {
+        "claim": "No card-testing sequence or out-of-region pattern detected.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3583227",
+          "3580804"
+        ]
+      },
+      {
+        "claim": "Prior confirmed fraud cases for this customer/card involved card-not-present fraud.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3583227",
+          "3580804"
+        ]
+      },
+      {
+        "claim": "Customer reported this transaction as unrecognized: \"Customer C08106 message: 'I never made this $128.33 purchase. Please check my card.' Refers to 3583227.\"",
+        "source": "customer",
+        "ref": "trigger:customer_report",
+        "entity_ids": [
+          "3583227"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-3778",
+      "CC-2121"
+    ],
+    "summary": "Card Not Present New Device identified at probability 0.92, spanning 2 transactions totaling $221.19. Customer explicitly denies transaction 3583227 for $128.33. Rule-based episode links transactions 3583227 and 3580804 with total exposure $221.19. Related online transaction burst detected. Connects to 5 other card(s).",
+    "written_to_graph": true,
+    "graph_case_id": "CASE-HHG-004"
+  },
+  "evidence_requests": [],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R6"
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "R6"
+      },
+      {
+        "action": "MONITOR_CONNECTED_CARDS",
+        "route": "auto",
+        "reason": "R6"
+      }
+    ],
+    "final": [
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R2"
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "R2"
+      },
+      {
+        "action": "MONITOR_CONNECTED_CARDS",
+        "route": "auto",
+        "reason": "R2/R6"
+      }
+    ],
+    "what_changed": "The customer's own report, already on file at the time the case opened, established non-recognition of the charge (R2), which changed the recommendation."
+  },
+  "sar": {
+    "file": true,
+    "reason": "R2: exposure exceeds $1,000 or activity connects to a shared origin.",
+    "narrative": "Customer C08106 reported that they did not make transaction 3583227 for $128.33 on card C08106-K1, stating, “I never made this $128.33 purchase. Please check my card.” The activity occurred during the episode dated 2016-12-28 to 2016-12-29 and included transactions 3583227 and 3580804. The total exposure for the linked episode was $221.19. The activity was identified as a card-not-present new-device pattern, and the flagged transaction used a device marked new for this account. The episode was rule-linked to connected cards C02222-K1, C03095-K2, C04248-K2, C05031-K2, and C07518-K2. The channel was online/card-not-present, and the provided facts do not identify specific merchants or physical locations. A related online transaction burst was detected during the episode. The activity is suspicious because the customer explicitly denied transaction 3583227, the device was new to the account, and prior confirmed fraud cases for this customer/card involved card-not-present fraud. The fraud probability assigned to the episode was 0.92. No card-testing sequence or out-of-region pattern was detected.",
+    "subjects": [
+      "C08106",
+      "C08106-K1",
+      "C02222-K1",
+      "C03095-K2",
+      "C04248-K2",
+      "C05031-K2",
+      "C07518-K2"
+    ],
+    "total_amount_usd": 221.19,
+    "activity_dates": [
+      "2016-12-28",
+      "2016-12-29"
+    ]
+  },
+  "stop_reason": "Customer's own report already establishes non-recognition of the charge (R2); no simulated follow-up needed since the customer already stated this unprompted.",
+  "tool_calls": 10,
+  "tokens": 3742,
+  "latency_s": 120.1
+}

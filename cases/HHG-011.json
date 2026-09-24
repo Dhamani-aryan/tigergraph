@@ -1,0 +1,227 @@
+{
+  "case_id": "HHG-011",
+  "case": {
+    "status": "closed_fraud",
+    "verdict": "fraud",
+    "fraud_probability": 0.93,
+    "pattern": "card_not_present_new_device",
+    "pattern_description": "",
+    "affected_txn_ids": [
+      "3583368",
+      "3583348",
+      "3583406",
+      "3583411"
+    ],
+    "first_suspicious_txn_id": "3583348",
+    "connected_card_ids": [
+      "C03938-K1",
+      "C05595-K1"
+    ],
+    "connected_device_profiles": [
+      "SM-G610F Build/NRD90M | chrome 66.0 for android"
+    ],
+    "exposure_usd": 191.75,
+    "evidence": [
+      {
+        "claim": "4 related online transaction(s) within 48 hours of the flagged transaction on card C11923-K2.",
+        "source": "graph",
+        "ref": "query:card_window(card_id=C11923-K2, hours=48)",
+        "entity_ids": [
+          "3583368",
+          "3583348",
+          "3583406",
+          "3583411"
+        ]
+      },
+      {
+        "claim": "The flagged transaction's device fingerprint is marked New for this account (id_15).",
+        "source": "graph",
+        "ref": "query:card_window(card_id=C11923-K2)",
+        "entity_ids": [
+          "3583368"
+        ]
+      },
+      {
+        "claim": "The flagged transaction's device fingerprint is shared with 2 other card(s): C03938-K1, C05595-K1.",
+        "source": "graph",
+        "ref": "query:device_neighbors(transaction_id=3583368)",
+        "entity_ids": [
+          "C03938-K1",
+          "C05595-K1"
+        ]
+      },
+      {
+        "claim": "11 closed case(s) connect to this card, device, or region.",
+        "source": "graph",
+        "ref": "query:closed_case_lookup(card_id=C11923-K2)",
+        "entity_ids": [
+          "CC-3039",
+          "CC-3905",
+          "CC-4501",
+          "CC-1056",
+          "CC-2247",
+          "CC-2799",
+          "CC-2673",
+          "CC-0290",
+          "CC-3206",
+          "CC-0031"
+        ]
+      },
+      {
+        "claim": "Customer explicitly denies the $131.30 transaction 3583368.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3583368",
+          "3583348",
+          "3583406",
+          "3583411"
+        ]
+      },
+      {
+        "claim": "Rule-based episode links transactions 3583368, 3583348, 3583406, and 3583411 with total exposure $191.75.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3583368",
+          "3583348",
+          "3583406",
+          "3583411"
+        ]
+      },
+      {
+        "claim": "Burst of related online transactions detected.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3583368",
+          "3583348",
+          "3583406",
+          "3583411"
+        ]
+      },
+      {
+        "claim": "Flagged transaction used a device marked NEW for this account.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3583368",
+          "3583348",
+          "3583406",
+          "3583411"
+        ]
+      },
+      {
+        "claim": "No card-testing sequence detected.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3583368",
+          "3583348",
+          "3583406",
+          "3583411"
+        ]
+      },
+      {
+        "claim": "No out-of-region use or anonymizing proxy detected.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3583368",
+          "3583348",
+          "3583406",
+          "3583411"
+        ]
+      },
+      {
+        "claim": "Prior closed cases for this customer/card include confirmed card-not-present new-device fraud.",
+        "source": "graph",
+        "ref": "assessment:llm_synthesis",
+        "entity_ids": [
+          "3583368",
+          "3583348",
+          "3583406",
+          "3583411"
+        ]
+      },
+      {
+        "claim": "Customer reported this transaction as unrecognized: \"Customer C11923 message: 'I never made this $131.30 purchase. Please check my card.' Refers to 3583368.\"",
+        "source": "customer",
+        "ref": "trigger:customer_report",
+        "entity_ids": [
+          "3583368"
+        ]
+      }
+    ],
+    "similar_prior_cases": [
+      "CC-3039",
+      "CC-3905"
+    ],
+    "summary": "Card Not Present New Device identified at probability 0.93, spanning 4 transactions totaling $191.75. Customer explicitly denies the $131.30 transaction 3583368. Rule-based episode links transactions 3583368, 3583348, 3583406, and 3583411 with total exposure $191.75. Burst of related online transactions detected. Connects to 2 other card(s).",
+    "written_to_graph": true,
+    "graph_case_id": "CASE-HHG-011"
+  },
+  "evidence_requests": [],
+  "next_best_actions": {
+    "initial": [
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R6"
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "R6"
+      },
+      {
+        "action": "MONITOR_CONNECTED_CARDS",
+        "route": "auto",
+        "reason": "R6"
+      }
+    ],
+    "final": [
+      {
+        "action": "BLOCK_CARD",
+        "route": "L1",
+        "reason": "R2"
+      },
+      {
+        "action": "CREATE_CASE",
+        "route": "auto",
+        "reason": "R2"
+      },
+      {
+        "action": "FILE_REPORT",
+        "route": "L2",
+        "reason": "R2"
+      },
+      {
+        "action": "MONITOR_CONNECTED_CARDS",
+        "route": "auto",
+        "reason": "R2/R6"
+      }
+    ],
+    "what_changed": "The customer's own report, already on file at the time the case opened, established non-recognition of the charge (R2), which changed the recommendation."
+  },
+  "sar": {
+    "file": true,
+    "reason": "R2: exposure exceeds $1,000 or activity connects to a shared origin.",
+    "narrative": "On 2016-12-29, customer C11923 reported that they did not make the $131.30 transaction 3583368 on card C11923-K2, stating, \"I never made this $131.30 purchase. Please check my card.\" A rule-based episode linked transactions 3583368, 3583348, 3583406, and 3583411 occurring on the same date, with total exposure of $191.75. The activity was identified as card-not-present activity conducted through the online channel. The flagged transaction used a device marked new for this account. Connected cards C03938-K1 and C05595-K1 are associated with the episode context. The activity is suspicious because it involved a burst of related online transactions and an explicit customer denial of transaction 3583368. The fraud probability for the episode is 0.93, and prior closed cases for this customer/card include confirmed card-not-present new-device fraud. No card-testing sequence, out-of-region use, or anonymizing proxy was detected.",
+    "subjects": [
+      "C11923",
+      "C11923-K2",
+      "C03938-K1",
+      "C05595-K1"
+    ],
+    "total_amount_usd": 191.75,
+    "activity_dates": [
+      "2016-12-29",
+      "2016-12-29"
+    ]
+  },
+  "stop_reason": "Customer's own report already establishes non-recognition of the charge (R2); no simulated follow-up needed since the customer already stated this unprompted.",
+  "tool_calls": 10,
+  "tokens": 4007,
+  "latency_s": 126.4
+}
